@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Quote Card Builder — Plotter Bench</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="overrides.css">
+</head>
+<body>
+  <!-- THESIS: una quote card si approva su un banco di prova calibrato, non dentro un mini-Canva o una dashboard a schede. OWN-WORLD: plotter melanzana e cemento, guide lavanda, chartreuse raro per selezione, stato valido e approvazione; superfici piatte, cuciture da 1px e controlli compatti. STORY: osserva la prova reale, regola solo la composizione consentita, verifica integrità e QA, poi invia o approva. FIRST VIEWPORT: testata quieta, grande letto di misura con prova dominante, rail strumenti a destra e ledger di audit persistente in basso. FORM: Plotter Bench C2, seed key quote-card-plotter-c2. FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md -->
+  <header class="topbar">
+    <div class="product-heading" aria-label="Quote Card Builder by Vincos">
+      <h1>
+        <span class="product-title">
+          <span class="product-title-primary">Quote Card</span>
+          <span class="product-title-secondary">Builder</span>
+        </span>
+      </h1>
+      <span class="product-byline">
+        <span>by</span>
+        <img src="vincos-lockup-white.svg" alt="Vincos">
+      </span>
+    </div>
+    <div class="format-tabs" role="group" aria-label="Formato anteprima">
+      <button class="format-tab is-active" type="button" aria-pressed="true" data-format="4x5"><span>4:5</span><small>Feed</small></button>
+      <button class="format-tab" type="button" aria-pressed="false" data-format="1x1"><span>1:1</span><small>Square</small></button>
+      <button class="format-tab" type="button" aria-pressed="false" data-format="9x16"><span>9:16</span><small>Story</small></button>
+    </div>
+  </header>
+
+  <main class="studio" aria-label="Studio di revisione visuale">
+    <section class="preview-zone" aria-label="Anteprima della quote card">
+      <div class="preview-head">
+        <div class="preview-tools" aria-label="Strumenti di visualizzazione">
+          <button id="safe-toggle" class="compact-control safe-toggle" type="button" aria-label="Mostra o nascondi area sicura" aria-pressed="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+            <span>Guide</span>
+          </button>
+          <button id="zoom-out" class="compact-control icon-control" type="button" aria-label="Riduci zoom">−</button>
+          <output id="zoom-output" for="zoom-out zoom-in">100%</output>
+          <button id="zoom-in" class="compact-control icon-control" type="button" aria-label="Aumenta zoom">+</button>
+        </div>
+        <p id="preview-message" class="preview-message">Caricamento prova visuale…</p>
+      </div>
+
+      <div id="preview-stage" class="preview-stage" aria-busy="true">
+        <div class="ruler ruler-x" aria-hidden="true"><span>0</span><span>100</span><span>200</span><span>300</span><span>400</span><span>500</span><span>600</span><b>mm</b></div>
+        <div class="ruler ruler-y" aria-hidden="true"><span>0</span><span>100</span><span>200</span><span>300</span><span>400</span><span>500</span><b>mm</b></div>
+        <div class="plotter-bed" aria-hidden="true"></div>
+        <div class="dimension dimension-x" aria-hidden="true"><span>1080</span></div>
+        <div class="dimension dimension-y" aria-hidden="true"><span>1350</span></div>
+        <div id="preview-shell" class="preview-shell format-4-5">
+          <span class="registration reg-tl" aria-hidden="true"></span>
+          <span class="registration reg-tr" aria-hidden="true"></span>
+          <span class="registration reg-bl" aria-hidden="true"></span>
+          <span class="registration reg-br" aria-hidden="true"></span>
+          <div class="safe-area" aria-hidden="true"></div>
+          <div id="preview-content" class="preview-content"><span>Preparazione della prova</span></div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="controls-panel" aria-label="Strumenti di composizione">
+      <div class="rail-heading">
+        <span>Strumenti</span>
+        <span id="draft-state" class="draft-state">Bozza locale</span>
+      </div>
+
+      <details class="evidence-drawer">
+        <summary>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>
+          <span>Provenienza</span>
+        </summary>
+        <div class="evidence-content">
+          <blockquote id="approved-quote">Caricamento del candidato selezionato.</blockquote>
+          <dl class="facts">
+            <div><dt>Attribuzione</dt><dd id="attribution">—</dd></div>
+            <div><dt>Fonte</dt><dd id="source">—</dd></div>
+            <div><dt>Brand</dt><dd id="brand">—</dd></div>
+          </dl>
+          <p id="integrity-note">La fonte osservata resta visibile; le scelte editoriali appartengono all’utente.</p>
+          <a id="return-text" class="back-text" href="#editorial-fields">Modifica testo e formattazione</a>
+        </div>
+      </details>
+
+      <form id="editor-form">
+        <fieldset class="tool-section direction-section">
+          <legend>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h11M4 17h7"/></svg>
+            <span>Direzione</span>
+          </legend>
+          <div class="directions" role="group" aria-label="Direzione visuale">
+            <button type="button" data-direction="editorial" aria-pressed="false"><span>ED</span><small>Pagina</small></button>
+            <button type="button" data-direction="statement" aria-pressed="false"><span>ST</span><small>Manifesto</small></button>
+            <button type="button" data-direction="contextual" aria-pressed="false"><span>CX</span><small>Scheda fonte</small></button>
+          </div>
+        </fieldset>
+
+        <div id="editorial-fields" class="tool-section lines-section content-section">
+          <div class="field-label" id="visual-text-label">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h12M4 11h12M4 16h8M18 8v8l-3-3M18 16l3-3"/></svg>
+            <span>Testo e formattazione</span><small>1–6 righe</small>
+          </div>
+          <div class="visual-text-frame">
+            <div id="format-toolbar" class="format-toolbar" role="toolbar" aria-label="Formattazione del testo selezionato">
+              <button type="button" data-style="bold" aria-label="Grassetto" title="Grassetto">
+                <span class="format-letter format-bold" aria-hidden="true">B</span>
+              </button>
+              <button type="button" data-style="italic" aria-label="Corsivo" title="Corsivo">
+                <span class="format-letter format-italic" aria-hidden="true">I</span>
+              </button>
+              <button type="button" data-style="underline" aria-label="Sottolineato" title="Sottolineato">
+                <span class="format-letter format-underline" aria-hidden="true">U</span>
+              </button>
+              <button type="button" data-style="highlight" aria-label="Evidenziato" title="Evidenziato">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 8-8 4 4-8 8H6v-4ZM13 8l4 4M4 21h16"/></svg>
+              </button>
+              <span id="formatting-state" class="formatting-state" aria-live="polite">Seleziona il testo da formattare</span>
+            </div>
+            <div id="visual-text-editor" class="visual-text-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="visual-text-label" aria-describedby="font-support-note lines-help" spellcheck="true"></div>
+          </div>
+          <p id="font-support-note" class="field-help font-support-note" role="status" hidden></p>
+          <p id="lines-help" class="field-help">Invio crea una nuova riga; una riga vuota aggiunge spazio. Le parole si sincronizzano fra i formati.</p>
+          <div class="editorial-meta-grid">
+            <label for="attribution-label"><span>Attribuzione</span><input id="attribution-label" type="text" autocomplete="off"></label>
+            <label for="attribution-role"><span>Ruolo</span><select id="attribution-role">
+              <option value="publisher">Publisher</option>
+              <option value="author">Autore</option>
+              <option value="speaker">Speaker</option>
+              <option value="none">Nessuno</option>
+            </select></label>
+          </div>
+          <p id="text-integrity-hint" class="field-help integrity-hint" aria-live="polite">Tipo di formulazione e verifica restano nel riepilogo inferiore.</p>
+        </div>
+
+        <div class="tool-section scale-section">
+          <div class="range-row">
+            <label class="field-label" for="scale">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9V5h4M15 5h4v4M19 15v4h-4M9 19H5v-4"/></svg>
+              <span>Scala</span>
+            </label>
+            <output id="scale-value" for="scale">0%</output>
+          </div>
+          <input id="scale" type="range" min="-8" max="8" value="0" step="1">
+          <p id="scale-fit-note" class="field-help" role="status" hidden></p>
+        </div>
+
+        <fieldset class="tool-section position-section">
+          <legend>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-2 2M12 3l2 2M21 12l-2-2M21 12l-2 2M12 21l-2-2M12 21l2-2M3 12l2-2M3 12l2 2"/></svg>
+            <span>Posizione</span>
+          </legend>
+          <div class="segmented position-grid" id="position-control" role="group" aria-label="Posizione verticale">
+            <button type="button" data-position="upper">Alta</button>
+            <button type="button" data-position="center">Centro</button>
+            <button type="button" data-position="lower">Bassa</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="tool-section logo-section">
+          <legend>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h10v10H5zM9 9h10v10H9z"/></svg>
+            <span>Logo</span>
+          </legend>
+          <div class="segmented" id="logo-control" role="group" aria-label="Visibilità logo">
+            <button type="button" data-logo="auto">Auto</button>
+            <button type="button" data-logo="hidden">Nascosto</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="tool-section graphic-section">
+          <legend>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17c3-6 6-10 16-10M4 20c5-6 9-9 16-9M13 20c2-3 4-5 7-6"/></svg>
+            <span>Elemento grafico</span>
+          </legend>
+          <div class="segmented" id="graphic-control" role="group" aria-label="Visibilità elemento grafico">
+            <button type="button" data-graphic="auto">Auto</button>
+            <button type="button" data-graphic="hidden">Nessuno</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="tool-section output-section">
+          <legend>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>
+            <span>Output finale</span>
+          </legend>
+          <div class="segmented output-grid" id="output-control" role="group" aria-label="Formati del pacchetto finale">
+            <button type="button" data-output="all">Tutti</button>
+            <button type="button" data-output="4x5">4:5</button>
+            <button type="button" data-output="1x1">1:1</button>
+            <button type="button" data-output="9x16">9:16</button>
+          </div>
+          <p class="field-help">Il pacchetto contiene PNG; l’SVG resta soltanto un passaggio tecnico.</p>
+        </fieldset>
+
+        <div class="tool-section quotes-section">
+          <label class="check-row">
+            <input id="quotation-marks" type="checkbox">
+            <span class="check-control" aria-hidden="true"></span>
+            <span>Virgolette</span>
+            <small id="quotes-rule">Segno distintivo di ED</small>
+          </label>
+        </div>
+      </form>
+
+      <section class="qa-panel" aria-labelledby="qa-heading">
+        <div class="qa-heading">
+          <h2 id="qa-heading">Quality gate</h2>
+          <span class="qa-mini-state">Live</span>
+        </div>
+        <ul id="warnings" class="warnings" aria-live="polite" aria-atomic="false"><li class="empty-warning">Validazione in corso.</li></ul>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="actionbar">
+    <div class="audit-summary">
+      <span id="status-dot" class="status-dot" aria-hidden="true"></span>
+      <strong id="qa-count">0</strong>
+      <span id="qa-label">controlli in corso</span>
+      <span id="action-message" class="action-message" role="status">L’anteprima si aggiorna automaticamente.</span>
+    </div>
+
+    <dl class="audit-ledger" aria-label="Stato editoriale e sessione">
+      <div><dt>Stato editoriale</dt><dd><span id="transformation">—</span><span class="ledger-separator">·</span><span id="evidence-status">—</span></dd></div>
+      <div><dt>Sessione</dt><dd><span id="session-state">Caricamento</span><span class="ledger-separator">·</span><span>rev. <strong id="revision">—</strong></span></dd></div>
+    </dl>
+
+    <div class="actions">
+      <a id="back-link" class="button button-quiet" href="#">Testo</a>
+      <button id="reset" class="button button-quiet" type="button" aria-label="Ripristina la bozza" title="Ripristina la bozza">Ripristina</button>
+      <button id="feedback" class="button button-secondary" type="button">Invia</button>
+      <button id="approve" class="button button-primary" type="button">Approva <span aria-hidden="true">→</span></button>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

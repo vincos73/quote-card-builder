@@ -1,0 +1,4 @@
+/* Session and renderer-specific state hooks live here to keep the base system stable. */
+.preview-shell[style*="--preview-zoom"] { will-change: transform; }
+.status-dot.is-error + #qa-count,
+.status-dot.is-error ~ #qa-label { color: var(--danger); }
