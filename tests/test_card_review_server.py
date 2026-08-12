@@ -200,7 +200,27 @@ class CardReviewServerTests(unittest.TestCase):
             previews = SERVER.render_preview(item, Path(directory))
             qa = SERVER.preview_quality(item, previews, Path(directory))
         self.assertTrue(qa["passed"])
-        self.assertLess(previews[0]["font_size"], 64)
+        self.assertEqual(previews[0]["font_size"], previews[0]["maximum_font_size"])
+        self.assertEqual(1.0, previews[0]["text_scale"])
+
+    def test_preview_and_quality_gate_share_the_true_max_fit(self):
+        item = manifest()
+        item["direction"] = "editorial"
+        item["formats"][0]["vertical_position"] = "lower"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            preview = SERVER.render_preview(item, root)[0]
+            qa = SERVER.preview_quality(item, [preview], root)
+            adapted = SERVER.pack.proof_manifest_for_format(item, item["formats"][0])
+            adapted["canvas"] = {"width": 1440, "height": 1800}
+            measurement = SERVER.pack.layout_measurement(
+                item["formats"][0]["lines"], preview["font_size"], adapted, root,
+                "editorial", 1440, 1800, "lower",
+            )
+        self.assertTrue(qa["passed"])
+        self.assertTrue(measurement["fits"])
+        self.assertEqual(preview["font_size"], preview["maximum_font_size"])
+        self.assertIn("max_fit", preview["fitting"])
 
     def test_semantic_combinations_are_user_owned_not_quality_failures(self):
         item = manifest()

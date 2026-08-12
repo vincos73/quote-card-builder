@@ -1,7 +1,7 @@
 # Quote Card Builder — Product Requirements Document
 
-Stato: rilascio v0.6.7  
-Data: 11 agosto 2026  
+Stato: rilascio v0.6.8
+Data: 12 agosto 2026
 Ambito: skill Codex, con primo nucleo editoriale riutilizzabile
 
 ## 1. Sintesi
@@ -280,6 +280,7 @@ Gli incrementi successivi completano il percorso visuale senza indebolire il cor
 - **0.6.1 Manual Composition Controls:** newline manuali preservati per formato ed enfasi estesa a locuzioni su una o più righe.
 - **0.6.2 Visual Text Styling:** editor visuale con grassetto, corsivo, sottolineato, evidenziato e righe vuote come interlinea; trattamento e prova restano informazioni nel ledger; le facce font mancanti producono un messaggio esplicativo e disabilitano soltanto lo stile non garantito.
 - **0.6.7 Branded Header Release:** output finale selezionabile per tutti i rapporti o per un singolo aspect ratio, consegna PNG-first con SVG intermedio e testata coordinata `Quote Card Builder by Vincos` in Orbitron, Onest e palette lavanda dell’interfaccia.
+- **0.6.8 True Max Fit:** il 100% tipografico diventa il massimo sicuro specifico per formato, direzione e posizione, tenendo conto di guide, logo, attribuzione, metadati ed elemento grafico; il cursore consente soltanto riduzioni fino all'80%.
 
 User-Owned Editorial Studio non espone un canvas libero. Consente di modificare testo, formattazione, attribuzione, ruolo e virgolette senza riclassificazioni automatiche; trattamento e prova sono dichiarazioni dell'utente mostrate nel ledger e aggiornabili conversazionalmente. Fonte osservata, brand e dimensioni restano immutabili.
 
@@ -408,6 +409,10 @@ Editor visuale per selezionare e applicare grassetto, corsivo, sottolineato ed e
 ### 0.6.7 — Branded Header Release
 
 Scelta fra tutti i rapporti o un singolo output finale, consegna PNG-first e identità della testata coordinata con gli altri builder Vincos senza introdurre colori estranei alla UI.
+
+### 0.6.8 — True Max Fit
+
+Fitting tipografico condiviso fra anteprima, quality gate ed export: ogni composizione parte dalla massima dimensione sicura compatibile con guide e aree riservate; il controllo utente esprime una riduzione percentuale da quel massimo.
 
 ### 0.7 — Post Kit
 

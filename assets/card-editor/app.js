@@ -7,6 +7,14 @@
   const storageKey = `quote-card-editor:${params.get('token') || 'local'}`;
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+  const normalizeScale = (value) => {
+    const numeric = Number(value);
+    return Math.min(1, Math.max(0.8, Number.isFinite(numeric) ? numeric : 1));
+  };
+  const normalizeFormats = (formats) => clone(formats || []).map((format) => ({
+    ...format,
+    text_scale: normalizeScale(format.text_scale),
+  }));
   const STYLE_TYPES = new Set(['bold', 'italic', 'underline', 'highlight']);
   const TRANSFORMATION_LABELS = {
     VERBATIM: 'Letterale', EDITED: 'Modificata', PARAPHRASE: 'Parafrasi', AI_GENERATED: 'Generata',
@@ -275,7 +283,7 @@
         els.formattingState.textContent = 'Formattazione rimossa dopo la modifica delle parole';
       }
     }
-    format.text_scale = Number((1 + Number(els.scale.value) / 100).toFixed(2));
+    format.text_scale = Number((Number(els.scale.value) / 100).toFixed(2));
     format.vertical_position = $('#position-control .is-active')?.dataset.position || 'center';
   };
 
@@ -283,9 +291,9 @@
     const format = currentFormat();
     if (!format) return;
     renderVisualEditor();
-    const percent = Math.round((format.text_scale - 1) * 100);
+    const percent = Math.round(normalizeScale(format.text_scale) * 100);
     els.scale.value = String(percent);
-    els.scaleValue.value = `${percent >= 0 ? '+' : ''}${percent}%`;
+    els.scaleValue.value = `${percent}%`;
     els.scaleValue.textContent = els.scaleValue.value;
     activate($('#position-control'), 'position', format.vertical_position);
   };
@@ -305,7 +313,7 @@
       output_mode: 'all',
       ...clone(manifest.presentation || {}),
     },
-    formats: clone(manifest.formats),
+    formats: normalizeFormats(manifest.formats),
   });
 
   const loadSavedDraft = (manifest) => {
@@ -313,7 +321,7 @@
       const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
       if (saved?.revision === manifest.revision && typeof saved.draft?.text === 'string' && saved.draft?.formats?.length === manifest.formats.length) {
         const initial = initialDraft(manifest);
-        return {
+        const restored = {
           ...initial,
           ...saved.draft,
           evidence_status: saved.draft.evidence_status || manifest.content.evidence_status,
@@ -326,6 +334,8 @@
             ? saved.draft.use_quotation_marks
             : Boolean(saved.draft.presentation?.show_quotation_marks),
         };
+        restored.formats = normalizeFormats(saved.draft.formats);
+        return restored;
       }
     } catch (_) {
       localStorage.removeItem(storageKey);
@@ -447,7 +457,7 @@
       } else if (normalize(format.lines.join(' ')) !== sourceText) {
         errors.push(`${format.id}: gli a capo devono ricostruire esattamente il testo corrente.`);
       }
-      if (format.text_scale < 0.92 || format.text_scale > 1.08) errors.push(`${format.id}: scala fuori dall’intervallo consentito.`);
+      if (format.text_scale < 0.80 || format.text_scale > 1.00) errors.push(`${format.id}: usa una scala compresa fra 80% e 100% del massimo sicuro.`);
     });
     const textLength = pointLength(state.draft.text);
     if (!Array.isArray(state.draft.styles) || state.draft.styles.length > 64 || state.draft.styles.some((style) => (
@@ -521,10 +531,13 @@
     }
     els.preview.innerHTML = preview.svg;
     els.message.textContent = state.safeArea ? 'Area tratteggiata: margine di sicurezza' : 'Margine di sicurezza nascosto';
-    els.scaleFitNote.hidden = !preview.auto_fitted;
+    const percent = Math.round(normalizeScale(preview.text_scale) * 100);
+    els.scaleFitNote.hidden = false;
     els.scaleFitNote.textContent = preview.auto_fitted
-      ? 'Scala adattata automaticamente: il testo resta sempre dentro l’area tipografica.'
-      : '';
+      ? 'La scala precedente è stata limitata al massimo sicuro per questo formato.'
+      : percent < 100
+        ? `Max-fit attivo: ${percent}% della dimensione massima sicura per questo formato.`
+        : 'Max-fit attivo: dimensione massima entro guide e aree riservate.';
   };
 
   const applyPreview = (result) => {
@@ -746,7 +759,7 @@
   [els.scale, els.quotes, els.attributionLabel, els.attributionRole].forEach((input) => input.addEventListener('input', () => {
     if (input === els.scale) {
       const value = Number(input.value);
-      els.scaleValue.value = `${value >= 0 ? '+' : ''}${value}%`;
+      els.scaleValue.value = `${value}%`;
       els.scaleValue.textContent = els.scaleValue.value;
     }
     schedulePreview();

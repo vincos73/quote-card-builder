@@ -64,9 +64,9 @@ Includere uno o più formati fra `4x5`, `1x1` e `9x16`. Usare rispettivamente i 
 - `presentation.graphic_mode`: `auto` applica il motivo fisso della direzione (`editorial` → contorni, `statement` → moduli, `contextual` → campo); `hidden` lo rimuove;
 - `presentation.show_quotation_marks`: scelta booleana sincronizzata con il controllo delle virgolette;
 - `presentation.output_mode`: `all`, `4x5`, `1x1` o `9x16`; controlla soltanto la consegna finale, non la disponibilità delle tab di anteprima;
-- per ogni formato: `lines`, `text_scale` fra `0.92` e `1.08`, `vertical_position` fra `upper`, `center`, `lower`.
+- per ogni formato: `lines`, `text_scale` fra `0.80` e `1.00`, `vertical_position` fra `upper`, `center`, `lower`. I valori legacy fra `1.00` e `1.08` restano accettati in lettura, ma sono limitati a `1.00`.
 
-`text_scale` esprime la preferenza dell'utente, non un'autorizzazione allo sforamento. Il renderer deve applicare un auto-fit finale usando gli stessi vincoli e le stesse metriche del quality gate. Se la scala richiesta non entra, limitarla al massimo valore sicuro, conservare il valore richiesto nel batch e mostrare nell'editor che l'adattamento automatico è intervenuto. Preview ed export devono usare lo stesso valore effettivo.
+`text_scale` è una percentuale del massimo sicuro, non una variazione rispetto a una dimensione nominale. Il renderer calcola prima il vero max-fit per ciascuna combinazione di formato, direzione e posizione, includendo larghezza, guide verticali e aree riservate a logo, attribuzione, metadati ed elemento grafico. `1.00` usa quel massimo; valori inferiori lo riducono. Preview, quality gate ed export devono condividere lo stesso calcolo e lo stesso valore effettivo.
 
 Quando il testo cambia, sincronizzare le parole in tutti i formati, mantenendo autonomi gli a capo. Nel formato attivo preservare letteralmente ogni newline inserito dall'utente. Una riga vuota non aggiunge parole ma produce una riga intera di spazio verticale nel renderer. Durante la digitazione non riscrivere l'editor e non scartare newline terminali ancora privi della parola successiva. Non modificare automaticamente trattamento, prova, attribuzione o virgolette.
 

@@ -258,8 +258,8 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
             raise ReviewError("Una modifica al testo richiede lines per ogni formato.")
         if "text_scale" in item:
             scale = item["text_scale"]
-            if not isinstance(scale, (int, float)) or isinstance(scale, bool) or not 0.92 <= scale <= 1.08:
-                raise ReviewError("text_scale deve essere fra 0.92 e 1.08.")
+            if not isinstance(scale, (int, float)) or isinstance(scale, bool) or not 0.80 <= scale <= 1.08:
+                raise ReviewError("text_scale deve essere fra 0.80 e 1.00; i valori legacy fino a 1.08 vengono limitati al massimo sicuro.")
         if "vertical_position" in item and item["vertical_position"] not in VERTICAL_POSITIONS:
             raise ReviewError("vertical_position non ammessa.")
 

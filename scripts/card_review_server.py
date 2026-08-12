@@ -161,7 +161,7 @@ def validate_manifest(data: Any) -> list[str]:
         if expected_ratio and isinstance(item.get("width"), int) and isinstance(item.get("height"), int) and not math.isclose(item["width"] / item["height"], expected_ratio, rel_tol=.001): error(errors, f"{field} non rispetta il rapporto {item.get('id')}")
         valid_lines(item.get("lines"), text, errors, f"{field}.lines")
         scale = item.get("text_scale")
-        if not isinstance(scale, (int, float)) or isinstance(scale, bool) or not .92 <= scale <= 1.08: error(errors, f"{field}.text_scale deve essere tra 0.92 e 1.08")
+        if not isinstance(scale, (int, float)) or isinstance(scale, bool) or not .80 <= scale <= 1.08: error(errors, f"{field}.text_scale deve essere tra 0.80 e 1.00; i valori legacy fino a 1.08 vengono limitati al massimo sicuro")
         if item.get("vertical_position") not in POSITIONS: error(errors, f"{field}.vertical_position non valida")
     for key in ("brand", "source", "output"):
         if not isinstance(data.get(key), dict): error(errors, f"{key} deve essere un oggetto")
@@ -241,9 +241,9 @@ def render_preview(manifest: dict[str, Any], manifest_dir: Path) -> list[dict[st
         adapted["content"]["emphasis"] = manifest["content"]["emphasis"]
         adapted["content"]["use_quotation_marks"] = manifest["presentation"]["show_quotation_marks"]
         if manifest["presentation"]["logo_mode"] == "hidden": adapted["brand"] = copy.deepcopy(adapted["brand"]); adapted["brand"].pop("logo", None)
-        size, fit_mode, requested_size, auto_fitted = pack.resolve_font_size(
+        size, fit_mode, requested_size, auto_fitted, maximum_size = pack.resolve_font_size(
             item["lines"], adapted, manifest_dir, manifest["direction"],
-            item["width"], item["height"], item["text_scale"],
+            item["width"], item["height"], item["text_scale"], item["vertical_position"],
         )
         kwargs: dict[str, Any] = {"font_size_override": size}
         if supports_options:
@@ -252,6 +252,7 @@ def render_preview(manifest: dict[str, Any], manifest_dir: Path) -> list[dict[st
         rendered.append({
             "format": item["id"], "width": item["width"], "height": item["height"],
             "font_size": size, "requested_font_size": requested_size,
+            "maximum_font_size": maximum_size, "text_scale": min(float(item["text_scale"]), 1.0),
             "auto_fitted": auto_fitted, "fitting": fit_mode, "svg": svg,
         })
     return rendered
@@ -302,46 +303,18 @@ def preview_quality(manifest: dict[str, Any], previews: list[dict[str, Any]], ma
                 continue
             add(f"visual_{issue['code']}", f"{format_id}: {issue['message']}", format_id)
 
-        available_width, available_height, _maximum, line_ratio = pack.layout_constraints(
-            manifest["direction"], item["width"], item["height"]
-        )
-        measured_width, measured_height, metric = pack.measure_text_box(
+        measurement = pack.layout_measurement(
             item["lines"], float(preview["font_size"]), adapted, manifest_dir,
-            manifest["direction"], item["width"], item["height"],
+            manifest["direction"], item["width"], item["height"], item["vertical_position"],
         )
-        preview["measurement"] = metric
-        if measured_width > available_width + 1 or measured_height > available_height + 1:
+        preview["measurement"] = measurement["metric"]
+        if not measurement["width_fits"]:
             add("text_fit", f"{format_id}: il testo supera l'area tipografica disponibile; riduci la scala o rivedi gli a capo.", format_id)
-
-        width, height = item["width"], item["height"]
-        safe = width * .085
-        line_height = float(preview["font_size"]) * line_ratio
-        offset = {"upper": -.075, "center": 0.0, "lower": .075}[item["vertical_position"]] * height
-        if manifest["direction"] == "editorial":
-            start_y = height * .40 - line_height * len(item["lines"]) * .08 + offset
-            lower_limit = height - safe * 1.35
-        elif manifest["direction"] == "statement":
-            visual_lines = proof.statement_visual_lines(item["lines"], width, height)
-            strong_rows = proof.statement_strong_rows(
-                visual_lines, manifest["content"].get("styles"), manifest["content"].get("emphasis", "")
-            )
-            start_y = height * .265 + offset
-            lower_limit = height - safe * 1.75
-        else:
-            panel_y, panel_height = height * .085, height * .83
-            start_y = panel_y + panel_height * .50 + offset
-            lower_limit = panel_y + panel_height - height * .075
-        text_top = start_y - float(preview["font_size"]) * .82
-        if manifest["direction"] == "statement":
-            text_bottom = start_y + proof.statement_block_height(
-                float(preview["font_size"]), visual_lines, strong_rows
-            ) - float(preview["font_size"]) * .72
-        else:
-            text_bottom = start_y + line_height * (len(item["lines"]) - 1) + float(preview["font_size"]) * .28
-        if text_top < safe or text_bottom > lower_limit:
+        if not measurement["vertical_fits"]:
             add("safe_area", f"{format_id}: il blocco di testo invade l'area riservata a logo o attribuzione.", format_id)
 
         try:
+            width, height = item["width"], item["height"]
             root = ET.fromstring(preview["svg"])
             if root.tag.rsplit("}", 1)[-1] != "svg" or root.get("viewBox") != f"0 0 {width} {height}":
                 add("svg_geometry", f"{format_id}: geometria SVG non coerente con il formato.", format_id)

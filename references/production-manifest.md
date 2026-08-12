@@ -79,7 +79,7 @@ Il production manifest congela contenuto, direzione e brand approvati, poi descr
 6. Verificare rispettivamente i rapporti 4:5, 1:1 e 9:16 con tolleranza tecnica minima.
 7. Ricostruire `content.text` dalle linee di ogni formato. Rifiutare qualsiasi differenza di parole, segni o maiuscole.
 8. Consentire da 1 a 6 linee per formato, con almeno una riga di testo; ogni stringa vuota rappresenta una riga intera di spazio verticale.
-9. Eseguire fitting tipografico sulle metriche reali del font quando Pillow è disponibile; dichiarare esplicitamente il fallback euristico.
+9. Eseguire un vero max-fit per ogni formato, direzione e posizione: il testo deve arrivare alla prima guida o area riservata senza superarla. Includere logo, attribuzione, metadati ed elemento grafico nei vincoli; usare le metriche reali del font quando Pillow è disponibile e dichiarare esplicitamente il fallback euristico. `text_scale` fra `0.80` e `1.00` è una riduzione dal massimo.
 10. Generare ogni formato dalla composizione approvata, non ridimensionando o ritagliando un PNG precedente.
 11. Incorporare font e logo negli SVG e produrre hash SHA-256 per tutti gli artefatti.
 12. Mantenere lo stato `qa` finché tutte le immagini non sono state ispezionate visivamente.
@@ -93,6 +93,6 @@ Il renderer genera per ogni formato richiesto:
 - PNG come artefatto di consegna predefinito;
 - SVG soltanto come intermedio tecnico, eliminato dopo una conversione PNG riuscita, oppure come fallback quando il convertitore non è disponibile;
 - contact sheet HTML;
-- report `*-production-qa.json` con dimensioni, fitting, contrasto e hash.
+- report `*-production-qa.json` con dimensione effettiva, dimensione massima, fitting, contrasto e hash.
 
 Dopo l'ispezione visuale, usare `scripts/finalize_quote_card_pack.py <qa.json> --all-formats --reviewer <nome>`. Il finalizzatore ricontrolla gli hash e porta il report a `status: passed`, `state: consegnato`.

@@ -7,6 +7,7 @@ Skill per Codex che trasforma frasi, testi, URL, documenti e idee in quote card 
 - provenienza, trasformazione e stato della prova mantenuti separati;
 - tre direzioni visuali autonome: editoriale, manifesto e scheda fonte;
 - editor locale con a capo manuali, righe vuote, grassetto, corsivo, sottolineato ed evidenziato;
+- vero max-fit per formato, direzione e posizione, con scala utente dall'80% al 100% del massimo sicuro;
 - composizioni indipendenti `4:5`, `1:1` e `9:16`;
 - consegna di tutti i rapporti oppure di un singolo formato scelto dall’utente;
 - PNG come output predefinito, con SVG conservato soltanto come fallback tecnico;

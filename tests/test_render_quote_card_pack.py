@@ -117,6 +117,84 @@ class ProductionManifestTests(unittest.TestCase):
             self.assertIn("range", codes)
             self.assertIn("enum", codes)
 
+    def test_true_max_fit_reaches_the_first_safe_constraint(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            proof_path = temp_path / "proof.png"
+            proof_path.write_bytes(b"proof")
+            manifest = production_manifest(proof_path)
+            format_item = manifest["formats"][0]
+
+            for direction in ("editorial", "statement", "contextual"):
+                manifest["approval"]["direction"] = direction
+                adapted = PACK.proof_manifest_for_format(manifest, format_item)
+                adapted["canvas"] = {"width": format_item["width"], "height": format_item["height"]}
+                for position in ("upper", "center", "lower"):
+                    size, mode, requested, capped, maximum = PACK.resolve_font_size(
+                        format_item["lines"], adapted, temp_path, direction,
+                        format_item["width"], format_item["height"], 1.0, position,
+                    )
+                    measurement = PACK.layout_measurement(
+                        format_item["lines"], size, adapted, temp_path, direction,
+                        format_item["width"], format_item["height"], position,
+                    )
+                    larger = PACK.layout_measurement(
+                        format_item["lines"], size * 1.01, adapted, temp_path, direction,
+                        format_item["width"], format_item["height"], position,
+                    )
+                    self.assertTrue(measurement["fits"], (direction, position, measurement))
+                    self.assertFalse(larger["fits"], (direction, position, larger))
+                    self.assertEqual(size, maximum)
+                    self.assertEqual(size, requested)
+                    self.assertFalse(capped)
+                    self.assertIn("max_fit", mode)
+
+    def test_scale_is_a_reduction_from_maximum_and_legacy_growth_is_capped(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            proof_path = temp_path / "proof.png"
+            proof_path.write_bytes(b"proof")
+            manifest = production_manifest(proof_path)
+            item = manifest["formats"][0]
+            adapted = PACK.proof_manifest_for_format(manifest, item)
+            adapted["canvas"] = {"width": item["width"], "height": item["height"]}
+
+            reduced, _mode, requested, capped, maximum = PACK.resolve_font_size(
+                item["lines"], adapted, temp_path, "statement",
+                item["width"], item["height"], 0.80, "center",
+            )
+            self.assertAlmostEqual(maximum * 0.80, reduced)
+            self.assertEqual(reduced, requested)
+            self.assertFalse(capped)
+
+            legacy, mode, requested, capped, maximum = PACK.resolve_font_size(
+                item["lines"], adapted, temp_path, "statement",
+                item["width"], item["height"], 1.08, "center",
+            )
+            self.assertEqual(maximum, legacy)
+            self.assertGreater(requested, maximum)
+            self.assertTrue(capped)
+            self.assertIn("legacy_scale_capped", mode)
+
+    def test_statement_max_fit_expands_when_graphic_is_hidden(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            proof_path = temp_path / "proof.png"
+            proof_path.write_bytes(b"proof")
+            manifest = production_manifest(proof_path)
+            item = manifest["formats"][0]
+            visible = PACK.proof_manifest_for_format(manifest, item)
+            visible["canvas"] = {"width": item["width"], "height": item["height"]}
+            hidden = json.loads(json.dumps(visible))
+            hidden["presentation"]["graphic_mode"] = "hidden"
+            visible_size, _ = PACK.fit_font_size(
+                item["lines"], visible, temp_path, "statement", item["width"], item["height"], "center"
+            )
+            hidden_size, _ = PACK.fit_font_size(
+                item["lines"], hidden, temp_path, "statement", item["width"], item["height"], "center"
+            )
+            self.assertGreater(hidden_size, visible_size)
+
     def test_output_mode_selects_all_or_one_aspect_ratio(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             proof_path = Path(temp_dir) / "proof.png"

@@ -115,8 +115,8 @@ def validate_production_manifest(data: Any, manifest_dir: Path) -> list[dict[str
         height = item.get("height")
         text_scale = item.get("text_scale", 1.0)
         vertical_position = item.get("vertical_position", "center")
-        if not isinstance(text_scale, (int, float)) or isinstance(text_scale, bool) or not 0.92 <= text_scale <= 1.08:
-            add_error(errors, f"{path}.text_scale", "range", "La scala tipografica deve essere compresa fra 0.92 e 1.08.")
+        if not isinstance(text_scale, (int, float)) or isinstance(text_scale, bool) or not 0.80 <= text_scale <= 1.08:
+            add_error(errors, f"{path}.text_scale", "range", "La scala tipografica deve essere compresa fra 0.80 e 1.00; i valori legacy fino a 1.08 vengono limitati al massimo sicuro.")
         if vertical_position not in VERTICAL_POSITIONS:
             add_error(errors, f"{path}.vertical_position", "enum", "Usare upper, center o lower.")
         if not isinstance(width, int) or isinstance(width, bool) or width < 800:
@@ -178,6 +178,81 @@ def layout_constraints(direction: str, width: int, height: int) -> tuple[float, 
     return panel_width - 2 * inner - quote_indent, height * 0.83 * 0.30, width * 0.058, 1.14
 
 
+def available_text_width(data: dict[str, Any], direction: str, width: int, height: int) -> float:
+    available_width = layout_constraints(direction, width, height)[0]
+    graphic_mode = (data.get("presentation") or {}).get("graphic_mode", "auto")
+    if direction == "statement" and graphic_mode != "hidden":
+        # The upper module begins around 75% of the canvas. Keep the poster
+        # stack clear of it instead of treating the artwork as a background.
+        available_width = min(available_width, width * 0.625)
+    return available_width
+
+
+def vertical_limits(
+    data: dict[str, Any], manifest_dir: Path, direction: str, width: int, height: int,
+) -> tuple[float, float]:
+    safe = width * 0.085
+    presentation = data.get("presentation") or {}
+    attribution = str((data.get("content") or {}).get("attribution", {}).get("label", "")).strip()
+    upper_limit = safe
+
+    if direction == "editorial":
+        if presentation.get("logo_mode", "auto") != "hidden":
+            logo = proof.logo_data(data["brand"], manifest_dir, light=False)
+            if logo:
+                upper_limit = max(upper_limit, safe + width * 0.23 / logo[1] + height * 0.025)
+        lower_limit = height - safe * (1.35 if attribution else 1.0)
+    elif direction == "statement":
+        if presentation.get("logo_mode", "auto") != "hidden":
+            logo = proof.logo_data(data["brand"], manifest_dir, light=True)
+            if logo:
+                upper_limit = max(upper_limit, safe + width * 0.23 / logo[1] + height * 0.025)
+        lower_limit = height - safe * (1.75 if attribution else 1.0)
+        if presentation.get("graphic_mode", "auto") != "hidden":
+            # The lower module starts at 75% of the canvas and has a thick
+            # stroke. Reserve its approach as part of the max-fit contract.
+            lower_limit = min(lower_limit, height * 0.69)
+    else:
+        panel_y, panel_height = height * 0.085, height * 0.83
+        # Source label, rule, evidence and locator occupy the first 32% of the
+        # source panel. The quote starts only after that document header.
+        upper_limit = panel_y + panel_height * 0.37
+        lower_limit = panel_y + panel_height - height * (0.075 if attribution else 0.035)
+    return upper_limit, lower_limit
+
+
+def text_vertical_bounds(
+    lines: list[str], font_size: float, data: dict[str, Any], direction: str,
+    width: int, height: int, vertical_position: str,
+) -> tuple[float, float]:
+    line_ratio = layout_constraints(direction, width, height)[3]
+    offset = {"upper": -0.075, "center": 0.0, "lower": 0.075}[vertical_position] * height
+    if direction == "editorial":
+        line_height = font_size * line_ratio
+        start_y = height * 0.40 - line_height * len(lines) * 0.08 + offset
+        return (
+            start_y - font_size * 0.82,
+            start_y + line_height * (len(lines) - 1) + font_size * 0.28,
+        )
+    if direction == "statement":
+        visual_lines = proof.statement_visual_lines(lines, width, height)
+        strong_rows = proof.statement_strong_rows(
+            visual_lines, data["content"].get("styles"), data["content"].get("emphasis", "")
+        )
+        start_y = height * 0.265 + offset
+        return (
+            start_y - font_size * 0.82,
+            start_y + proof.statement_block_height(font_size, visual_lines, strong_rows) - font_size * 0.72,
+        )
+    panel_y, panel_height = height * 0.085, height * 0.83
+    line_height = font_size * line_ratio
+    start_y = panel_y + panel_height * 0.50 + offset
+    return (
+        start_y - font_size * 0.82,
+        start_y + line_height * (len(lines) - 1) + font_size * 0.28,
+    )
+
+
 def measure_text_box(
     lines: list[str], font_size: float, data: dict[str, Any], manifest_dir: Path,
     direction: str, width: int, height: int,
@@ -222,68 +297,72 @@ def measure_text_box(
     )
 
 
+def layout_measurement(
+    lines: list[str], font_size: float, data: dict[str, Any], manifest_dir: Path,
+    direction: str, width: int, height: int, vertical_position: str,
+) -> dict[str, float | str | bool]:
+    measured_width, measured_height, metric = measure_text_box(
+        lines, font_size, data, manifest_dir, direction, width, height
+    )
+    available_width = available_text_width(data, direction, width, height)
+    upper_limit, lower_limit = vertical_limits(data, manifest_dir, direction, width, height)
+    text_top, text_bottom = text_vertical_bounds(
+        lines, font_size, data, direction, width, height, vertical_position
+    )
+    width_fits = measured_width <= available_width + 0.5
+    vertical_fits = text_top >= upper_limit - 0.5 and text_bottom <= lower_limit + 0.5
+    return {
+        "measured_width": measured_width,
+        "measured_height": measured_height,
+        "available_width": available_width,
+        "upper_limit": upper_limit,
+        "lower_limit": lower_limit,
+        "text_top": text_top,
+        "text_bottom": text_bottom,
+        "metric": metric,
+        "width_fits": width_fits,
+        "vertical_fits": vertical_fits,
+        "fits": width_fits and vertical_fits,
+    }
+
+
 def resolve_font_size(
     lines: list[str], data: dict[str, Any], manifest_dir: Path, direction: str,
-    width: int, height: int, text_scale: float,
-) -> tuple[float, str, float, bool]:
-    """Apply the requested scale, then cap it automatically to the layout box."""
-    base_size, fit_mode = fit_font_size(lines, data, manifest_dir, direction, width, height)
-    requested_size = base_size * text_scale
-    available_width, available_height, _maximum, _line_ratio = layout_constraints(direction, width, height)
+    width: int, height: int, text_scale: float, vertical_position: str = "center",
+) -> tuple[float, str, float, bool, float]:
+    """Resolve the true maximum safe size, then apply an optional reduction."""
+    maximum_size, fit_mode = fit_font_size(
+        lines, data, manifest_dir, direction, width, height, vertical_position
+    )
+    requested_size = maximum_size * text_scale
+    effective_size = min(requested_size, maximum_size)
+    auto_fitted = requested_size > maximum_size + 0.01
+    if auto_fitted:
+        fit_mode = f"{fit_mode}_legacy_scale_capped"
+    return effective_size, fit_mode, requested_size, auto_fitted, maximum_size
 
+
+def fit_font_size(
+    lines: list[str], data: dict[str, Any], manifest_dir: Path, direction: str,
+    width: int, height: int, vertical_position: str = "center",
+) -> tuple[float, str]:
     def fits(size: float) -> bool:
-        measured_width, measured_height, _metric = measure_text_box(
-            lines, size, data, manifest_dir, direction, width, height
-        )
-        return measured_width <= available_width and measured_height <= available_height
+        return bool(layout_measurement(
+            lines, size, data, manifest_dir, direction, width, height, vertical_position
+        )["fits"])
 
-    if fits(requested_size):
-        return requested_size, fit_mode, requested_size, False
-
-    low, high = 0.1, requested_size
-    for _ in range(28):
+    low, high = 1.0, float(max(width, height))
+    for _ in range(40):
         middle = (low + high) / 2
         if fits(middle):
             low = middle
         else:
             high = middle
-    effective_size = low * 0.995
-    return effective_size, f"{fit_mode}_auto_capped", requested_size, True
-
-
-def fit_font_size(
-    lines: list[str], data: dict[str, Any], manifest_dir: Path, direction: str, width: int, height: int
-) -> tuple[float, str]:
-    if direction == "statement":
-        visual_lines = proof.statement_visual_lines(lines, width, height)
-        strong_rows = proof.statement_strong_rows(
-            visual_lines, data["content"].get("styles"), data["content"].get("emphasis", "")
-        )
-        return proof.statement_fitted_font_size(visual_lines, strong_rows, width, height), "deterministic_poster"
-    available_width, available_height, maximum, line_ratio = layout_constraints(direction, width, height)
-    font = data["brand"]["font"]
-    font_value = font.get("medium_path") or font.get("regular_path")
-    if font_value:
-        try:
-            from PIL import ImageFont
-
-            font_path = proof.resolve_asset(font_value, manifest_dir)
-            low, high = 48, max(48, int(maximum))
-            best = low
-            while low <= high:
-                middle = (low + high) // 2
-                face = ImageFont.truetype(str(font_path), middle)
-                width_ok = max(float(face.getlength(line)) for line in lines) <= available_width
-                height_ok = middle * line_ratio * len(lines) <= available_height
-                if width_ok and height_ok:
-                    best = middle
-                    low = middle + 1
-                else:
-                    high = middle - 1
-            return float(best), "pillow_real_metrics"
-        except (ImportError, OSError, ValueError):
-            pass
-    return proof.fitted_font_size(lines, available_width, available_height, maximum), "deterministic_heuristic"
+    maximum_size = low * 0.997
+    metric = str(layout_measurement(
+        lines, maximum_size, data, manifest_dir, direction, width, height, vertical_position
+    )["metric"])
+    return maximum_size, f"{metric}_max_fit"
 
 
 def render_pack(
@@ -300,9 +379,9 @@ def render_pack(
         adapted = proof_manifest_for_format(data, item)
         adapted["canvas"] = {"width": item["width"], "height": item["height"]}
         text_scale = float(item.get("text_scale", 1.0))
-        size, fit_mode, requested_size, auto_fitted = resolve_font_size(
+        size, fit_mode, requested_size, auto_fitted, maximum_size = resolve_font_size(
             item["lines"], adapted, manifest_path.parent, direction,
-            item["width"], item["height"], text_scale,
+            item["width"], item["height"], text_scale, item.get("vertical_position", "center"),
         )
         presentation = data.get("presentation") or {}
         render_options = {
@@ -358,6 +437,7 @@ def render_pack(
                 "fitting": fit_mode,
                 "text_scale": text_scale,
                 "requested_font_size": requested_size,
+                "maximum_font_size": maximum_size,
                 "auto_fitted": auto_fitted,
                 "vertical_position": render_options["vertical_position"],
                 "graphic_mode": render_options["graphic_mode"],

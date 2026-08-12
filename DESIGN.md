@@ -187,11 +187,11 @@ La testata porta `Quote Card Builder`, seguito dalla firma `by` e dal lockup Vin
 
 ### Letto plotter e prova SVG
 
-Il letto di cemento combina griglia, righelli, tacche, quote e linee di registro. La preview ricevuta dal server è uno SVG reale, inserito senza reinterpretazione nella shell del formato; il renderer incorpora il font del brand, applica fitting e posizione e restituisce un `viewBox` coerente. L’editor può modificare il testo attraverso il contratto revisionato, mostrare guide, cambiare zoom e sovrapporre safe area/crocini, ma non deve rasterizzare o ridisegnare lo SVG.
+Il letto di cemento combina griglia, righelli, tacche, quote e linee di registro. La preview ricevuta dal server è uno SVG reale, inserito senza reinterpretazione nella shell del formato; il renderer incorpora il font del brand, calcola il massimo tipografico compatibile con guide e aree riservate per la posizione scelta e restituisce un `viewBox` coerente. L’editor può modificare il testo attraverso il contratto revisionato, ridurre la scala dall'80% al 100% di quel massimo, mostrare guide, cambiare zoom e sovrapporre safe area/crocini, ma non deve rasterizzare o ridisegnare lo SVG.
 
 ### Rail strumenti
 
-Il rail melanzana è una sequenza di sezioni separate da cuciture da 1px: Provenienza richiudibile, Direzione, Testo e formattazione, Scala, Posizione, Logo, Virgolette e Quality gate. Il testo usa un editor visuale con toolbar per grassetto, corsivo, sottolineato ed evidenziato; Invio crea una riga e una riga vuota produce un'interlinea completa. Trattamento e stato della prova non sono controlli: restano informazioni persistenti nel ledger. Campi ed editor hanno fondo aubergine-chrome, raggio zero e bordo tenue; hover rafforza il bordo, focus lo porta al chartreuse. I gruppi segmentati e le direzioni condividono lo stesso stato attivo bordo+testo, senza card interne.
+Il rail melanzana è una sequenza di sezioni separate da cuciture da 1px: Provenienza richiudibile, Direzione, Testo e formattazione, Scala dal massimo, Posizione, Logo, Virgolette e Quality gate. Il testo usa un editor visuale con toolbar per grassetto, corsivo, sottolineato ed evidenziato; Invio crea una riga e una riga vuota produce un'interlinea completa. Trattamento e stato della prova non sono controlli: restano informazioni persistenti nel ledger. Campi ed editor hanno fondo aubergine-chrome, raggio zero e bordo tenue; hover rafforza il bordo, focus lo porta al chartreuse. I gruppi segmentati e le direzioni condividono lo stesso stato attivo bordo+testo, senza card interne.
 
 ### Ledger di audit e actionbar
 
