@@ -35,7 +35,7 @@ jobs:
       - name: Build package
         run: |
           mkdir -p dist
-          python -m zipfile -c dist/quote-card-builder.zip SKILL.md README.md PRODUCT.md DESIGN.md agents assets references scripts tests
+          git archive --format=zip --output=dist/quote-card-builder.zip HEAD SKILL.md README.md PRODUCT.md DESIGN.md agents assets references scripts tests
           unzip -t dist/quote-card-builder.zip
           cd dist
           sha256sum quote-card-builder.zip > SHA256SUMS.txt
