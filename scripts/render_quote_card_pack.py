@@ -165,20 +165,10 @@ def validate_production_manifest(data: Any, manifest_dir: Path) -> list[dict[str
     return errors
 
 
-def layout_constraints(direction: str, width: int, height: int) -> tuple[float, float, float, float]:
-    if direction == "editorial":
-        return width * 0.85, height * 0.54, width * 0.090, 1.05
-    if direction == "statement":
-        # Matches render_quote_card.py's statement_safe and the editor's own
-        # safe-area guide (.safe-area { inset: 7% } in styles.css).
-        statement_safe = width * 0.072
-        return width - 2 * statement_safe, height * 0.58, width * 0.12, 0.98
-    return width * 0.71, height * 0.50, width * 0.085, 1.06
-
-
 def available_text_width(data: dict[str, Any], direction: str, width: int, height: int) -> float:
-    available_width = layout_constraints(direction, width, height)[0]
-    return available_width
+    # proof.DIRECTION_GEOMETRY is the single source of truth shared with the
+    # renderer; this module must never keep its own copy of a margin.
+    return proof.direction_geometry(direction, width, height)["text_width"]
 
 
 def vertical_limits(
@@ -228,25 +218,17 @@ def text_vertical_bounds(
     lines: list[str], font_size: float, data: dict[str, Any], direction: str,
     width: int, height: int, vertical_position: str,
 ) -> tuple[float, float]:
-    line_ratio = layout_constraints(direction, width, height)[3]
-    offset = {"upper": -0.075, "center": 0.0, "lower": 0.075}[vertical_position] * height
-    if direction == "editorial":
-        line_height = font_size * line_ratio
-        start_y = height * 0.36 + offset
-        return (
-            start_y - font_size * 0.82,
-            start_y + line_height * (len(lines) - 1) + font_size * 0.28,
-        )
+    geometry = proof.direction_geometry(direction, width, height, vertical_position)
+    start_y = geometry["start_y"]
+    # 0.82/0.28/0.72 are the block's ascender/descender reach beyond the
+    # baselines; unlike the canvas geometry above they exist only here,
+    # because the renderer never needs the block's outer bounds.
     if direction == "statement":
         visual_lines = proof.statement_visual_lines(lines, width, height)
         strong_rows = resolve_statement_strong_rows(visual_lines, data)
-        start_y = height * 0.31 + offset
-        return (
-            start_y - font_size * 0.82,
-            start_y + proof.statement_block_height(font_size, visual_lines, strong_rows) - font_size * 0.72,
-        )
-    line_height = font_size * line_ratio
-    start_y = height * 0.40 + offset
+        block_height = proof.statement_block_height(font_size, visual_lines, strong_rows)
+        return (start_y - font_size * 0.82, start_y + block_height - font_size * 0.72)
+    line_height = font_size * geometry["line_ratio"]
     return (
         start_y - font_size * 0.82,
         start_y + line_height * (len(lines) - 1) + font_size * 0.28,
@@ -259,11 +241,13 @@ def measure_text_box(
 ) -> tuple[float, float, str]:
     """Measure the same visual block used by both fitting and live QA."""
     proof.activate_font_metrics(data["brand"]["font"], manifest_dir)
+    geometry = proof.direction_geometry(direction, width, height)
     if direction == "statement":
         visual_lines = proof.statement_visual_lines(lines, width, height)
         strong_rows = resolve_statement_strong_rows(visual_lines, data)
         measured_width = max(
-            proof.visual_units(line.upper()) * font_size * (1.12 if index in strong_rows else 1.0)
+            proof.visual_units(line.upper()) * font_size
+            * (proof.STATEMENT_STRONG_MULTIPLIER if index in strong_rows else 1.0)
             for index, line in enumerate(visual_lines) if line
         )
         return (
@@ -272,7 +256,7 @@ def measure_text_box(
             "deterministic_statement_poster",
         )
 
-    line_ratio = layout_constraints(direction, width, height)[3]
+    line_ratio = geometry["line_ratio"]
     font = data["brand"]["font"]
     font_value = font.get("medium_path") or font.get("regular_path")
     if font_value:
@@ -289,10 +273,10 @@ def measure_text_box(
             )
         except (ImportError, OSError, ValueError):
             pass
-    # editorial and contextual both render the quote at letter-spacing:-0.025em
+    # editorial and contextual both render the quote at this tracking
     # (render_quote_card.render_svg); matching that here keeps this estimate
     # from over-predicting width and under-sizing the fitted font.
-    tracking_em = -0.025
+    tracking_em = geometry["tracking_em"]
     measured_width = max(
         proof.visual_units(line) * font_size + tracking_em * font_size * max(0, len(line) - 1)
         for line in lines
