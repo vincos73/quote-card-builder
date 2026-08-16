@@ -26,6 +26,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import render_quote_card as proof
 import render_quote_card_pack as pack
+import inspect_render as inspector
 import apply_card_review as review_applier
 
 MAX_BODY_BYTES = 250_000
@@ -327,7 +328,7 @@ def _measured_text_box(lines: list[str], font_size: float, manifest: dict[str, A
 def preview_quality(manifest: dict[str, Any], previews: list[dict[str, Any]], manifest_dir: Path) -> dict[str, Any]:
     """Run renderer-aware checks used by the live quality gate."""
     warnings: list[dict[str, str]] = []
-    checks = ["structure", "contrast", "fitting", "safe_area", "svg", "assets"]
+    checks = ["structure", "contrast", "fitting", "safe_area", "svg", "render", "assets"]
     seen: set[tuple[str, str, str]] = set()
 
     def add(code: str, message: str, format_id: str = "all") -> None:
@@ -372,6 +373,16 @@ def preview_quality(manifest: dict[str, Any], previews: list[dict[str, Any]], ma
                 add("svg_geometry", f"{format_id}: geometria SVG non coerente con il formato.", format_id)
         except ET.ParseError:
             add("svg_invalid", f"{format_id}: l'anteprima SVG non è ben formata.", format_id)
+
+        # Every check above validates a *prediction* about the render. This
+        # one reads the render itself, so a defect has to survive both the
+        # estimate and the drawing to reach the user -- the gap that let a
+        # Poster overflow ship while this gate reported success.
+        for finding in inspector.inspect_render(
+            preview["svg"], manifest["direction"], item["width"], item["height"],
+            vertical_position=item["vertical_position"],
+        ):
+            add(finding["code"], f"{format_id}: {finding['message']}", format_id)
 
     return {"passed": not warnings, "checks": checks, "warnings": warnings}
 
