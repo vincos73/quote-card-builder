@@ -399,5 +399,149 @@ class VisualManifestTests(unittest.TestCase):
             self.assertTrue(qa_report["checks"]["text_unchanged"])
 
 
+PACK_PATH = Path(__file__).parents[1] / "scripts" / "render_quote_card_pack.py"
+PACK_SPEC = importlib.util.spec_from_file_location("render_quote_card_pack", PACK_PATH)
+PACK = importlib.util.module_from_spec(PACK_SPEC)
+assert PACK_SPEC and PACK_SPEC.loader
+PACK_SPEC.loader.exec_module(PACK)
+
+SVG_NS = "{http://www.w3.org/2000/svg}"
+GEOMETRY_CASES = [
+    (direction, width, height, position)
+    for direction in RENDERER.DIRECTIONS
+    for width, height in ((1440, 1800), (1440, 1440), (1080, 1920))
+    for position in ("upper", "center", "lower")
+]
+
+# Poster measures row width with max(), so an emphasised row only affects
+# the fit when it is also the *widest* row. A fixture whose emphasis lands
+# on a short row cannot expose a strong-row scaling bug at all -- the
+# default manifest is exactly that shape, which is why the second case
+# below (the quote that actually shipped broken) has to be here.
+OVERFLOW_CASES = [
+    (
+        "emphasis on the widest row, via the auto-signature path",
+        "il tuo brand esiste nello spazio latente di un LLM",
+        ["il tuo brand esiste", "nello spazio latente", "di un LLM"],
+        "",
+    ),
+    (
+        "explicit emphasis on the widest row",
+        "Non conta il claim ma la distribuzione dentro il modello",
+        ["Non conta il claim", "ma la distribuzione", "dentro il modello"],
+        "ma la distribuzione dentro il modello",
+    ),
+]
+
+
+class LayoutGeometryTests(unittest.TestCase):
+    """The renderer and the fitting/QA pass must agree on where text goes.
+
+    Both modules used to keep private copies of every margin, baseline and
+    line ratio, synchronised by hand. Three shipped bugs came from those
+    copies disagreeing: a stale font-size ceiling, two different safe-area
+    margins, and a fitting pass that measured a Poster row at 1.0x which
+    then rendered at 1.12x and ran past the guide. These tests fail if the
+    two ever diverge again.
+    """
+
+    def _quote_element(self, svg):
+        root = ET.fromstring(svg)
+        quote = root.find(f".//{SVG_NS}text[@class='quote']")
+        self.assertIsNotNone(quote, "every direction must emit a .quote text element")
+        return quote
+
+    def test_rendered_text_origin_matches_the_shared_geometry_table(self):
+        for direction, width, height, position in GEOMETRY_CASES:
+            with self.subTest(direction=direction, canvas=(width, height), position=position):
+                manifest = valid_visual_manifest()
+                manifest["canvas"] = {"width": width, "height": height}
+                geometry = RENDERER.direction_geometry(direction, width, height, position)
+                quote = self._quote_element(RENDERER.render_svg(
+                    manifest, Path.cwd(), direction,
+                    render_options={"vertical_position": position},
+                ))
+                self.assertAlmostEqual(geometry["text_x"], float(quote.attrib["x"]), delta=0.1)
+                self.assertAlmostEqual(geometry["start_y"], float(quote.attrib["y"]), delta=0.1)
+
+    def test_rendered_rows_never_exceed_the_direction_safe_width(self):
+        """Measure what was actually drawn, not what the fitter believed.
+
+        Reading each row's own font-size back out of the SVG is what makes
+        this independent of the fitter: a row that renders larger than it
+        was measured at (the Poster overflow bug) shows up here even when
+        the fitter's own bookkeeping says everything fits.
+        """
+        cases = [
+            (direction, width, height, position, label, text, lines, emphasis)
+            for direction, width, height, position in GEOMETRY_CASES
+            for label, text, lines, emphasis in OVERFLOW_CASES
+        ]
+        for direction, width, height, position, label, text, lines, emphasis in cases:
+            with self.subTest(direction=direction, canvas=(width, height),
+                              position=position, case=label):
+                manifest = valid_visual_manifest()
+                manifest["canvas"] = {"width": width, "height": height}
+                manifest["content"].update(
+                    {"text": text, "lines": lines, "emphasis": emphasis, "styles": []}
+                )
+                size, _, _, _, _ = PACK.resolve_font_size(
+                    lines, manifest, Path.cwd(), direction, width, height, 1.0, position,
+                )
+                geometry = RENDERER.direction_geometry(direction, width, height, position)
+                quote = self._quote_element(RENDERER.render_svg(
+                    manifest, Path.cwd(), direction, font_size_override=size,
+                    render_options={"vertical_position": position},
+                ))
+                default_size = float(quote.attrib.get("font-size", size))
+                for row in quote.findall(f"{SVG_NS}tspan"):
+                    text = "".join(row.itertext())
+                    if not text.strip():
+                        continue
+                    row_size = float(row.attrib.get("font-size", default_size))
+                    drawn = (
+                        RENDERER.visual_units(text) * row_size
+                        + geometry["tracking_em"] * row_size * max(0, len(text) - 1)
+                    )
+                    self.assertLessEqual(
+                        drawn, geometry["text_width"] + 0.5,
+                        f"{text!r} renders {drawn:.1f}px wide in a "
+                        f"{geometry['text_width']:.1f}px safe area",
+                    )
+
+    def test_fitting_and_rendering_share_one_geometry_source(self):
+        """Guard the wiring itself, not just today's numbers.
+
+        Perturbing the shared table must move both the fitted size and the
+        rendered baseline. If either module reintroduced a private copy,
+        one of them would ignore the change and this test would fail.
+        """
+        # PACK imports render_quote_card through sys.path, so it holds its
+        # own module instance rather than this file's importlib-loaded
+        # RENDERER. Drive both sides through PACK.proof so the assertion is
+        # about one shared table, not about two copies that happen to match.
+        renderer = PACK.proof
+        direction, width, height = "statement", 1440, 1800
+        manifest = valid_visual_manifest()
+        manifest["canvas"] = {"width": width, "height": height}
+        lines = manifest["content"]["lines"]
+        baseline_size, _, _, _, _ = PACK.resolve_font_size(
+            lines, manifest, Path.cwd(), direction, width, height, 1.0, "center",
+        )
+        original = dict(renderer.DIRECTION_GEOMETRY[direction])
+        try:
+            renderer.DIRECTION_GEOMETRY[direction] = {**original, "inset": original["inset"] * 2}
+            narrowed_size, _, _, _, _ = PACK.resolve_font_size(
+                lines, manifest, Path.cwd(), direction, width, height, 1.0, "center",
+            )
+            quote = self._quote_element(renderer.render_svg(
+                manifest, Path.cwd(), direction, font_size_override=narrowed_size,
+            ))
+            self.assertLess(narrowed_size, baseline_size, "a tighter inset must shrink the fitted size")
+            self.assertAlmostEqual(width * original["inset"] * 2, float(quote.attrib["x"]), delta=0.1)
+        finally:
+            renderer.DIRECTION_GEOMETRY[direction] = original
+
+
 if __name__ == "__main__":
     unittest.main()

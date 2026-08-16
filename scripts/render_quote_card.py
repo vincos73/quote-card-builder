@@ -34,6 +34,53 @@ MAX_LINES = 40
 HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 UNSAFE_SVG = re.compile(r"<(?:script|foreignObject)\b|\bon\w+\s*=", re.IGNORECASE)
 
+# Single source of truth for per-direction text geometry, as ratios of the
+# canvas. render_svg draws from it and render_quote_card_pack fits and
+# QA-measures against it, so the size a card is *fitted* at and the size it
+# is *drawn* at cannot drift apart.
+#
+# Every value here used to be written twice, once per module, kept in sync
+# by hand. Three shipped bugs came from those copies disagreeing: a stale
+# font-size ceiling, two different safe-margin values, and a fitting pass
+# that measured a row at 1.0x which then rendered at 1.12x and overflowed.
+# Add a direction here, not in either module's branches.
+DIRECTION_GEOMETRY = {
+    # inset: left/right text margin. start_y: first baseline.
+    # fit_height: vertical budget the fitter may fill.
+    "editorial": {"inset": 0.075, "start_y": 0.36, "fit_height": 0.54, "line_ratio": 1.05},
+    "statement": {"inset": 0.072, "start_y": 0.31, "fit_height": 0.58, "line_ratio": 0.98},
+    "contextual": {"inset": 0.17, "start_y": 0.40, "fit_height": 0.50, "line_ratio": 1.06,
+                   "right_inset": 0.12},
+}
+# The quote is drawn at this tracking in every direction; width estimates
+# must include it or they over-predict and under-size the fitted font.
+QUOTE_TRACKING_EM = -0.025
+# Poster rows carrying emphasis render 1.12x larger than plain rows.
+STATEMENT_STRONG_MULTIPLIER = 1.12
+VERTICAL_OFFSETS = {"upper": -0.075, "center": 0.0, "lower": 0.075}
+
+
+def direction_geometry(
+    direction: str, width: int, height: int, vertical_position: str = "center"
+) -> dict[str, float]:
+    """Resolve DIRECTION_GEOMETRY into absolute pixels for one canvas.
+
+    Both the renderer and the fitting/QA pass call this, so neither can
+    hold a private copy of a margin or baseline that the other disagrees
+    with.
+    """
+    spec = DIRECTION_GEOMETRY[direction]
+    inset = width * spec["inset"]
+    right_inset = width * spec.get("right_inset", spec["inset"])
+    return {
+        "text_x": inset,
+        "text_width": width - inset - right_inset,
+        "start_y": height * spec["start_y"] + VERTICAL_OFFSETS.get(vertical_position, 0.0) * height,
+        "fit_height": height * spec["fit_height"],
+        "line_ratio": spec["line_ratio"],
+        "tracking_em": QUOTE_TRACKING_EM,
+    }
+
 
 def normalize_spaces(value: str) -> str:
     return " ".join(unicodedata.normalize("NFC", value).split())
@@ -595,33 +642,48 @@ def initial_direction_styles(text: str, direction: str) -> list[dict[str, Any]]:
     return [{"start": start, "end": end, "type": style_type}]
 
 
+def statement_row_multipliers(lines: list[str], strong_rows: set[int]) -> list[float]:
+    """Per-row vertical weight: blank rows are spacers, emphasised rows grow.
+
+    Fitting and drawing must agree on these or a row measured at 1.0x
+    renders at 1.12x and runs past the safe area -- which is exactly the
+    bug this shared helper exists to prevent.
+    """
+    return [
+        1.4 if not line else STATEMENT_STRONG_MULTIPLIER if index in strong_rows else 1.0
+        for index, line in enumerate(lines)
+    ]
+
+
 def statement_fitted_font_size(
-    lines: list[str], strong_rows: set[int], width: int, height: int, safe: float | None = None
+    lines: list[str], strong_rows: set[int], width: int, height: int
 ) -> float:
-    if safe is None:
-        safe = width * 0.04
-    available_width = width - 2 * safe
-    available_height = height * 0.58
-    strong_multiplier = 1.12
+    geometry = direction_geometry("statement", width, height)
+    line_ratio = geometry["line_ratio"]
     width_limits = [
-        available_width / max(visual_units(line.upper()) * (strong_multiplier if index in strong_rows else 1.0), 1)
+        geometry["text_width"] / max(
+            visual_units(line.upper())
+            * (STATEMENT_STRONG_MULTIPLIER if index in strong_rows else 1.0),
+            1,
+        )
         for index, line in enumerate(lines)
         if line
     ]
-    vertical_multipliers = [
-        1.4 if not line else strong_multiplier if index in strong_rows else 1.0
-        for index, line in enumerate(lines)
-    ]
-    vertical_units = sum(vertical_multipliers[:-1]) * 0.98 + vertical_multipliers[-1]
-    height_limit = available_height / max(vertical_units, 1)
+    vertical_multipliers = statement_row_multipliers(lines, strong_rows)
+    vertical_units = sum(vertical_multipliers[:-1]) * line_ratio + vertical_multipliers[-1]
+    height_limit = geometry["fit_height"] / max(vertical_units, 1)
     return max(48, min(width * 0.12, height_limit, *width_limits))
 
 
 def statement_block_height(font_size: float, lines: list[str], strong_rows: set[int]) -> float:
-    multipliers = [1.4 if not line else 1.12 if index in strong_rows else 1.0 for index, line in enumerate(lines)]
+    multipliers = statement_row_multipliers(lines, strong_rows)
     if not multipliers:
         return 0.0
-    return sum(font_size * multiplier * 0.98 for multiplier in multipliers[:-1]) + font_size * multipliers[-1]
+    line_ratio = DIRECTION_GEOMETRY["statement"]["line_ratio"]
+    return (
+        sum(font_size * multiplier * line_ratio for multiplier in multipliers[:-1])
+        + font_size * multipliers[-1]
+    )
 
 
 def emphasized_lines(
@@ -803,7 +865,8 @@ def text_block(
         highlight_rects(
             lines, styles, x=x, y=y, font_size=font_size, line_height=line_height,
             color=highlight_color or emphasis_color, text_transform=text_transform,
-            anchor=anchor, letter_spacing_em=-0.025 if "letter-spacing:-0.025em" in extra_style else 0.0,
+            anchor=anchor,
+            letter_spacing_em=QUOTE_TRACKING_EM if "letter-spacing:-0.025em" in extra_style else 0.0,
         )
         if styles else ""
     )
@@ -823,6 +886,7 @@ def statement_text_block(
     emphasis: str, emphasis_color: str, strong_rows: set[int],
     styles: list[dict[str, Any]] | None = None, highlight_color: str | None = None,
 ) -> str:
+    statement_line_ratio = DIRECTION_GEOMETRY["statement"]["line_ratio"]
     formatted = (
         emphasized_lines(lines, emphasis, emphasis_color, str.upper)
         if styles is None
@@ -865,13 +929,13 @@ def statement_text_block(
         rows.append(
             f'<tspan x="{x:.1f}" y="{cursor_y:.1f}" font-size="{size:.1f}" fill="{fill}"{weight}>{content}</tspan>'
         )
-        cursor_y += size * 0.98
+        cursor_y += size * statement_line_ratio
     markers = (
         highlight_rects(
             lines, styles or [], x=x, y=y, font_size=font_size,
-            line_height=font_size * 0.98, color=highlight_color or emphasis_color,
+            line_height=font_size * statement_line_ratio, color=highlight_color or emphasis_color,
             text_transform=str.upper, row_sizes=row_sizes, row_baselines=row_baselines,
-            letter_spacing_em=-0.025,
+            letter_spacing_em=QUOTE_TRACKING_EM,
         )
         if styles else ""
     )
@@ -1090,7 +1154,7 @@ def render_svg(
     )
     show_quotes = bool(options.get("show_quotation_marks", use_quotes)) and use_quotes
     vertical_position = options.get("vertical_position", "center")
-    vertical_offset = {"upper": -0.075, "center": 0.0, "lower": 0.075}.get(vertical_position, 0.0) * height
+    geometry = direction_geometry(direction, width, height, vertical_position)
     safe = width * 0.085
     css = (
         font_css(brand["font"], manifest_dir)
@@ -1106,14 +1170,14 @@ def render_svg(
     if direction == "editorial":
         background = colors["background"]
         quote_color = colors["primary"]
-        quote_x = width * 0.075
+        quote_x = geometry["text_x"]
         font_size = font_size_override or fitted_font_size(
-            lines, width * 0.85, height * 0.54, float(max(width, height)),
-            letter_spacing_em=-0.025,
+            lines, geometry["text_width"], geometry["fit_height"], float(max(width, height)),
+            letter_spacing_em=geometry["tracking_em"],
         )
-        line_height = font_size * 1.05
+        line_height = font_size * geometry["line_ratio"]
         block_height = line_height * max(0, len(lines) - 1) + font_size
-        start_y = height * 0.36 + vertical_offset
+        start_y = geometry["start_y"]
         logo = "" if logo_mode == "hidden" else logo_image(
             logo_data(brand, manifest_dir, light=False),
             x=width * 0.07, y=height * 0.055, width=width * 0.21,
@@ -1126,7 +1190,7 @@ def render_svg(
         )
         last_baseline = start_y + line_height * max(0, len(lines) - 1)
         last_line_end = quote_x + measured_text_width(
-            last_text_line(lines), font_size, letter_spacing_em=-0.025
+            last_text_line(lines), font_size, letter_spacing_em=QUOTE_TRACKING_EM
         )
         mark_color = legible_color(colors["accent"], colors["primary"], background)
         # Always the guide's fixed bottom margin, independent of text
@@ -1166,17 +1230,17 @@ def render_svg(
     elif direction == "statement":
         background = colors["primary"]
         quote_color = colors["background"]
-        # Matches the editor's own safe-area guide (.safe-area { inset: 7% }
-        # in styles.css) -- fitting must use this same value, or text sized
-        # against a narrower margin runs past the guide the user actually
-        # sees.
-        statement_safe = width * 0.072
+        # DIRECTION_GEOMETRY["statement"]["inset"] matches the editor's own
+        # safe-area guide (.safe-area { inset: 7% } in styles.css); fitting
+        # reads the same entry, so text can no longer be sized against a
+        # narrower margin than the guide the user actually sees.
+        statement_safe = geometry["text_x"]
         poster_lines = statement_visual_lines(lines, width, height)
         strong_rows = statement_strong_rows(poster_lines, styles, emphasis)
         font_size = font_size_override or statement_fitted_font_size(
-            poster_lines, strong_rows, width, height, safe=statement_safe
+            poster_lines, strong_rows, width, height
         )
-        start_y = height * 0.31 + vertical_offset
+        start_y = geometry["start_y"]
         has_light_logo = bool((brand.get("logo") or {}).get("light_path"))
         logo = "" if logo_mode == "hidden" else logo_image(
             logo_data(brand, manifest_dir, light=True),
@@ -1218,15 +1282,15 @@ def render_svg(
         sheet_y = height * 0.061
         sheet_width = width * 0.854
         sheet_height = height * 0.878
-        content_x = width * 0.17
-        content_right = width * 0.88
+        content_x = geometry["text_x"]
+        content_right = content_x + geometry["text_width"]
         font_size = font_size_override or fitted_font_size(
-            lines, content_right - content_x, height * 0.50, float(max(width, height)),
-            letter_spacing_em=-0.025,
+            lines, geometry["text_width"], geometry["fit_height"], float(max(width, height)),
+            letter_spacing_em=geometry["tracking_em"],
         )
-        line_height = font_size * 1.06
+        line_height = font_size * geometry["line_ratio"]
         block_height = line_height * max(0, len(lines) - 1) + font_size
-        start_y = height * 0.40 + vertical_offset
+        start_y = geometry["start_y"]
         logo = "" if logo_mode == "hidden" else logo_image(
             logo_data(brand, manifest_dir, light=False),
             x=width * 0.12, y=height * 0.10, width=width * 0.20,
@@ -1240,7 +1304,7 @@ def render_svg(
         bar_y = start_y - font_size * 0.84
         bar_height = block_height + font_size * 0.16
         field_last_line_end = content_x + measured_text_width(
-            last_text_line(lines), font_size, letter_spacing_em=-0.025
+            last_text_line(lines), font_size, letter_spacing_em=QUOTE_TRACKING_EM
         )
         marks = (
             '<g class="field-marks">'
