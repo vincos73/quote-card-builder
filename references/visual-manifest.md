@@ -75,7 +75,7 @@ Il visual manifest registra il contenuto dichiarato e approvato dall'utente, poi
 1. Accettare soltanto lo stato `contenuto_approvato` per una prova.
 2. Ricostruire `content.text` unendo `content.lines` con spazi e normalizzando soltanto gli spazi. Rifiutare qualsiasi differenza di parole, segni o maiuscole.
 3. Consentire da 1 a 6 linee e almeno una riga di testo; una stringa vuota è una riga intera di spazio verticale e non modifica la ricostruzione del testo.
-4. Validare `styles`, quando presente, come lista di intervalli sul testo con tipo `bold`, `italic`, `underline` o `highlight`. Accettare `emphasis` come compatibilità legacy soltanto se compare esattamente nel testo.
+4. Validare `styles`, quando presente, come lista di intervalli sul testo con tipo `bold`, `italic`, `underline`, `highlight` o `accent`. `accent` colora i glifi con `brand.colors.accent`; `highlight` resta una banda di evidenziazione. Accettare `emphasis` come compatibilità legacy soltanto se compare esattamente nel testo.
 5. Rifiutare `evidence_status: CONFLICT`.
 6. Accettare le combinazioni editoriali dichiarate dall'utente; verificare soltanto tipi, enum e campi obbligatori.
 7. Richiedere un canvas 4:5; il renderer 0.2 non produce ancora altri rapporti.
@@ -86,16 +86,16 @@ Il visual manifest registra il contenuto dichiarato e approvato dall'utente, poi
 
 ## Direzioni
 
-- `editorial`: fondo chiaro, allineamento a sinistra, molto spazio, enfasi tipografica sobria.
-- `statement`: fondo primario, testo grande, ultima unità semantica in accento.
-- `contextual`: fondo accento, pannello chiaro, metadati e segnale documentale della fonte.
+- `editorial` / Contorni: pagina aperta, testo di grande scala e linee di livello limitate agli angoli. Nessuna etichetta tecnica compete con la citazione.
+- `statement` / Manifesto: fondo primario, maiuscolo visuale dominante, unità semantiche forti in accento e due moduli angolari discreti. Il testo archiviato resta invariato e il campo fonte resta sempre allineato a destra.
+- `contextual` / Campo: foglio editoriale chiaro incastonato nel campo d'accento, punti di orientamento agli angoli e una sola regola verticale accanto alla citazione.
 
 Le direzioni cambiano struttura, non soltanto palette. Il testo, l'attribuzione e gli a capo restano identici.
 
-Ogni direzione include un motivo evergreen fisso: contorni per `editorial`, moduli per `statement`, campo per `contextual`. `presentation.graphic_mode` può essere `auto` (predefinito) oppure `hidden`; non sono previste sostituzioni, posizione, scala, colore o opacità manuali.
+Ogni direzione include un motivo evergreen fisso: linee di contorno per `editorial`, moduli angolari per `statement`, campo puntinato per `contextual`. `presentation.graphic_mode` può essere `auto` (predefinito) oppure `hidden`; non sono previste sostituzioni, posizione, scala, colore o opacità manuali.
 
 ## Output
 
 Il renderer genera sempre SVG. Genera PNG soltanto quando è disponibile un convertitore dichiarato. La prova non cambia automaticamente lo stato del manifest: l'utente deve approvarla esplicitamente.
 
-Quando `source.title` è troppo lungo per la resa a dimensione feed, fornire un `source.label` breve e fedele. Non troncare silenziosamente il titolo nel renderer.
+Quando `source.title` è troppo lungo per la resa a dimensione feed, fornire un `source.label` breve e fedele. Il renderer può compattare i metadati visibili, ma deve conservare il riferimento completo nella descrizione accessibile dell'SVG.

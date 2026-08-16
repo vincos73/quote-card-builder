@@ -1,7 +1,7 @@
 # Quote Card Builder — Product Requirements Document
 
-Stato: rilascio v0.6.8
-Data: 12 agosto 2026
+Stato: rilascio v0.6.10
+Data: 15 agosto 2026
 Ambito: skill Codex, con primo nucleo editoriale riutilizzabile
 
 ## 1. Sintesi
@@ -164,9 +164,9 @@ Ottenere un'approvazione esplicita su:
 
 Proporre tre archetipi di composizione, adattati al brand approvato:
 
-1. `editorial`: gerarchia tipografica, spazio bianco, tono autorevole;
-2. `statement`: scala forte, una sola enfasi, impatto immediato;
-3. `contextual`: citazione più metadati o segnale della fonte, tono documentale.
+1. `editorial` / Contorni: pagina aperta, testo di grande scala e linee di livello agli angoli;
+2. `statement` / Manifesto: sistema Moduli × Poster, maiuscolo visuale dominante, forme angolari discrete e fonte sempre a destra;
+3. `contextual` / Campo: foglio editoriale nel campo d'accento, punti di orientamento e una regola verticale accanto alla citazione;
 
 Le tre direzioni devono differire per struttura, non solo per palette o font.
 
@@ -247,7 +247,7 @@ bozza
   -> consegnato
 ```
 
-Tornare a `bozza` se cambia la fonte. Dopo il numero del candidato passare a `candidato_selezionato`. `Invia` salva le dichiarazioni; `Approva` può salvarle e richiedere l'approvazione visuale nello stesso batch.
+Tornare a `bozza` se cambia la fonte. Dopo il numero del candidato passare a `candidato_selezionato`. `Genera` salva le dichiarazioni, registra la prova corrente dopo il gate tecnico e produce i formati selezionati nello stesso batch.
 
 ## 9. Nuclei costruiti
 
@@ -281,6 +281,8 @@ Gli incrementi successivi completano il percorso visuale senza indebolire il cor
 - **0.6.2 Visual Text Styling:** editor visuale con grassetto, corsivo, sottolineato, evidenziato e righe vuote come interlinea; trattamento e prova restano informazioni nel ledger; le facce font mancanti producono un messaggio esplicativo e disabilitano soltanto lo stile non garantito.
 - **0.6.7 Branded Header Release:** output finale selezionabile per tutti i rapporti o per un singolo aspect ratio, consegna PNG-first con SVG intermedio e testata coordinata `Quote Card Builder by Vincos` in Orbitron, Onest e palette lavanda dell’interfaccia.
 - **0.6.8 True Max Fit:** il 100% tipografico diventa il massimo sicuro specifico per formato, direzione e posizione, tenendo conto di guide, logo, attribuzione, metadati ed elemento grafico; il cursore consente soltanto riduzioni fino all'80%.
+- **0.6.9 Distinct Layout Core:** Contorni, Moduli × Poster e Campo adottano tre grammatiche strutturali autonome; il maiuscolo del Manifesto resta soltanto visuale e l'editor conserva e riallinea la formattazione dopo le modifiche al testo.
+- **0.6.10 One-Step Generate:** una sola CTA `Genera` sostituisce i checkpoint separati, applica la bozza, esegue QA e renderer e restituisce i link ai PNG selezionati nella stessa richiesta.
 
 User-Owned Editorial Studio non espone un canvas libero. Consente di modificare testo, formattazione, attribuzione, ruolo e virgolette senza riclassificazioni automatiche; trattamento e prova sono dichiarazioni dell'utente mostrate nel ledger e aggiornabili conversazionalmente. Fonte osservata, brand e dimensioni restano immutabili.
 
@@ -392,11 +394,11 @@ Editor locale desktop-first, preview prodotta dal renderer production, direzione
 
 ### 0.5 — Editorial + Visual Studio
 
-Scelta conversazionale ridotta a candidato e attribuzione, testo modificabile nell'editor e checkpoint separati `Invia` / `Approva`.
+Scelta conversazionale ridotta a candidato e attribuzione, testo modificabile nell'editor e un solo comando di produzione `Genera`.
 
 ### 0.6 — User-Owned Editorial Studio
 
-Tutti i campi editoriali modificabili, dichiarazioni registrate come responsabilità dell'utente, nessun downgrade automatico e `Approva` utilizzabile senza un `Invia` preliminare.
+Tutti i campi editoriali modificabili, dichiarazioni registrate come responsabilità dell'utente, nessun downgrade automatico e generazione diretta dopo il gate tecnico.
 
 ### 0.6.1 — Manual Composition Controls
 
@@ -413,6 +415,14 @@ Scelta fra tutti i rapporti o un singolo output finale, consegna PNG-first e ide
 ### 0.6.8 — True Max Fit
 
 Fitting tipografico condiviso fra anteprima, quality gate ed export: ogni composizione parte dalla massima dimensione sicura compatibile con guide e aree riservate; il controllo utente esprime una riduzione percentuale da quel massimo.
+
+### 0.6.9 — Distinct Layout Core
+
+Tre sistemi compositivi riconoscibili, selezioni multilinea affidabili e conservazione degli stili durante l'editing. Il testo resta di proprietà dell'utente: la resa può aumentarne l'impatto senza mutare il contenuto approvato.
+
+### 0.6.10 — One-Step Generate
+
+Una sola azione primaria `Genera` sostituisce invio e approvazione separati. Il server applica la bozza, esegue il quality gate, congela la prova e produce i formati selezionati nella stessa richiesta, mostrando i relativi link di download.
 
 ### 0.7 — Post Kit
 

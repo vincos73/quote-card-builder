@@ -46,7 +46,7 @@ Il campo `label` è obbligatorio solo quando il ruolo non è `none`. La skill pu
 - una modifica cambia negazione, cautela, condizione, numero, soggetto o grado di certezza;
 - autore, speaker e publisher potrebbero essere confusi.
 
-Le segnalazioni devono essere presentate come osservazioni della skill. L'azione `Approva` resta disponibile se i controlli strutturali e visuali sono superati.
+Le segnalazioni devono essere presentate come osservazioni della skill. L'azione `Genera` resta disponibile se i controlli strutturali e visuali sono superati.
 
 ## Controlli bloccanti
 

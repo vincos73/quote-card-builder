@@ -6,7 +6,7 @@ Usare questo riferimento dopo `candidato_selezionato` quando la sessione può es
 
 Trattare l'editor come superficie editoriale e visuale strutturata, non come canvas grafico libero. Rendere modificabili testo e formattazione inline, attribuzione, ruolo, virgolette e presentazione; mostrare trattamento e prova come informazioni nel ledger inferiore. Mantenere protetti fonte osservata, brand e dimensioni dei formati.
 
-Il browser non scrive direttamente nel manifest. Invia un batch strutturato al server locale, che verifica revisione e invarianti e lo applica atomicamente prima di rispondere. Lo script separato resta disponibile come recupero per sessioni precedenti rimaste con un feedback pendente.
+Il browser non scrive direttamente nel manifest. `Genera` invia un batch strutturato al server locale, che verifica revisione e invarianti, lo applica atomicamente, esegue il quality gate e prepara gli output selezionati. Dopo il rendering deterministico di preflight, il server attiva il chatbot Codex locale tramite un handoff path-scoped; il chatbot ricrea e verifica i PNG finali. Lo script separato resta disponibile come recupero per sessioni precedenti rimaste con un feedback pendente.
 
 ## Manifest di revisione
 
@@ -58,10 +58,10 @@ Includere uno o più formati fra `4x5`, `1x1` e `9x16`. Usare rispettivamente i 
 - `attribution.label` e `attribution.role`: `speaker`, `author`, `publisher` o `none`;
 - `content.use_quotation_marks`: scelta booleana dell'utente;
 - `direction`: `editorial`, `statement`, `contextual`;
-- `content.styles`: al massimo 64 intervalli `{start, end, type}` sul testo normalizzato, con `type` fra `bold`, `italic`, `underline`, `highlight`; gli intervalli possono attraversare gli a capo;
+- `content.styles`: al massimo 64 intervalli `{start, end, type}` sul testo normalizzato, con `type` fra `bold`, `italic`, `underline`, `highlight`, `accent`; gli intervalli possono attraversare gli a capo;
 - `content.emphasis`: campo legacy facoltativo; l'editor lo converte in `bold` quando apre un manifest precedente e poi lo svuota nel batch;
 - `presentation.logo_mode`: `auto` o `hidden`;
-- `presentation.graphic_mode`: `auto` applica il motivo fisso della direzione (`editorial` → contorni, `statement` → moduli, `contextual` → campo); `hidden` lo rimuove;
+- `presentation.graphic_mode`: `auto` applica il motivo fisso della direzione (`editorial` → linee di contorno, `statement` → moduli angolari discreti, `contextual` → campo puntinato); `hidden` lo rimuove;
 - `presentation.show_quotation_marks`: scelta booleana sincronizzata con il controllo delle virgolette;
 - `presentation.output_mode`: `all`, `4x5`, `1x1` o `9x16`; controlla soltanto la consegna finale, non la disponibilità delle tab di anteprima;
 - per ogni formato: `lines`, `text_scale` fra `0.80` e `1.00`, `vertical_position` fra `upper`, `center`, `lower`. I valori legacy fra `1.00` e `1.08` restano accettati in lettura, ma sono limitati a `1.00`.
@@ -70,7 +70,7 @@ Includere uno o più formati fra `4x5`, `1x1` e `9x16`. Usare rispettivamente i 
 
 Quando il testo cambia, sincronizzare le parole in tutti i formati, mantenendo autonomi gli a capo. Nel formato attivo preservare letteralmente ogni newline inserito dall'utente. Una riga vuota non aggiunge parole ma produce una riga intera di spazio verticale nel renderer. Durante la digitazione non riscrivere l'editor e non scartare newline terminali ancora privi della parola successiva. Non modificare automaticamente trattamento, prova, attribuzione o virgolette.
 
-La toolbar visuale applica o rimuove grassetto, corsivo, sottolineato ed evidenziato sulla selezione corrente. Se cambiano le parole, azzerare gli intervalli per evitare che si spostino su contenuto diverso; se cambiano soltanto gli a capo, conservarli.
+La toolbar visuale applica o rimuove grassetto, corsivo, sottolineato, evidenziato e colore accento sulla selezione corrente, anche quando attraversa più righe o righe vuote. Prima di qualsiasi selezione manuale, una card senza stili né enfasi legacy mostra una firma per direzione: riga centrale in grassetto per Contorni, riga finale in accento per Moduli × Poster e riga centrale evidenziata per Campo. La prima selezione manuale sostituisce questa firma. Se cambiano le parole, riallineare gli intervalli rispetto alla porzione modificata: conservare quelli non coinvolti, spostare quelli successivi e rimuovere soltanto gli intervalli rimasti vuoti. Se cambiano soltanto gli a capo, conservarli senza variazioni.
 
 La sessione deve esporre le capacità del font risolto. `bold_path` garantisce il grassetto reale; in sua assenza il renderer può dichiarare una resa sintetica quando esiste `regular_path`. `italic_path` è necessario per abilitare il corsivo. Se una faccia manca, mostrare vicino alla toolbar un messaggio con funzione interessata, causa e recupero; un controllo non disponibile resta focalizzabile per spiegare il problema ma non applica lo stile. Sottolineato ed evidenziato non richiedono facce aggiuntive.
 
@@ -112,9 +112,9 @@ Fonte osservata, brand e dimensioni restano immutabili nell'editor. Tutti i camp
 }
 ```
 
-Il draft inviato a `/api/preview` e `/api/submit` conserva `width` e `height` perché il server possa verificare che l'identità del formato non sia cambiata. Nel `feedback.json` persistito, il server elimina questi due campi immutabili e registra `editorial_responsibility: user` e `content.declared_by: user`.
+Il draft inviato a `/api/preview` e `/api/generate` conserva `width` e `height` perché il server possa verificare che l'identità del formato non sia cambiata. Nel `feedback.json` persistito, il server elimina questi due campi immutabili e registra `editorial_responsibility: user` e `content.declared_by: user`.
 
-Usare `action: feedback` per salvare senza approvare. `action: approve` applica nello stesso batch le modifiche correnti e richiede l'approvazione visuale: non richiede un `Invia` preliminare. Entrambe le azioni possono portare il manifest da `candidato_selezionato` a `contenuto_approvato`. L'agente deve comunque applicare il batch, rigenerare le prove, eseguire il QA tecnico e solo allora registrare `prova_visuale_approvata` nel production manifest.
+L'interfaccia espone soltanto `Genera`. `POST /api/generate` applica nello stesso batch le modifiche correnti, può portare il manifest da `candidato_selezionato` a `contenuto_approvato`, rigenera le prove, esegue il QA tecnico, registra `prova_visuale_approvata` nel production manifest, produce un preflight locale e avvia il chatbot Codex. La risposta contiene i link autenticati ai formati prodotti e lo `request_id` del chatbot; `GET /api/agent-status` espone `queued`, `running`, `completed` o `failed` per il polling dell'interfaccia.
 
 ## Percorso locale
 

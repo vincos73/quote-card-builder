@@ -17,20 +17,15 @@ import sys
 import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 DIRECTIONS = ("editorial", "statement", "contextual")
 TRANSFORMATIONS = {"VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"}
 EVIDENCE_STATUSES = {"VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"}
-EVIDENCE_LABELS = {
-    "VERIFIED": "ESTRATTO VERIFICATO",
-    "USER_SUPPLIED": "FONTE FORNITA",
-    "UNVERIFIED": "DA VERIFICARE",
-    "CONFLICT": "PROVA IN CONFLITTO",
-}
 ATTRIBUTION_ROLES = {"speaker", "author", "publisher", "none"}
-STYLE_TYPES = {"bold", "italic", "underline", "highlight"}
+STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent"}
+SYSTEM_CARD_FONTS = {"arial"}
 HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 UNSAFE_SVG = re.compile(r"<(?:script|foreignObject)\b|\bon\w+\s*=", re.IGNORECASE)
 
@@ -60,7 +55,7 @@ def validate_text_styles(
         elif not 0 <= start < end <= len(text):
             add_error(errors, item_path, "range", "L'intervallo deve ricadere nel testo corrente.")
         if kind not in STYLE_TYPES:
-            add_error(errors, f"{item_path}.type", "enum", "Usare bold, italic, underline o highlight.")
+            add_error(errors, f"{item_path}.type", "enum", "Usare bold, italic, underline, highlight o accent.")
 
 
 def require_dict(value: Any, path: str, errors: list[dict[str, str]]) -> dict[str, Any]:
@@ -279,6 +274,14 @@ def font_css(font: dict[str, Any], manifest_dir: Path) -> str:
     return "".join(declarations)
 
 
+def card_font_stack(family: str) -> str:
+    """Return a predictable Mac/Windows stack for the neutral card baseline."""
+    escaped = html.escape(family, quote=True)
+    if family.strip().casefold() in SYSTEM_CARD_FONTS:
+        return "'Arial','Helvetica Neue',Helvetica,sans-serif"
+    return f"'{escaped}',sans-serif"
+
+
 def logo_data(brand: dict[str, Any], manifest_dir: Path, *, light: bool) -> tuple[str, float] | None:
     logo = brand.get("logo") or {}
     key = "light_path" if light else "dark_path"
@@ -326,7 +329,9 @@ def fitted_font_size(lines: list[str], available_width: float, available_height:
 
 def statement_visual_lines(lines: list[str], width: int, height: int) -> list[str]:
     """Add poster-style soft wraps without removing any user-authored hard break."""
-    target_units = 11.5 if width / height >= 0.75 else 9.5
+    # Keep semantic phrases together so the max-fit can scale the poster
+    # without creating weak one-word rows.
+    target_units = 16.0 if width / height >= 0.75 else 12.0
     maximum_rows = 7 if width / height >= 0.75 else 8
 
     def wrap(limit: float) -> list[str]:
@@ -339,7 +344,7 @@ def statement_visual_lines(lines: list[str], width: int, height: int) -> list[st
             current: list[str] = []
             for word in words:
                 candidate = " ".join((*current, word))
-                if current and visual_units(candidate) > limit:
+                if current and visual_units(candidate.upper()) > limit:
                     rows.append(" ".join(current))
                     current = [word]
                 else:
@@ -369,7 +374,7 @@ def statement_strong_rows(
             cursor += 1
         line_start, line_end = cursor, cursor + len(line)
         if styles and any(
-            style["type"] in {"bold", "highlight"}
+            style["type"] in {"bold", "highlight", "accent"}
             and style["end"] > line_start
             and style["start"] < line_end
             for style in styles
@@ -384,15 +389,48 @@ def statement_strong_rows(
     return strong
 
 
+def initial_direction_styles(lines: list[str], direction: str) -> list[dict[str, Any]]:
+    """Give an untouched first preview one expressive, direction-specific cue.
+
+    These defaults are calculated from preserved line boundaries and are used
+    only when no user-owned inline treatment or legacy emphasis exists. A
+    manual selection therefore always replaces the first-run cue.
+    """
+    ranges: list[tuple[int, int]] = []
+    cursor = 0
+    has_text = False
+    for line in lines:
+        if not line:
+            continue
+        if has_text:
+            cursor += 1
+        ranges.append((cursor, cursor + len(line)))
+        cursor += len(line)
+        has_text = True
+    if not ranges:
+        return []
+    if direction == "editorial":
+        # Normal / bold / normal on three rows; the second row is the hinge.
+        target = ranges[len(ranges) // 2]
+        return [{"start": target[0], "end": target[1], "type": "bold"}]
+    if direction == "statement":
+        # One decisive row carries the accent while the poster stays dominant.
+        target = ranges[-1]
+        return [{"start": target[0], "end": target[1], "type": "accent"}]
+    # Campo: one marker band proves the annotation treatment without noise.
+    target = ranges[min(1, len(ranges) - 1)]
+    return [{"start": target[0], "end": target[1], "type": "highlight"}]
+
+
 def statement_fitted_font_size(
     lines: list[str], strong_rows: set[int], width: int, height: int
 ) -> float:
-    safe = width * 0.055
+    safe = width * 0.04
     available_width = width - 2 * safe
-    available_height = height * 0.55
+    available_height = height * 0.58
     strong_multiplier = 1.12
     width_limits = [
-        available_width / max(visual_units(line) * (strong_multiplier if index in strong_rows else 1.0), 1)
+        available_width / max(visual_units(line.upper()) * (strong_multiplier if index in strong_rows else 1.0), 1)
         for index, line in enumerate(lines)
         if line
     ]
@@ -402,7 +440,7 @@ def statement_fitted_font_size(
     ]
     vertical_units = sum(vertical_multipliers[:-1]) * 0.98 + vertical_multipliers[-1]
     height_limit = available_height / max(vertical_units, 1)
-    return max(48, min(width * 0.074, height_limit, *width_limits))
+    return max(48, min(width * 0.12, height_limit, *width_limits))
 
 
 def statement_block_height(font_size: float, lines: list[str], strong_rows: set[int]) -> float:
@@ -412,12 +450,16 @@ def statement_block_height(font_size: float, lines: list[str], strong_rows: set[
     return sum(font_size * multiplier * 0.98 for multiplier in multipliers[:-1]) + font_size * multipliers[-1]
 
 
-def emphasized_lines(lines: list[str], emphasis: str, emphasis_color: str) -> list[str]:
+def emphasized_lines(
+    lines: list[str], emphasis: str, emphasis_color: str,
+    text_transform: Callable[[str], str] | None = None,
+) -> list[str]:
     """Render one exact emphasis phrase, including when it crosses line breaks."""
     joined = " ".join(lines)
     start = joined.find(emphasis) if emphasis else -1
+    transform = text_transform or (lambda value: value)
     if start < 0:
-        return [html.escape(line) for line in lines]
+        return [html.escape(transform(line)) for line in lines]
     end = start + len(emphasis)
     rendered: list[str] = []
     cursor = 0
@@ -427,19 +469,23 @@ def emphasized_lines(lines: list[str], emphasis: str, emphasis_color: str) -> li
         if overlap_start < overlap_end:
             local_start, local_end = overlap_start - line_start, overlap_end - line_start
             rendered.append(
-                f"{html.escape(line[:local_start])}"
+                f"{html.escape(transform(line[:local_start]))}"
                 f"<tspan font-weight=\"700\" fill=\"{emphasis_color}\">"
-                f"{html.escape(line[local_start:local_end])}</tspan>"
-                f"{html.escape(line[local_end:])}"
+                f"{html.escape(transform(line[local_start:local_end]))}</tspan>"
+                f"{html.escape(transform(line[local_end:]))}"
             )
         else:
-            rendered.append(html.escape(line))
+            rendered.append(html.escape(transform(line)))
         cursor = line_end + 1
     return rendered
 
 
-def styled_lines(lines: list[str], styles: list[dict[str, Any]], highlight_color: str) -> list[str]:
+def styled_lines(
+    lines: list[str], styles: list[dict[str, Any]], highlight_color: str,
+    text_transform: Callable[[str], str] | None = None, highlight_mode: str = "marker",
+) -> list[str]:
     """Render user-owned inline styles against text offsets, preserving spacer rows."""
+    transform = text_transform or (lambda value: value)
     rendered: list[str] = []
     cursor = 0
     has_text = False
@@ -466,7 +512,7 @@ def styled_lines(lines: list[str], styles: list[dict[str, Any]], highlight_color
                 for style in styles
                 if style["start"] <= global_start and style["end"] >= global_end
             }
-            value = html.escape(line[local_start:local_end])
+            value = html.escape(transform(line[local_start:local_end]))
             if not active:
                 fragments.append(value)
                 continue
@@ -477,16 +523,11 @@ def styled_lines(lines: list[str], styles: list[dict[str, Any]], highlight_color
                 attributes.append('font-style="italic"')
             if "underline" in active:
                 attributes.append('style="text-decoration:underline;text-decoration-thickness:.07em;text-underline-offset:.12em"')
-            if "highlight" in active:
-                attributes.extend(
-                    (
-                        'paint-order="stroke fill"',
-                        f'stroke="{highlight_color}"',
-                        'stroke-width=".24em"',
-                        'stroke-linecap="round"',
-                        'stroke-linejoin="round"',
-                    )
-                )
+            if "accent" in active:
+                attributes.append(f'fill="{highlight_color}"')
+            # Highlights are rendered as marker bands behind the text by
+            # ``highlight_rects``. Keeping this tspan free of a glyph stroke
+            # avoids the old letter-by-letter halo effect.
             fragments.append(f"<tspan {' '.join(attributes)}>{value}</tspan>")
         rendered.append("".join(fragments))
         cursor = line_end
@@ -494,24 +535,109 @@ def styled_lines(lines: list[str], styles: list[dict[str, Any]], highlight_color
     return rendered
 
 
+def highlight_rects(
+    lines: list[str], styles: list[dict[str, Any]], *, x: float, y: float,
+    font_size: float, line_height: float, color: str,
+    text_transform: Callable[[str], str] | None = None,
+    anchor: str = "start", row_sizes: list[float] | None = None,
+    row_baselines: list[float] | None = None, letter_spacing_em: float = 0.0,
+) -> str:
+    """Draw continuous marker bands behind highlighted text spans.
+
+    SVG text strokes hug every glyph. A real highlight is a single rectangular
+    band spanning the selected words, so it is emitted as geometry before the
+    text element and remains visually continuous over spaces.
+    """
+    transform = text_transform or (lambda value: value)
+
+    def measured(value: str, size: float) -> float:
+        """Match the SVG text width, including the poster's negative tracking."""
+        transformed = transform(value)
+        glyph_width = visual_units(transformed) * size
+        tracking = letter_spacing_em * size * max(0, len(transformed) - 1)
+        return max(0.0, glyph_width + tracking)
+
+    rendered: list[str] = []
+    cursor = 0
+    has_text = False
+    for index, line in enumerate(lines):
+        if not line:
+            continue
+        if has_text:
+            cursor += 1
+        line_start, line_end = cursor, cursor + len(line)
+        row_size = row_sizes[index] if row_sizes and index < len(row_sizes) else font_size
+        line_y = (
+            row_baselines[index]
+            if row_baselines is not None and index < len(row_baselines)
+            else y + index * line_height
+        )
+        intervals: list[tuple[int, int]] = []
+        for style in styles:
+            if style.get("type") != "highlight":
+                continue
+            start = max(line_start, int(style["start"]))
+            end = min(line_end, int(style["end"]))
+            if start < end:
+                intervals.append((start - line_start, end - line_start))
+        intervals.sort()
+        merged: list[list[int]] = []
+        for start, end in intervals:
+            if merged and start <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], end)
+            else:
+                merged.append([start, end])
+        full_width = measured(line, row_size)
+        for local_start, local_end in merged:
+            before = measured(line[:local_start], row_size)
+            width = max(1.0, measured(line[local_start:local_end], row_size))
+            if anchor == "end":
+                start_x = x - full_width + before
+            elif anchor == "middle":
+                start_x = x - full_width / 2 + before
+            else:
+                start_x = x + before
+            marker_y = line_y - row_size * 0.76
+            marker_h = row_size * 0.82
+            rendered.append(
+                f'<rect class="highlight-marker" x="{start_x:.1f}" y="{marker_y:.1f}" '
+                f'width="{width:.1f}" height="{marker_h:.1f}" rx="0" '
+                f'fill="{color}" opacity="0.88"/>'
+            )
+        cursor = line_end
+        has_text = True
+    return "".join(rendered)
+
+
 def text_block(
     lines: list[str], *, x: float, y: float, font_size: float, line_height: float,
     color: str, emphasis: str, emphasis_color: str, styles: list[dict[str, Any]] | None = None,
-    highlight_color: str | None = None, anchor: str = "start"
+    highlight_color: str | None = None, anchor: str = "start",
+    text_transform: Callable[[str], str] | None = None, extra_style: str = "",
 ) -> str:
     rendered = []
     formatted = (
-        emphasized_lines(lines, emphasis, emphasis_color)
+        emphasized_lines(lines, emphasis, emphasis_color, text_transform)
         if styles is None
-        else styled_lines(lines, styles, highlight_color or emphasis_color)
+        else styled_lines(lines, styles, highlight_color or emphasis_color, text_transform)
+    )
+    markers = (
+        highlight_rects(
+            lines, styles, x=x, y=y, font_size=font_size, line_height=line_height,
+            color=highlight_color or emphasis_color, text_transform=text_transform,
+            anchor=anchor, letter_spacing_em=-0.025 if "letter-spacing:-0.025em" in extra_style else 0.0,
+        )
+        if styles else ""
     )
     for index, content in enumerate(formatted):
         line_y = y + index * line_height
         rendered.append(f'<tspan x="{x:.1f}" y="{line_y:.1f}">{content}</tspan>')
-    return (
+    style = f' style="{html.escape(extra_style, quote=True)}"' if extra_style else ""
+    text_element = (
         f'<text class="quote" x="{x:.1f}" y="{y:.1f}" text-anchor="{anchor}" '
-        f'font-size="{font_size:.1f}" fill="{color}">{"".join(rendered)}</text>'
+        f'font-size="{font_size:.1f}" fill="{color}"{style}>{"".join(rendered)}</text>'
     )
+    return f"{markers}{text_element}"
 
 
 def statement_text_block(
@@ -520,25 +646,62 @@ def statement_text_block(
     styles: list[dict[str, Any]] | None = None, highlight_color: str | None = None,
 ) -> str:
     formatted = (
-        emphasized_lines(lines, emphasis, emphasis_color)
+        emphasized_lines(lines, emphasis, emphasis_color, str.upper)
         if styles is None
-        else styled_lines(lines, styles, highlight_color or emphasis_color)
+        else styled_lines(
+            lines, styles, highlight_color or emphasis_color,
+            text_transform=str.upper, highlight_mode="slab",
+        )
     )
     rows: list[str] = []
+    row_sizes: list[float] = []
+    row_baselines: list[float] = []
+    highlight_rows: set[int] = set()
+    style_cursor = 0
+    has_text = False
+    for index, line in enumerate(lines):
+        if not line:
+            continue
+        if has_text:
+            style_cursor += 1
+        line_end = style_cursor + len(line)
+        if styles and any(
+            style.get("type") == "highlight"
+            and style.get("end", 0) > style_cursor
+            and style.get("start", 0) < line_end
+            for style in styles
+        ):
+            highlight_rows.add(index)
+        style_cursor = line_end
+        has_text = True
     cursor_y = y
     for index, content in enumerate(formatted):
         multiplier = 1.4 if not lines[index] else 1.12 if index in strong_rows else 1.0
         size = font_size * multiplier
-        fill = emphasis_color if index in strong_rows else color
+        row_sizes.append(size)
+        row_baselines.append(cursor_y)
+        # A highlight is a background marker, never an accent-colored glyph:
+        # keeping the row white preserves contrast against the accent band.
+        fill = color if index in highlight_rows else emphasis_color if index in strong_rows else color
         weight = ' font-weight="700"' if index in strong_rows else ""
         rows.append(
             f'<tspan x="{x:.1f}" y="{cursor_y:.1f}" font-size="{size:.1f}" fill="{fill}"{weight}>{content}</tspan>'
         )
         cursor_y += size * 0.98
-    return (
-        f'<text class="quote" data-layout="statement-poster" x="{x:.1f}" y="{y:.1f}" '
-        f'style="font-weight:700;letter-spacing:-0.032em" fill="{color}">{"".join(rows)}</text>'
+    markers = (
+        highlight_rects(
+            lines, styles or [], x=x, y=y, font_size=font_size,
+            line_height=font_size * 0.98, color=highlight_color or emphasis_color,
+            text_transform=str.upper, row_sizes=row_sizes, row_baselines=row_baselines,
+            letter_spacing_em=-0.025,
+        )
+        if styles else ""
     )
+    text_element = (
+        f'<text class="quote" data-layout="statement-poster" x="{x:.1f}" y="{y:.1f}" '
+        f'style="font-weight:700;letter-spacing:-0.025em" fill="{color}">{"".join(rows)}</text>'
+    )
+    return f"{markers}{text_element}"
 
 
 def quote_marks(use_quotes: bool, *, color: str, open_x: float, open_y: float, close_x: float, close_y: float) -> str:
@@ -553,55 +716,67 @@ def quote_marks(use_quotes: bool, *, color: str, open_x: float, open_y: float, c
 def direction_graphic(
     direction: str, *, width: int, height: int, colors: dict[str, str], enabled: bool
 ) -> str:
-    """Render the fixed evergreen motif paired with a visual direction."""
+    """Render one product-specific visual grammar for each direction."""
     if not enabled:
         return ""
     if direction == "editorial":
-        top_paths: list[str] = []
-        bottom_paths: list[str] = []
-        for index in range(7):
-            x = width * (0.625 + index * 0.058)
-            top_paths.append(
-                f'<path class="contour contour--top" d="M {x:.1f} {-height * 0.03:.1f} '
-                f'C {x - width * 0.025:.1f} {height * 0.07:.1f}, {x + width * 0.095:.1f} {height * 0.095:.1f}, {x + width * 0.055:.1f} {height * 0.18:.1f} '
-                f'C {x + width * 0.015:.1f} {height * 0.265:.1f}, {x + width * 0.105:.1f} {height * 0.335:.1f}, {x + width * 0.18:.1f} {height * 0.455:.1f}"/>'
+        paths: list[str] = []
+        for index in range(6):
+            top_x = width * (0.89 + index * 0.026)
+            top_y = -height * 0.07 + index * height * 0.018
+            paths.append(
+                f'<path class="contour-path contour-path--top" d="M {top_x:.1f} {top_y:.1f} '
+                f'C {top_x - width * 0.12:.1f} {top_y + height * 0.05:.1f}, '
+                f'{top_x - width * 0.15:.1f} {top_y + height * 0.14:.1f}, '
+                f'{top_x - width * 0.07:.1f} {top_y + height * 0.21:.1f} '
+                f'S {top_x + width * 0.055:.1f} {top_y + height * 0.29:.1f}, '
+                f'{top_x:.1f} {top_y + height * 0.39:.1f}"/>'
             )
-            y = height * (0.67 + index * 0.032)
-            bottom_paths.append(
-                f'<path class="contour contour--bottom" d="M {-width * 0.035:.1f} {y:.1f} '
-                f'C {width * 0.075:.1f} {y - height * 0.01:.1f}, {width * 0.045:.1f} {y + height * 0.075:.1f}, {width * 0.155:.1f} {y + height * 0.085:.1f} '
-                f'C {width * 0.27:.1f} {y + height * 0.095:.1f}, {width * 0.30:.1f} {y + height * 0.165:.1f}, {width * 0.43:.1f} {y + height * 0.19:.1f} '
-                f'C {width * 0.54:.1f} {y + height * 0.215:.1f}, {width * 0.61:.1f} {y + height * 0.255:.1f}, {width * 0.69:.1f} {y + height * 0.30:.1f}"/>'
+            bottom_y = height * (0.67 + index * 0.019)
+            paths.append(
+                f'<path class="contour-path contour-path--bottom" d="M {-width * 0.045:.1f} {bottom_y:.1f} '
+                f'C {width * 0.075:.1f} {bottom_y + height * 0.04:.1f}, '
+                f'{width * 0.13:.1f} {bottom_y + height * 0.10:.1f}, '
+                f'{width * 0.08:.1f} {bottom_y + height * 0.17:.1f} '
+                f'S {-width * 0.015:.1f} {bottom_y + height * 0.27:.1f}, '
+                f'{width * 0.055:.1f} {bottom_y + height * 0.37:.1f}"/>'
             )
         return (
             '<g class="direction-graphic direction-graphic--contours" fill="none" '
-            f'stroke="{colors["accent"]}" stroke-width="{width * 0.003:.1f}" opacity="0.82">'
-            f'{"".join(top_paths)}{"".join(bottom_paths)}</g>'
+            f'stroke="{colors["accent"]}" stroke-width="{max(2.0, width * 0.0022):.1f}" '
+            f'opacity="0.82">{"".join(paths)}</g>'
         )
     if direction == "statement":
+        stroke = max(18.0, width * 0.021)
         return (
-            '<g class="direction-graphic direction-graphic--modules" fill="none" '
-            f'stroke="{colors["accent"]}" stroke-width="{width * 0.105:.1f}" opacity="0.96">'
-            f'<path class="module module--top" d="M {width * 0.75:.1f} {-height * 0.05:.1f} '
-            f'V {height * 0.20:.1f} Q {width * 0.75:.1f} {height * 0.285:.1f} {width * 0.84:.1f} {height * 0.285:.1f} H {width * 1.06:.1f}"/>'
-            f'<path class="module module--bottom" d="M {-width * 0.06:.1f} {height * 0.75:.1f} '
-            f'H {width * 0.31:.1f} Q {width * 0.445:.1f} {height * 0.75:.1f} {width * 0.445:.1f} {height * 0.875:.1f} V {height * 1.06:.1f}"/>'
+            '<g class="direction-graphic direction-graphic--modules">'
+            f'<path class="corner-module corner-module--top" '
+            f'd="M {width * 0.85:.1f} {-stroke:.1f} V {height * 0.07:.1f} '
+            f'Q {width * 0.85:.1f} {height * 0.12:.1f} {width * 0.91:.1f} {height * 0.12:.1f} '
+            f'H {width + stroke:.1f}" fill="none" stroke="{colors["accent"]}" '
+            f'stroke-width="{stroke:.1f}" opacity="0.30"/>'
+            f'<path class="corner-module corner-module--bottom" '
+            f'd="M {-stroke:.1f} {height * 0.94:.1f} H {width * 0.05:.1f} '
+            f'Q {width * 0.11:.1f} {height * 0.94:.1f} {width * 0.11:.1f} {height * 0.985:.1f} '
+            f'V {height + stroke:.1f}" fill="none" stroke="{colors["accent"]}" '
+            f'stroke-width="{stroke:.1f}" opacity="0.30"/>'
             '</g>'
         )
     dots: list[str] = []
-    for row in range(6):
-        for column in range(6):
+    gap = width * 0.027
+    for row in range(4):
+        for column in range(5):
             dots.append(
-                f'<circle class="field-dot field-dot--top" cx="{width * (0.69 + column * 0.058):.1f}" '
-                f'cy="{height * (0.02 + row * 0.032):.1f}" r="{max(2.0, width * 0.003):.1f}"/>'
+                f'<circle class="field-dot field-dot--top" cx="{width * 0.825 + column * gap:.1f}" '
+                f'cy="{height * 0.035 + row * gap:.1f}" r="{max(2.5, width * 0.0027):.1f}"/>'
             )
             dots.append(
-                f'<circle class="field-dot field-dot--bottom" cx="{width * (0.04 + column * 0.058):.1f}" '
-                f'cy="{height * (0.80 + row * 0.032):.1f}" r="{max(2.0, width * 0.003):.1f}"/>'
+                f'<circle class="field-dot field-dot--bottom" cx="{width * 0.02 + column * gap:.1f}" '
+                f'cy="{height * 0.87 + row * gap:.1f}" r="{max(2.5, width * 0.0027):.1f}"/>'
             )
     return (
         '<g class="direction-graphic direction-graphic--field" '
-        f'fill="{colors["primary"]}" opacity="0.9">{"".join(dots)}</g>'
+        f'fill="{colors["primary"]}" opacity="0.74">{"".join(dots)}</g>'
     )
 
 
@@ -637,11 +812,15 @@ def render_svg(
     content = data["content"]
     brand = data["brand"]
     colors = brand["colors"]
-    family = html.escape(brand["font"]["family"], quote=True)
+    family = brand["font"]["family"]
+    font_stack = card_font_stack(family)
     lines = content["lines"]
     emphasis = content.get("emphasis", "")
     styles = content.get("styles")
+    if not styles and not emphasis:
+        styles = initial_direction_styles(lines, direction)
     attribution = content["attribution"].get("label", "")
+    source = data.get("source") or {}
     use_quotes = content["use_quotation_marks"]
     options = {**(data.get("presentation") or {}), **(render_options or {})}
     logo_mode = options.get("logo_mode", "auto")
@@ -655,53 +834,69 @@ def render_svg(
     safe = width * 0.085
     css = (
         font_css(brand["font"], manifest_dir)
-        + f".quote{{font-family:'{family}',sans-serif;font-weight:500;font-synthesis:weight;letter-spacing:-0.018em;}}"
-        + f".meta{{font-family:'{family}',sans-serif;font-weight:500;letter-spacing:0.08em;}}"
-        + f".marks{{font-family:'{family}',sans-serif;font-weight:700;font-size:{width * 0.17:.1f}px;}}"
+        + f".quote{{font-family:{font_stack};font-weight:500;font-synthesis:weight;letter-spacing:-0.018em;}}"
+        + f".meta{{font-family:{font_stack};font-weight:500;letter-spacing:0.08em;}}"
+        + ".data{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600;letter-spacing:0.08em;}"
+        + f".marks{{font-family:{font_stack};font-weight:700;font-size:{width * 0.17:.1f}px;}}"
+        + f".editorial-marks .marks{{font-size:{width * 0.14:.1f}px;}}"
+        + f".statement-marks .marks{{font-size:{width * 0.09:.1f}px;}}"
+        + f".field-marks .marks{{font-size:{width * 0.12:.1f}px;}}"
     )
 
     if direction == "editorial":
         background = colors["background"]
         quote_color = colors["primary"]
+        quote_x = width * 0.075
         font_size = font_size_override or fitted_font_size(
-            lines, width - 2 * safe, height * 0.40, width * 0.066
+            lines, width * 0.85, height * 0.54, width * 0.090
         )
-        line_height = font_size * 1.13
-        block_height = line_height * len(lines)
-        start_y = height * 0.40 - block_height * 0.08 + vertical_offset
+        line_height = font_size * 1.05
+        block_height = line_height * max(0, len(lines) - 1) + font_size
+        start_y = height * 0.36 + vertical_offset
         logo = "" if logo_mode == "hidden" else logo_image(
-            logo_data(brand, manifest_dir, light=False), x=safe, y=safe, width=width * 0.23
+            logo_data(brand, manifest_dir, light=False),
+            x=width * 0.07, y=height * 0.055, width=width * 0.21,
         )
         quote = text_block(
-            lines, x=safe, y=start_y, font_size=font_size, line_height=line_height,
+            lines, x=quote_x, y=start_y, font_size=font_size, line_height=line_height,
             color=quote_color, emphasis=emphasis, emphasis_color=quote_color,
-            styles=styles, highlight_color=colors["accent"]
+            styles=styles, highlight_color=colors["accent"],
+            extra_style="font-weight:400;letter-spacing:-0.025em"
         )
-        marks = quote_marks(
-            show_quotes, color=colors["accent"], open_x=safe - width * 0.02, open_y=start_y - width * 0.11,
-            close_x=width * 0.66, close_y=start_y + block_height + width * 0.06
+        marks = (
+            '<g class="editorial-marks">'
+            + quote_marks(
+                show_quotes, color=colors["accent"],
+                open_x=quote_x, open_y=start_y - width * 0.095,
+                close_x=width * 0.84,
+                close_y=min(height * 0.82, start_y + block_height + width * 0.055),
+            )
+            + '</g>'
+            if show_quotes else ""
         )
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
             f'{graphic}{logo}{marks}{quote}'
-            f'<text class="meta" x="{width - safe}" y="{height - safe}" text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["text"]}">{html.escape(attribution)}</text>'
+            f'<text class="meta attribution source-field" x="{width * 0.91:.1f}" y="{height * 0.915:.1f}" '
+            f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["text"]}">'
+            f'{html.escape(attribution)}</text>'
         )
     elif direction == "statement":
         background = colors["primary"]
         quote_color = colors["background"]
-        statement_safe = width * 0.055
+        statement_safe = width * 0.04
         poster_lines = statement_visual_lines(lines, width, height)
         strong_rows = statement_strong_rows(poster_lines, styles, emphasis)
         font_size = font_size_override or statement_fitted_font_size(
             poster_lines, strong_rows, width, height
         )
-        start_y = height * 0.265 + vertical_offset
+        start_y = height * 0.31 + vertical_offset
         has_light_logo = bool((brand.get("logo") or {}).get("light_path"))
         logo = "" if logo_mode == "hidden" else logo_image(
             logo_data(brand, manifest_dir, light=True),
             x=statement_safe,
-            y=safe,
-            width=width * 0.23,
+            y=height * 0.055,
+            width=width * 0.20,
             filter_value="" if has_light_logo else "brightness(0) invert(1)",
         )
         quote = statement_text_block(
@@ -709,63 +904,82 @@ def render_svg(
             color=quote_color, emphasis=emphasis, emphasis_color=colors["accent"],
             strong_rows=strong_rows, styles=styles, highlight_color=colors["accent"]
         )
+        block_height = statement_block_height(font_size, poster_lines, strong_rows)
+        marks = (
+            '<g class="statement-marks">'
+            + quote_marks(
+                show_quotes, color=colors["accent"],
+                open_x=statement_safe, open_y=start_y - width * 0.065,
+                close_x=width * 0.86,
+                close_y=min(height * 0.84, start_y + block_height + width * 0.12),
+            )
+            + '</g>'
+            if show_quotes else ""
+        )
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
-            f'{graphic}{logo}{quote}'
-            f'<text class="meta" x="{width - statement_safe}" y="{height - safe}" text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["background"]}">{html.escape(attribution)}</text>'
+            f'{graphic}{logo}{marks}{quote}'
+            f'<text class="meta attribution source-field" x="{width * 0.945:.1f}" y="{height * 0.915:.1f}" '
+            f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["background"]}">'
+            f'{html.escape(attribution)}</text>'
         )
     else:
         background = colors["accent"]
-        panel_x = safe
-        panel_y = height * 0.085
-        panel_width = width - 2 * safe
-        panel_height = height * 0.83
-        inner = width * 0.06
-        quote_indent = width * 0.075
+        sheet_x = width * 0.073
+        sheet_y = height * 0.061
+        sheet_width = width * 0.854
+        sheet_height = height * 0.878
+        content_x = width * 0.17
+        content_right = width * 0.88
         font_size = font_size_override or fitted_font_size(
-            lines, panel_width - 2 * inner - quote_indent, panel_height * 0.30, width * 0.058
+            lines, content_right - content_x, height * 0.50, width * 0.085
         )
-        line_height = font_size * 1.14
-        block_height = line_height * len(lines)
-        start_y = panel_y + panel_height * 0.50 + vertical_offset
+        line_height = font_size * 1.06
+        block_height = line_height * max(0, len(lines) - 1) + font_size
+        start_y = height * 0.40 + vertical_offset
         logo = "" if logo_mode == "hidden" else logo_image(
             logo_data(brand, manifest_dir, light=False),
-            x=panel_x + inner,
-            y=panel_y + height * 0.045,
-            width=width * 0.25,
+            x=width * 0.12, y=height * 0.10, width=width * 0.20,
         )
         quote = text_block(
-            lines, x=panel_x + inner + quote_indent, y=start_y, font_size=font_size, line_height=line_height,
+            lines, x=content_x, y=start_y, font_size=font_size, line_height=line_height,
             color=colors["primary"], emphasis=emphasis, emphasis_color=colors["primary"],
-            styles=styles, highlight_color=colors["accent"]
+            styles=styles, highlight_color=colors["accent"],
+            extra_style="font-weight:400;letter-spacing:-0.025em"
         )
-        source = data.get("source") or {}
-        source_title = source.get("title", "")
-        source_label = source.get("label") or source_title
-        evidence_label = EVIDENCE_LABELS.get(content.get("evidence_status"), "STATO NON INDICATO")
-        locator_label = source.get("evidence_locator") or source_label
-        source_y = panel_y + panel_height * 0.205
-        rule_y = source_y + height * 0.018
-        evidence_y = panel_y + panel_height * 0.275
-        locator_y = panel_y + panel_height * 0.32
-        bar_y = start_y - font_size * 0.82
-        bar_height = block_height - line_height + font_size * 1.10
+        bar_y = start_y - font_size * 0.84
+        bar_height = block_height + font_size * 0.16
+        marks = (
+            '<g class="field-marks">'
+            + quote_marks(
+                show_quotes, color=colors["accent"],
+                open_x=width * 0.12, open_y=start_y - width * 0.11,
+                close_x=width * 0.82,
+                close_y=min(height * 0.80, start_y + block_height + width * 0.055),
+            )
+            + '</g>'
+            if show_quotes else ""
+        )
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
             f'{graphic}'
-            f'<rect class="source-panel" x="{panel_x}" y="{panel_y}" width="{panel_width}" height="{panel_height}" fill="{colors["background"]}"/>'
-            f'{logo}'
-            f'<text class="meta source-label" x="{panel_x + inner}" y="{source_y:.1f}" font-size="{width * 0.022:.1f}" fill="{colors["primary"]}">{html.escape(source_label.upper())}</text>'
-            f'<line class="source-rule" x1="{panel_x + inner}" y1="{rule_y:.1f}" x2="{panel_x + inner + width * 0.075:.1f}" y2="{rule_y:.1f}" stroke="{colors["primary"]}" stroke-width="{width * 0.003:.1f}"/>'
-            f'<text class="meta evidence-label" x="{panel_x + inner}" y="{evidence_y:.1f}" font-size="{width * 0.019:.1f}" fill="{colors["text"]}">{evidence_label}</text>'
-            f'<text class="meta evidence-locator" x="{panel_x + inner}" y="{locator_y:.1f}" font-size="{width * 0.017:.1f}" fill="{colors["text"]}">{html.escape(locator_label)}</text>'
-            f'<rect class="source-bar" x="{panel_x + inner}" y="{bar_y:.1f}" width="{width * 0.009:.1f}" height="{bar_height:.1f}" fill="{colors["primary"]}"/>'
+            f'<rect class="field-sheet" x="{sheet_x:.1f}" y="{sheet_y:.1f}" '
+            f'width="{sheet_width:.1f}" height="{sheet_height:.1f}" fill="{colors["background"]}"/>'
+            f'{logo}{marks}'
+            f'<rect class="quote-index" x="{width * 0.12:.1f}" y="{bar_y:.1f}" '
+            f'width="{max(8.0, width * 0.008):.1f}" height="{bar_height:.1f}" rx="{width * 0.004:.1f}" '
+            f'fill="{colors["primary"]}"/>'
             f'{quote}'
-            f'<text class="meta attribution" x="{panel_x + panel_width - inner}" y="{panel_y + panel_height - height * 0.05:.1f}" text-anchor="end" font-size="{width * 0.024:.1f}" fill="{colors["text"]}">{html.escape(attribution)}</text>'
+            f'<text class="meta attribution source-field" x="{content_right:.1f}" y="{height * 0.88:.1f}" '
+            f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["text"]}">'
+            f'{html.escape(attribution)}</text>'
         )
 
     title = f"Quote card {direction} — {brand['name']}"
     description = f"{content['text']} — {attribution}" if attribution else content["text"]
+    source_description = source.get("title") or source.get("label") or source.get("locator")
+    if source_description:
+        description = f"{description}. Fonte: {source_description}"
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc">'

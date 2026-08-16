@@ -6,7 +6,12 @@
   const params = new URLSearchParams(location.search);
   const storageKey = `quote-card-editor:${params.get('token') || 'local'}`;
   const clone = (value) => JSON.parse(JSON.stringify(value));
-  const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+  const formatting = window.QcbFormatting;
+  if (!formatting) throw new Error('Motore di formattazione non disponibile');
+  const {
+    STYLE_TYPES, canonicalLineStart, clampStyleRanges, normalizeStyleRanges,
+    normalizeText: normalize, pointLength, remapStyleRanges, suggestBalancedLines,
+  } = formatting;
   const normalizeScale = (value) => {
     const numeric = Number(value);
     return Math.min(1, Math.max(0.8, Number.isFinite(numeric) ? numeric : 1));
@@ -15,7 +20,14 @@
     ...format,
     text_scale: normalizeScale(format.text_scale),
   }));
-  const STYLE_TYPES = new Set(['bold', 'italic', 'underline', 'highlight']);
+  const baselineSignature = (manifest) => JSON.stringify({
+    text: manifest.content?.text || '',
+    direction: manifest.direction || '',
+    attribution: manifest.content?.attribution || {},
+    use_quotation_marks: Boolean(manifest.content?.use_quotation_marks),
+    presentation: manifest.presentation || {},
+    formats: manifest.formats || [],
+  });
   const TRANSFORMATION_LABELS = {
     VERBATIM: 'Letterale', EDITED: 'Modificata', PARAPHRASE: 'Parafrasi', AI_GENERATED: 'Generata',
   };
@@ -23,7 +35,13 @@
     VERIFIED: 'Verificata', USER_SUPPLIED: 'Fornita dall’utente', UNVERIFIED: 'Non verificata', CONFLICT: 'In conflitto',
   };
   const STYLE_LABELS = {
-    bold: 'Grassetto', italic: 'Corsivo', underline: 'Sottolineato', highlight: 'Evidenziato',
+    bold: 'Grassetto', italic: 'Corsivo', underline: 'Sottolineato', highlight: 'Evidenziato', accent: 'Colore accento',
+  };
+  const CARD_COLOR_META = {
+    primary: { label: 'Primario', usage: 'campo e moduli della card' },
+    accent: { label: 'Accento', usage: 'testo e trattamenti in accento' },
+    background: { label: 'Sfondo', usage: 'area di lettura della card' },
+    text: { label: 'Testo', usage: 'citazione e attribuzione' },
   };
   const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -44,26 +62,30 @@
     submitting: false,
     awaitingApply: false,
     controlsLocked: false,
+    chatbotRequestId: null,
+    chatbotPollTimer: null,
   };
 
   const els = {
-    quote: $('#approved-quote'), attribution: $('#attribution'), source: $('#source'), brand: $('#brand'),
-    transformation: $('#transformation'), evidence: $('#evidence-status'), note: $('#integrity-note'),
+    transformation: $('#transformation'), evidence: $('#evidence-status'),
     revision: $('#revision'), session: $('#session-state'), dot: $('#status-dot'),
     lines: $('#visual-text-editor'), formatToolbar: $('#format-toolbar'), formattingState: $('#formatting-state'),
+    colors: $('#brand-colors'), colorPaletteSubtitle: $('#color-palette-subtitle'), colorPaletteHelp: $('#color-palette-help'),
     fontSupport: $('#font-support-note'),
     scale: $('#scale'), scaleValue: $('#scale-value'), scaleFitNote: $('#scale-fit-note'),
     textIntegrityHint: $('#text-integrity-hint'),
     attributionLabel: $('#attribution-label'), attributionRole: $('#attribution-role'),
     quotes: $('#quotation-marks'), quotesRule: $('#quotes-rule'), preview: $('#preview-content'),
     shell: $('#preview-shell'), stage: $('#preview-stage'), message: $('#preview-message'),
-    warningList: $('#warnings'), warningCount: $('#qa-count'), qaLabel: $('#qa-label'), draftState: $('#draft-state'),
+    warningCount: $('#qa-count'), qaLabel: $('#qa-label'), draftState: $('#draft-state'),
     actionMessage: $('#action-message'), zoom: $('#zoom-output'), safeToggle: $('#safe-toggle'),
-    backLink: $('#back-link'), returnText: $('#return-text'), feedback: $('#feedback'), approve: $('#approve'),
+    backLink: $('#back-link'), generate: $('#generate'),
+    generateLabel: $('#generate-label'), generatedOutput: $('#generated-output'),
   };
 
   const api = async (path, options = {}) => {
-    const response = await fetch(`/api${path}?token=${encodeURIComponent(params.get('token') || '')}`, {
+    const separator = path.includes('?') ? '&' : '?';
+    const response = await fetch(`/api${path}${separator}token=${encodeURIComponent(params.get('token') || '')}`, {
       headers: { 'Content-Type': 'application/json' },
       ...options,
     });
@@ -78,13 +100,28 @@
   };
 
   const syncActionButtons = () => {
-    els.feedback.disabled = state.controlsLocked;
-    els.approve.disabled = state.controlsLocked;
+    els.generate.disabled = state.controlsLocked;
   };
 
   const setButtonsDisabled = (disabled) => {
     state.controlsLocked = disabled;
     syncActionButtons();
+  };
+
+  const setGenerateState = (phase = 'idle') => {
+    const processing = phase === 'preparing' || phase === 'running';
+    const labels = {
+      idle: 'Genera',
+      preparing: 'Preparo…',
+      running: 'Creo PNG…',
+      completed: 'Generato ✓',
+      failed: 'Riprova',
+    };
+    els.generateLabel.textContent = labels[phase] || labels.idle;
+    els.generate.classList.toggle('is-processing', processing);
+    els.generate.classList.toggle('is-complete', phase === 'completed');
+    els.generate.classList.toggle('is-failed', phase === 'failed');
+    els.generate.setAttribute('aria-busy', String(processing));
   };
 
   const currentFormat = () => state.draft?.formats.find((item) => item.id === state.activeFormat);
@@ -100,48 +137,15 @@
   const storeDraft = () => {
     if (!state.draft) return;
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ revision: state.baseRevision, draft: state.draft }));
+      localStorage.setItem(storageKey, JSON.stringify({
+        revision: state.baseRevision,
+        baseline_signature: baselineSignature(state.manifest),
+        draft: state.draft,
+      }));
       els.draftState.textContent = 'Bozza locale salvata';
     } catch (_) {
       els.draftState.textContent = 'Bozza in memoria';
     }
-  };
-
-  const balancedLines = (text, requested) => {
-    const words = normalize(text).split(' ').filter(Boolean);
-    const count = Math.max(1, Math.min(6, requested || 1, words.length));
-    if (count === 1) return [words.join(' ')];
-    const lines = [];
-    let cursor = 0;
-    for (let line = 0; line < count; line += 1) {
-      const remainingWords = words.length - cursor;
-      const remainingLines = count - line;
-      const target = Math.max(1, Math.ceil(remainingWords / remainingLines));
-      lines.push(words.slice(cursor, cursor + target).join(' '));
-      cursor += target;
-    }
-    return lines.filter(Boolean);
-  };
-
-  const pointLength = (value) => Array.from(String(value || '')).length;
-
-  const normalizeStyleRanges = (styles) => {
-    const grouped = new Map();
-    (Array.isArray(styles) ? styles : []).forEach((item) => {
-      if (!item || !STYLE_TYPES.has(item.type) || !Number.isInteger(item.start) || !Number.isInteger(item.end) || item.start >= item.end) return;
-      if (!grouped.has(item.type)) grouped.set(item.type, []);
-      grouped.get(item.type).push({ start: item.start, end: item.end, type: item.type });
-    });
-    const merged = [];
-    grouped.forEach((ranges, type) => {
-      ranges.sort((first, second) => first.start - second.start || first.end - second.end);
-      ranges.forEach((range) => {
-        const previous = merged.at(-1);
-        if (previous?.type === type && range.start <= previous.end) previous.end = Math.max(previous.end, range.end);
-        else merged.push({ ...range });
-      });
-    });
-    return merged.sort((first, second) => first.start - second.start || first.end - second.end || first.type.localeCompare(second.type));
   };
 
   const initialStyles = (content) => {
@@ -213,16 +217,38 @@
     const startNode = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
     const endNode = range.endContainer.nodeType === Node.ELEMENT_NODE ? range.endContainer : range.endContainer.parentElement;
     if (!els.lines.contains(startNode) || !els.lines.contains(endNode)) return null;
-    const prefixRange = document.createRange();
-    prefixRange.selectNodeContents(els.lines);
-    prefixRange.setEnd(range.startContainer, range.startOffset);
-    const prefix = prefixRange.toString();
-    const selected = range.toString();
-    let start = pointLength(normalize(prefix));
-    if (start && /\s$/.test(prefix) && selected && !/^\s/.test(selected)) start += 1;
-    const end = pointLength(normalize(prefix + selected));
     const limit = pointLength(state.draft.text);
-    return start < end ? { start: Math.min(start, limit), end: Math.min(end, limit) } : null;
+    const lines = editorLines();
+    const boundaryOffset = (container, offset) => {
+      if (container === els.lines) {
+        if (offset <= 0) return 0;
+        if (offset >= els.lines.childNodes.length) return limit;
+      }
+      const element = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+      const span = element?.closest?.('span[data-start]');
+      if (span && els.lines.contains(span)) {
+        const prefixRange = document.createRange();
+        prefixRange.selectNodeContents(span);
+        prefixRange.setEnd(container, offset);
+        return Number(span.dataset.start) + pointLength(prefixRange.toString());
+      }
+      const visualLine = element?.closest?.('.visual-line');
+      if (visualLine && els.lines.contains(visualLine)) {
+        const visualLines = [...els.lines.querySelectorAll(':scope > .visual-line')];
+        const index = visualLines.indexOf(visualLine);
+        const prefixRange = document.createRange();
+        prefixRange.selectNodeContents(visualLine);
+        prefixRange.setEnd(container, offset);
+        return canonicalLineStart(lines, index) + pointLength(normalize(prefixRange.toString()));
+      }
+      const prefixRange = document.createRange();
+      prefixRange.selectNodeContents(els.lines);
+      prefixRange.setEnd(container, offset);
+      return pointLength(normalize(prefixRange.toString()));
+    };
+    const start = Math.min(boundaryOffset(range.startContainer, range.startOffset), limit);
+    const end = Math.min(boundaryOffset(range.endContainer, range.endOffset), limit);
+    return start < end ? { start, end } : null;
   };
 
   const toggleStyleRange = (type, start, end) => {
@@ -276,11 +302,16 @@
     if (nextText && nextText !== previousText) {
       state.draft.text = nextText;
       state.draft.formats.forEach((item) => {
-        if (item.id !== format.id) item.lines = balancedLines(nextText, item.lines.filter(Boolean).length);
+        if (item.id !== format.id) item.lines = suggestBalancedLines(nextText, item.lines.filter(Boolean).length);
       });
       if (state.draft.styles.length) {
-        state.draft.styles = [];
-        els.formattingState.textContent = 'Formattazione rimossa dopo la modifica delle parole';
+        state.draft.styles = clampStyleRanges(
+          remapStyleRanges(state.draft.styles, previousText, nextText),
+          pointLength(nextText),
+        );
+        els.formattingState.textContent = state.draft.styles.length
+          ? 'Formattazione conservata e riallineata al testo'
+          : 'Formattazione rimossa perché il testo associato non esiste più';
       }
     }
     format.text_scale = Number((Number(els.scale.value) / 100).toFixed(2));
@@ -319,7 +350,10 @@
   const loadSavedDraft = (manifest) => {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
-      if (saved?.revision === manifest.revision && typeof saved.draft?.text === 'string' && saved.draft?.formats?.length === manifest.formats.length) {
+      if (saved?.revision === manifest.revision
+        && saved?.baseline_signature === baselineSignature(manifest)
+        && typeof saved.draft?.text === 'string'
+        && saved.draft?.formats?.length === manifest.formats.length) {
         const initial = initialDraft(manifest);
         const restored = {
           ...initial,
@@ -346,16 +380,31 @@
   const renderReadonlyModel = () => {
     const manifest = state.manifest;
     const content = manifest.content;
-    els.quote.textContent = content.text;
-    els.attribution.textContent = content.attribution?.label || 'Nessuna attribuzione';
-    els.source.textContent = manifest.source?.title || manifest.source?.label || manifest.source?.locator || 'Fonte non disponibile';
-    els.brand.textContent = manifest.brand?.name || 'Profilo non risolto';
     els.transformation.textContent = TRANSFORMATION_LABELS[content.transformation] || content.transformation;
     els.evidence.textContent = EVIDENCE_LABELS[content.evidence_status] || content.evidence_status;
-    els.note.textContent = 'La provenienza osservata resta visibile; testo, attribuzione e dichiarazioni sono modificabili.';
     els.revision.textContent = manifest.revision;
     els.session.textContent = 'Prova visuale pronta';
     els.dot.classList.remove('is-error');
+  };
+
+  const renderCardColors = () => {
+    const brand = state.manifest?.brand || {};
+    const colors = brand.colors || {};
+    const orderedKeys = ['primary', 'accent', 'background', 'text'];
+    const entries = orderedKeys.filter((key) => typeof colors[key] === 'string')
+      .map((key) => ({ key, value: colors[key], ...CARD_COLOR_META[key] }));
+    const brandName = normalize(brand.name) || 'Profilo della card';
+    els.colorPaletteSubtitle.textContent = `${brandName} · colori applicati alla card`;
+    els.colorPaletteHelp.textContent = 'Profilo protetto: i colori cambiano solo scegliendo un altro profilo per la card.';
+    els.colors.setAttribute('aria-label', `Colori applicati alla card: ${brandName}`);
+    els.colors.innerHTML = entries.map(({ label, value, usage }) => {
+      const swatchStyle = ` style="--swatch-color:${value}"`;
+      return `<div class="brand-color" role="listitem">
+        <span class="brand-color-swatch"${swatchStyle} aria-hidden="true"></span>
+        <span class="brand-color-copy"><strong>${label}</strong><small>${usage}</small></span>
+        <code>${value}</code>
+      </div>`;
+    }).join('') || '<p class="palette-empty">Nessun colore disponibile nel profilo della card.</p>';
   };
 
   const renderFontSupport = () => {
@@ -428,6 +477,7 @@
   const initializeSession = (manifest, preserveFormat = true) => {
     const previousFormat = state.activeFormat;
     state.manifest = manifest;
+    renderCardColors();
     state.baseline = initialDraft(manifest);
     state.baseRevision = manifest.revision;
     state.draft = loadSavedDraft(manifest);
@@ -472,9 +522,9 @@
     return errors;
   };
 
-  const payload = (action) => {
+  const payload = () => {
     updateActiveFormat();
-    const value = {
+    return {
       base_revision: state.baseRevision,
       text: state.draft.text,
       transformation: state.draft.transformation,
@@ -487,11 +537,26 @@
       presentation: clone(state.draft.presentation),
       formats: clone(state.draft.formats),
     };
-    if (action) {
-      value.action = action;
-      value.overall_note = '';
-    }
-    return value;
+  };
+
+  const clearGeneratedOutputs = () => {
+    els.generatedOutput.replaceChildren();
+    els.generatedOutput.hidden = true;
+  };
+
+  const renderGeneratedOutputs = (outputs = []) => {
+    clearGeneratedOutputs();
+    outputs.forEach((output) => {
+      const link = document.createElement('a');
+      link.className = 'generated-link';
+      link.href = output.url;
+      link.download = output.filename;
+      link.textContent = output.format;
+      link.title = `Scarica ${output.filename}`;
+      link.setAttribute('aria-label', `Scarica il formato ${output.format}`);
+      els.generatedOutput.append(link);
+    });
+    els.generatedOutput.hidden = !els.generatedOutput.childElementCount;
   };
 
   const renderWarnings = (warnings, qa = null) => {
@@ -503,21 +568,6 @@
         ? 'controlli superati'
         : 'vincoli locali validi';
     els.dot.classList.toggle('is-error', Boolean(warnings.length));
-    els.warningList.replaceChildren();
-    if (!warnings.length) {
-      const item = document.createElement('li');
-      item.className = 'empty-warning';
-      item.textContent = qa?.checks?.length
-        ? `${qa.checks.length} controlli superati: struttura, contrasto, fitting, area sicura, SVG e asset.`
-        : 'Validazione dei vincoli superata; QA visuale in aggiornamento.';
-      els.warningList.append(item);
-      return;
-    }
-    warnings.forEach((warning) => {
-      const item = document.createElement('li');
-      item.textContent = typeof warning === 'string' ? warning : warning.message || warning.code || 'Avviso di qualità';
-      els.warningList.append(item);
-    });
   };
 
   const showActivePreview = () => {
@@ -553,7 +603,9 @@
     const errors = validateDraft();
     if (errors.length) {
       renderWarnings(errors);
-      els.message.textContent = 'Correggi la composizione per aggiornare la prova.';
+      const detail = errors[0];
+      els.message.textContent = `Anteprima non aggiornata: ${detail}`;
+      setMessage(detail, true);
       return;
     }
     storeDraft();
@@ -579,6 +631,8 @@
 
   const schedulePreview = () => {
     clearTimeout(state.timer);
+    clearGeneratedOutputs();
+    if (!state.submitting && !state.chatbotRequestId) setGenerateState('idle');
     updateActiveFormat();
     state.draft.use_quotation_marks = els.quotes.checked;
     state.draft.presentation.show_quotation_marks = els.quotes.checked;
@@ -612,48 +666,97 @@
     els.zoom.textContent = `${state.zoom}%`;
   };
 
-  const submit = async (action) => {
+  const watchChatbot = (chatbot) => {
+    const requestId = chatbot?.request_id;
+    if (!requestId || chatbot.status === 'unavailable' || chatbot.status === 'failed') {
+      if (chatbot?.message) setMessage(chatbot.message, chatbot.status === 'failed');
+      setButtonsDisabled(false);
+      setGenerateState(chatbot?.status === 'failed' ? 'failed' : 'completed');
+      return;
+    }
+    state.chatbotRequestId = requestId;
+    setGenerateState('running');
+    clearTimeout(state.chatbotPollTimer);
+    const poll = async () => {
+      try {
+        const status = await api(`/agent-status?request_id=${encodeURIComponent(requestId)}`);
+        if (status.status === 'completed') {
+          setButtonsDisabled(false);
+          setMessage(status.message || 'Chatbot completato: PNG pronti.');
+          state.chatbotRequestId = null;
+          setGenerateState('completed');
+          return;
+        }
+        if (status.status === 'failed' || status.status === 'unavailable') {
+          setButtonsDisabled(false);
+          setMessage(status.message || 'Il chatbot non ha completato la generazione.', true);
+          state.chatbotRequestId = null;
+          setGenerateState(status.status === 'failed' ? 'failed' : 'completed');
+          return;
+        }
+        setMessage('Chatbot in esecuzione: sta creando i PNG…');
+        state.chatbotPollTimer = setTimeout(poll, 1200);
+      } catch (error) {
+        setMessage(`Stato chatbot non disponibile: ${error.message}`, true);
+        setButtonsDisabled(false);
+        state.chatbotRequestId = null;
+        setGenerateState('failed');
+      }
+    };
+    poll();
+  };
+
+  const generate = async () => {
     if (state.submitting || state.awaitingApply) return;
     const errors = validateDraft();
     if (errors.length) {
       renderWarnings(errors);
-      setMessage('Correggi gli avvisi prima di inviare.', true);
+      setMessage('Correggi gli avvisi prima di generare.', true);
       return;
     }
     storeDraft();
     state.submitting = true;
     setButtonsDisabled(true);
-    setMessage(action === 'approve' ? 'Invio della richiesta di approvazione…' : 'Invio delle modifiche…');
+    setGenerateState('preparing');
+    clearGeneratedOutputs();
+    setMessage('Validazione e generazione degli output…');
     try {
       const checked = await api('/preview', { method: 'POST', body: JSON.stringify(payload()) });
       applyPreview(checked);
-      if (action === 'approve' && checked.qa && !checked.qa.passed) {
+      if (checked.qa && !checked.qa.passed) {
         setButtonsDisabled(false);
-        setMessage('Approvazione bloccata: risolvi gli avvisi del quality gate.', true);
+        setMessage('Generazione bloccata: risolvi gli avvisi del quality gate.', true);
         return;
       }
-      const submitted = await api('/submit', { method: 'POST', body: JSON.stringify(payload(action)) });
+      const submitted = await api('/generate', { method: 'POST', body: JSON.stringify(payload()) });
       if (submitted.applied) {
         state.awaitingApply = false;
         localStorage.removeItem(storageKey);
         initializeSession(await api('/session'));
-        setButtonsDisabled(false);
-        setMessage(action === 'approve'
-          ? 'Richiesta di approvazione registrata. La prova resta disponibile per il controllo finale.'
-          : 'Modifiche applicate. La prova usa già la nuova revisione.');
+        const outputs = submitted.generation?.outputs || [];
+        renderGeneratedOutputs(outputs);
+        const formats = outputs.map((output) => output.format).join(' · ');
+        const chatbot = submitted.chatbot;
+        if (chatbot?.status === 'running' || chatbot?.status === 'queued') {
+          setButtonsDisabled(true);
+          setMessage(formats ? `Output locali pronti (${formats}). Chatbot in esecuzione…` : 'Chatbot in esecuzione…');
+          watchChatbot(chatbot);
+        } else {
+          setButtonsDisabled(false);
+          setGenerateState('completed');
+          setMessage(formats ? `Output pronti: ${formats}.` : 'Generazione completata.');
+        }
         await preview();
-      } else {
-        state.awaitingApply = true;
-        els.session.textContent = action === 'approve' ? 'Approvazione in registrazione' : 'Feedback in elaborazione';
-        setMessage(action === 'approve'
-          ? 'Richiesta inviata. La sessione attende la registrazione dell’approvazione.'
-          : 'Modifiche inviate. La prova si aggiornerà dopo l’applicazione atomica.');
       }
     } catch (error) {
       setButtonsDisabled(false);
-      setMessage(`Invio non riuscito: ${error.message}`, true);
+      setGenerateState('failed');
+      setMessage(`Generazione non riuscita: ${error.message}`, true);
     } finally {
       state.submitting = false;
+      if (!state.chatbotRequestId && !els.generate.classList.contains('is-complete') && !els.generate.classList.contains('is-failed')) {
+        setGenerateState('idle');
+      }
     }
   };
 
@@ -661,8 +764,20 @@
     if (!state.manifest) return;
     try {
       const status = await api('/status');
+      const persistedOutputs = status.last_generation?.outputs || [];
+      if (persistedOutputs.length) renderGeneratedOutputs(persistedOutputs);
+      if (status.chatbot_generation?.status === 'running' || status.chatbot_generation?.status === 'queued') {
+        state.chatbotRequestId = status.chatbot_generation.request_id;
+        setButtonsDisabled(true);
+        setGenerateState('running');
+        watchChatbot(status.chatbot_generation);
+      } else if (status.chatbot_generation?.status === 'completed') {
+        setButtonsDisabled(false);
+        setGenerateState('completed');
+        setMessage(status.chatbot_generation.message || 'Chatbot completato: PNG pronti.');
+      }
       if (status.feedback_pending) {
-        els.session.textContent = 'Feedback in elaborazione';
+        els.session.textContent = 'Generazione in elaborazione';
         state.awaitingApply = true;
         setButtonsDisabled(true);
         return;
@@ -673,10 +788,10 @@
           initializeSession(await api('/session'));
           state.awaitingApply = false;
           setButtonsDisabled(false);
-          setMessage('Modifiche applicate: la prova usa la nuova revisione.');
+          setMessage('Generazione completata: la prova usa la nuova revisione.');
           await preview();
         } else {
-          setMessage('La revisione è cambiata sul server. Ripristina la sessione prima di inviare.', true);
+          setMessage('La revisione è cambiata sul server. Ripristina la sessione prima di generare.', true);
           setButtonsDisabled(true);
         }
         return;
@@ -686,7 +801,7 @@
         localStorage.removeItem(storageKey);
         initializeSession(await api('/session'));
         setButtonsDisabled(false);
-        setMessage('Richiesta registrata. La prova resta pronta per la revisione.');
+        setMessage('Generazione registrata. La prova resta pronta per la revisione.');
         await preview();
       }
     } catch (_) {
@@ -697,6 +812,8 @@
   const resetDraft = () => {
     state.draft = clone(state.baseline);
     localStorage.removeItem(storageKey);
+    clearGeneratedOutputs();
+    setGenerateState('idle');
     renderDraftControls();
     preview();
     setMessage('Bozza ripristinata dalla revisione corrente.');
@@ -735,7 +852,8 @@
     const modifier = event.metaKey || event.ctrlKey;
     const style = modifier && !event.shiftKey && ['b', 'i', 'u'].includes(event.key.toLowerCase())
       ? ({ b: 'bold', i: 'italic', u: 'underline' })[event.key.toLowerCase()]
-      : modifier && event.shiftKey && event.key.toLowerCase() === 'h' ? 'highlight' : null;
+      : modifier && event.shiftKey && event.key.toLowerCase() === 'h' ? 'highlight'
+        : modifier && event.shiftKey && event.key.toLowerCase() === 'a' ? 'accent' : null;
     if (style) {
       event.preventDefault();
       applyTextStyle(style);
@@ -788,8 +906,7 @@
     els.shell.classList.toggle('hide-safe-area', !state.safeArea);
     showActivePreview();
   });
-  els.feedback.addEventListener('click', () => submit('feedback'));
-  els.approve.addEventListener('click', () => submit('approve'));
+  els.generate.addEventListener('click', generate);
   $('#reset').addEventListener('click', resetDraft);
   els.backLink.addEventListener('click', (event) => {
     event.preventDefault();
