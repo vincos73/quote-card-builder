@@ -22,7 +22,7 @@ VERTICAL_POSITIONS = {"upper", "center", "lower"}
 TRANSFORMATIONS = {"VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"}
 EVIDENCE_STATUSES = {"VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"}
 ATTRIBUTION_ROLES = {"speaker", "author", "publisher", "none"}
-STYLE_TYPES = {"bold", "italic", "underline", "highlight"}
+STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent"}
 CONTENT_KEYS = {"text", "transformation", "evidence_status", "attribution", "use_quotation_marks", "styles", "declared_by"}
 
 

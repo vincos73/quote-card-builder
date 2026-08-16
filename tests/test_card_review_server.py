@@ -18,6 +18,14 @@ def manifest():
 
 class CardReviewServerTests(unittest.TestCase):
     def test_accepts_contract_04(self): self.assertEqual([], SERVER.validate_manifest(manifest()))
+
+    def test_arial_system_baseline_enables_real_standard_treatments(self):
+        item = manifest()
+        item["brand"]["font"] = {"family": "Arial"}
+        capabilities = SERVER.font_capabilities(item, Path.cwd())
+        self.assertFalse(capabilities["embedded"])
+        self.assertEqual({"available": True, "exact": True}, capabilities["styles"]["bold"])
+        self.assertEqual({"available": True, "exact": True}, capabilities["styles"]["italic"])
     def test_static_svg_asset_is_allowlisted(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -81,6 +89,54 @@ class CardReviewServerTests(unittest.TestCase):
         self.assertEqual("1x1", draft["presentation"]["output_mode"])
         source["presentation"]["output_mode"] = "pdf"
         self.assertTrue(SERVER.validate_manifest(source))
+
+    def test_production_formats_follow_the_selected_output(self):
+        source = manifest()
+        source["formats"] = [
+            source["formats"][0],
+            {"id":"1x1","width":1080,"height":1080,"lines":["Una frase verificata."],"text_scale":1.0,"vertical_position":"center"},
+            {"id":"9x16","width":1080,"height":1920,"lines":["Una frase verificata."],"text_scale":1.0,"vertical_position":"center"},
+        ]
+        source["presentation"]["output_mode"] = "1x1"
+        mode, selected = SERVER.production_formats(source)
+        self.assertEqual("1x1", mode)
+        self.assertEqual(["1x1"], [item["id"] for item in selected])
+
+    def test_generated_assets_are_allowlisted_and_cannot_escape(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            output.mkdir()
+            png = output / "quote.png"
+            png.write_bytes(b"png")
+            self.assertEqual(png.resolve(), SERVER.generated_asset_path(root, "/api/output/output/quote.png"))
+            self.assertIsNone(SERVER.generated_asset_path(root, "/api/output/../quote.png"))
+            self.assertIsNone(SERVER.generated_asset_path(root, "/api/output/output/quote.exe"))
+
+    def test_persisted_outputs_restore_authenticated_download_links(self):
+        outputs = [{
+            "format": "1x1", "kind": "png", "filename": "quote card.png",
+            "relative_path": "output/quote card.png",
+        }]
+        result = SERVER.output_payload(outputs, "token+/=")
+        self.assertEqual("1x1", result[0]["format"])
+        self.assertEqual(
+            "/api/output/output/quote%20card.png?token=token%2B%2F%3D",
+            result[0]["url"],
+        )
+
+    def test_generate_production_pack_writes_a_fallback_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = root / "manifest.json"
+            source = manifest()
+            source["presentation"]["output_mode"] = "4x5"
+            manifest_path.write_text(json.dumps(source), encoding="utf-8")
+            result = SERVER.generate_production_pack(source, manifest_path, root / "session", None, None)
+            self.assertEqual(["4x5"], [item["format"] for item in result["outputs"]])
+            self.assertEqual("svg", result["outputs"][0]["kind"])
+            self.assertTrue((root / "session" / "production" / result["outputs"][0]["relative_path"]).is_file())
+            self.assertTrue(Path(result["qa_report"]).is_file())
     def test_rejects_mutable_or_invalid_visual_contract(self):
         item = manifest(); item["revision"] = 0; item["formats"][0]["text_scale"] = 1.2
         self.assertTrue(SERVER.validate_manifest(item))
@@ -184,7 +240,7 @@ class CardReviewServerTests(unittest.TestCase):
         self.assertIn("fitting", qa["checks"])
         self.assertEqual([], qa["warnings"])
 
-    def test_square_contextual_fallback_fits_with_the_source_bar_indent(self):
+    def test_square_contextual_fallback_fits_inside_the_field_sheet(self):
         item = manifest()
         item["direction"] = "contextual"
         item["content"].update({

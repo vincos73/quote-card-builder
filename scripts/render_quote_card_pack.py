@@ -166,25 +166,16 @@ def validate_production_manifest(data: Any, manifest_dir: Path) -> list[dict[str
 
 
 def layout_constraints(direction: str, width: int, height: int) -> tuple[float, float, float, float]:
-    safe = width * 0.085
     if direction == "editorial":
-        return width - 2 * safe, height * 0.40, width * 0.066, 1.13
+        return width * 0.85, height * 0.54, width * 0.090, 1.05
     if direction == "statement":
-        statement_safe = width * 0.055
-        return width - 2 * statement_safe, height * 0.55, width * 0.074, 0.98
-    panel_width = width - 2 * safe
-    inner = width * 0.06
-    quote_indent = width * 0.075
-    return panel_width - 2 * inner - quote_indent, height * 0.83 * 0.30, width * 0.058, 1.14
+        statement_safe = width * 0.04
+        return width - 2 * statement_safe, height * 0.58, width * 0.12, 0.98
+    return width * 0.71, height * 0.50, width * 0.085, 1.06
 
 
 def available_text_width(data: dict[str, Any], direction: str, width: int, height: int) -> float:
     available_width = layout_constraints(direction, width, height)[0]
-    graphic_mode = (data.get("presentation") or {}).get("graphic_mode", "auto")
-    if direction == "statement" and graphic_mode != "hidden":
-        # The upper module begins around 75% of the canvas. Keep the poster
-        # stack clear of it instead of treating the artwork as a background.
-        available_width = min(available_width, width * 0.625)
     return available_width
 
 
@@ -200,24 +191,20 @@ def vertical_limits(
         if presentation.get("logo_mode", "auto") != "hidden":
             logo = proof.logo_data(data["brand"], manifest_dir, light=False)
             if logo:
-                upper_limit = max(upper_limit, safe + width * 0.23 / logo[1] + height * 0.025)
-        lower_limit = height - safe * (1.35 if attribution else 1.0)
+                upper_limit = max(upper_limit, height * 0.075 + width * 0.20 / logo[1] + height * 0.025)
+        lower_limit = height * 0.82
     elif direction == "statement":
         if presentation.get("logo_mode", "auto") != "hidden":
             logo = proof.logo_data(data["brand"], manifest_dir, light=True)
             if logo:
-                upper_limit = max(upper_limit, safe + width * 0.23 / logo[1] + height * 0.025)
-        lower_limit = height - safe * (1.75 if attribution else 1.0)
-        if presentation.get("graphic_mode", "auto") != "hidden":
-            # The lower module starts at 75% of the canvas and has a thick
-            # stroke. Reserve its approach as part of the max-fit contract.
-            lower_limit = min(lower_limit, height * 0.69)
+                upper_limit = max(upper_limit, height * 0.055 + width * 0.20 / logo[1] + height * 0.03)
+        lower_limit = height * 0.82
     else:
-        panel_y, panel_height = height * 0.085, height * 0.83
-        # Source label, rule, evidence and locator occupy the first 32% of the
-        # source panel. The quote starts only after that document header.
-        upper_limit = panel_y + panel_height * 0.37
-        lower_limit = panel_y + panel_height - height * (0.075 if attribution else 0.035)
+        if presentation.get("logo_mode", "auto") != "hidden":
+            logo = proof.logo_data(data["brand"], manifest_dir, light=False)
+            if logo:
+                upper_limit = max(upper_limit, height * 0.10 + width * 0.20 / logo[1] + height * 0.03)
+        lower_limit = height * 0.82
     return upper_limit, lower_limit
 
 
@@ -229,7 +216,7 @@ def text_vertical_bounds(
     offset = {"upper": -0.075, "center": 0.0, "lower": 0.075}[vertical_position] * height
     if direction == "editorial":
         line_height = font_size * line_ratio
-        start_y = height * 0.40 - line_height * len(lines) * 0.08 + offset
+        start_y = height * 0.36 + offset
         return (
             start_y - font_size * 0.82,
             start_y + line_height * (len(lines) - 1) + font_size * 0.28,
@@ -239,14 +226,13 @@ def text_vertical_bounds(
         strong_rows = proof.statement_strong_rows(
             visual_lines, data["content"].get("styles"), data["content"].get("emphasis", "")
         )
-        start_y = height * 0.265 + offset
+        start_y = height * 0.31 + offset
         return (
             start_y - font_size * 0.82,
             start_y + proof.statement_block_height(font_size, visual_lines, strong_rows) - font_size * 0.72,
         )
-    panel_y, panel_height = height * 0.085, height * 0.83
     line_height = font_size * line_ratio
-    start_y = panel_y + panel_height * 0.50 + offset
+    start_y = height * 0.40 + offset
     return (
         start_y - font_size * 0.82,
         start_y + line_height * (len(lines) - 1) + font_size * 0.28,
@@ -264,7 +250,7 @@ def measure_text_box(
             visual_lines, data["content"].get("styles"), data["content"].get("emphasis", "")
         )
         measured_width = max(
-            proof.visual_units(line) * font_size * (1.12 if index in strong_rows else 1.0)
+            proof.visual_units(line.upper()) * font_size * (1.12 if index in strong_rows else 1.0)
             for index, line in enumerate(visual_lines) if line
         )
         return (

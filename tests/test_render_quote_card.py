@@ -106,14 +106,42 @@ class VisualManifestTests(unittest.TestCase):
 
         self.assertIn('class="marks"', editorial)
         self.assertIn('direction-graphic--contours', editorial)
+        self.assertNotIn('PAGINA / 01', editorial)
         self.assertNotIn('class="source-bar"', editorial)
-        self.assertNotIn('class="marks"', statement)
+        self.assertIn('class="marks"', statement)
         self.assertIn('direction-graphic--modules', statement)
+        self.assertNotIn('MANIFESTO / 02', statement)
         self.assertNotIn('class="source-bar"', statement)
-        self.assertNotIn('class="marks"', contextual)
+        self.assertIn('class="marks"', contextual)
         self.assertIn('direction-graphic--field', contextual)
-        self.assertIn('class="source-bar"', contextual)
-        self.assertIn("ESTRATTO VERIFICATO", contextual)
+        self.assertNotIn('DOSSIER / 03', contextual)
+        self.assertNotIn('class="source-bar"', contextual)
+        self.assertNotIn("ESTRATTO VERIFICATO", contextual)
+
+    def test_untreated_first_preview_has_one_distinct_typographic_cue_per_direction(self):
+        manifest = valid_visual_manifest()
+        manifest["content"].update({
+            "text": "Prima riga. Seconda riga. Terza riga.",
+            "lines": ["Prima riga.", "Seconda riga.", "Terza riga."],
+            "emphasis": "",
+            "styles": [],
+        })
+        self.assertEqual(
+            [{"start": 12, "end": 25, "type": "bold"}],
+            RENDERER.initial_direction_styles(manifest["content"]["lines"], "editorial"),
+        )
+        editorial = RENDERER.render_svg(manifest, Path.cwd(), "editorial")
+        statement = RENDERER.render_svg(manifest, Path.cwd(), "statement")
+        contextual = RENDERER.render_svg(manifest, Path.cwd(), "contextual")
+        self.assertIn('<tspan font-weight="700">Seconda riga.</tspan>', editorial)
+        self.assertIn('fill="#E3F4FF"', statement)
+        self.assertIn('class="highlight-marker"', contextual)
+
+    def test_arial_neutral_baseline_uses_the_cross_platform_stack(self):
+        manifest = valid_visual_manifest()
+        manifest["brand"]["font"]["family"] = "Arial"
+        svg = RENDERER.render_svg(manifest, Path.cwd(), "editorial")
+        self.assertIn("font-family:'Arial','Helvetica Neue',Helvetica,sans-serif", svg)
 
     def test_direction_graphic_can_be_hidden_without_changing_direction(self):
         manifest = valid_visual_manifest()
@@ -127,15 +155,16 @@ class VisualManifestTests(unittest.TestCase):
             self.assertNotIn('class="direction-graphic', svg)
             self.assertIn(f"Quote card {direction}", svg)
 
-    def test_editorial_quote_marks_respect_the_user_toggle(self):
+    def test_all_quote_marks_respect_the_user_toggle(self):
         manifest = valid_visual_manifest()
-        svg = RENDERER.render_svg(
-            manifest,
-            Path.cwd(),
-            "editorial",
-            render_options={"show_quotation_marks": False},
-        )
-        self.assertNotIn('class="marks"', svg)
+        for direction in RENDERER.DIRECTIONS:
+            svg = RENDERER.render_svg(
+                manifest,
+                Path.cwd(),
+                direction,
+                render_options={"show_quotation_marks": False},
+            )
+            self.assertNotIn('class="marks"', svg)
 
     def test_statement_uses_a_dense_poster_stack_and_scaled_emphasis(self):
         manifest = valid_visual_manifest()
@@ -150,33 +179,58 @@ class VisualManifestTests(unittest.TestCase):
         quote = root.find(".//{http://www.w3.org/2000/svg}text[@data-layout='statement-poster']")
         self.assertIsNotNone(quote)
         rows = list(quote)
-        self.assertEqual(5, len(rows))
+        self.assertEqual(3, len(rows))
         accent_rows = [row for row in rows if row.attrib.get("fill") == "#E3F4FF"]
-        self.assertEqual(2, len(accent_rows))
+        self.assertEqual(1, len(accent_rows))
         self.assertGreater(float(accent_rows[0].attrib["font-size"]), float(rows[0].attrib["font-size"]))
+        self.assertIn("IL PASSAGGIO NON È", svg)
+        self.assertIn("Il passaggio non è da uomo a macchina.", svg)
 
     def test_auto_graphics_match_the_three_mockup_systems(self):
         manifest = valid_visual_manifest()
 
         editorial = RENDERER.render_svg(manifest, Path.cwd(), "editorial")
-        self.assertEqual(14, editorial.count('class="contour contour--'))
-        self.assertIn('direction-graphic--contours', editorial)
+        self.assertEqual(6, editorial.count('class="contour-path contour-path--top"'))
+        self.assertEqual(6, editorial.count('class="contour-path contour-path--bottom"'))
+        self.assertNotIn('class="page-spine"', editorial)
 
         statement = RENDERER.render_svg(manifest, Path.cwd(), "statement")
-        self.assertIn('class="module module--top"', statement)
-        self.assertIn('class="module module--bottom"', statement)
+        self.assertIn('class="corner-module corner-module--top"', statement)
+        self.assertIn('class="corner-module corner-module--bottom"', statement)
+        self.assertNotIn('class="registration-mark"', statement)
 
         contextual = RENDERER.render_svg(manifest, Path.cwd(), "contextual")
-        self.assertEqual(72, contextual.count('class="field-dot field-dot--'))
-        self.assertIn('class="source-panel"', contextual)
-        self.assertLess(contextual.index('direction-graphic--field'), contextual.index('class="source-panel"'))
+        self.assertEqual(20, contextual.count('class="field-dot field-dot--top"'))
+        self.assertEqual(20, contextual.count('class="field-dot field-dot--bottom"'))
+        self.assertIn('class="field-sheet"', contextual)
+        self.assertNotIn('<g class="source-panel">', contextual)
+
+    def test_editorial_and_contextual_source_fields_are_right_aligned(self):
+        manifest = valid_visual_manifest()
+        for direction, expected_x in (("editorial", 1440 * 0.91), ("contextual", 1440 * 0.88)):
+            svg = RENDERER.render_svg(manifest, Path.cwd(), direction)
+            root = ET.fromstring(svg)
+            field = root.find(".//{http://www.w3.org/2000/svg}text[@class='meta attribution source-field']")
+            self.assertIsNotNone(field)
+            self.assertEqual("end", field.attrib.get("text-anchor"))
+            self.assertAlmostEqual(expected_x, float(field.attrib["x"]))
+
+    def test_statement_source_field_is_always_right_aligned(self):
+        manifest = valid_visual_manifest()
+        svg = RENDERER.render_svg(manifest, Path.cwd(), "statement")
+        root = ET.fromstring(svg)
+        field = root.find(".//{http://www.w3.org/2000/svg}text[@class='meta attribution source-field']")
+        self.assertIsNotNone(field)
+        self.assertEqual("end", field.attrib.get("text-anchor"))
+        self.assertAlmostEqual(1440 * 0.945, float(field.attrib["x"]))
+        self.assertNotIn('class="data source-note"', svg)
 
     def test_multiword_emphasis_can_cross_a_manual_line_break(self):
         manifest = valid_visual_manifest()
         manifest["content"]["emphasis"] = "commuove per il tuo"
         svg = RENDERER.render_svg(manifest, Path.cwd(), "statement")
-        self.assertIn('>commuove</tspan>', svg)
-        self.assertIn('>per il tuo</tspan>', svg)
+        self.assertIn('>COMMUOVE</tspan>', svg)
+        self.assertIn('>PER IL TUO</tspan>', svg)
         self.assertEqual(2, svg.count('font-weight="700" fill="#E3F4FF"'))
 
     def test_spacer_line_is_valid_and_keeps_a_full_vertical_row(self):
@@ -198,6 +252,34 @@ class VisualManifestTests(unittest.TestCase):
         first_y, third_y = float(rows[0].attrib["y"]), float(rows[2].attrib["y"])
         self.assertGreater(third_y - first_y, 150)
 
+    def test_statement_highlight_tracks_baseline_after_spacer(self):
+        manifest = valid_visual_manifest()
+        manifest["content"]["text"] = "Una frase verificata."
+        manifest["content"]["lines"] = ["Una frase", "", "verificata."]
+        manifest["content"]["emphasis"] = ""
+        manifest["content"]["styles"] = [{"start": 11, "end": 15, "type": "highlight"}]
+        root = ET.fromstring(RENDERER.render_svg(manifest, Path.cwd(), "statement"))
+        marker = root.find(".//{http://www.w3.org/2000/svg}rect[@class='highlight-marker']")
+        quote = root.find(".//{http://www.w3.org/2000/svg}text[@class='quote']")
+        self.assertIsNotNone(marker)
+        self.assertIsNotNone(quote)
+        rows = list(quote)
+        self.assertEqual(3, len(rows))
+        final_row = rows[2]
+        final_y = float(final_row.attrib["y"])
+        final_size = float(final_row.attrib["font-size"])
+        self.assertAlmostEqual(final_y - final_size * 0.76, float(marker.attrib["y"]), places=1)
+        self.assertGreater(float(marker.attrib["x"]), float(final_row.attrib["x"]))
+        self.assertLess(float(marker.attrib["width"]), RENDERER.visual_units("verificata.") * final_size)
+
+    def test_statement_highlight_keeps_text_white_on_accent_band(self):
+        manifest = valid_visual_manifest()
+        manifest["content"]["emphasis"] = ""
+        manifest["content"]["styles"] = [{"start": 44, "end": 54, "type": "highlight"}]
+        svg = RENDERER.render_svg(manifest, Path.cwd(), "statement")
+        self.assertIn('fill="#FEFDFB" font-weight="700"><tspan', svg)
+        self.assertNotIn('fill="#E3F4FF" font-weight="700"><tspan', svg)
+
     def test_inline_text_styles_are_rendered_together(self):
         manifest = valid_visual_manifest()
         manifest["content"]["emphasis"] = ""
@@ -212,7 +294,17 @@ class VisualManifestTests(unittest.TestCase):
         self.assertIn('font-weight="700"', svg)
         self.assertIn('font-style="italic"', svg)
         self.assertIn('text-decoration:underline', svg)
-        self.assertIn('paint-order="stroke fill"', svg)
+        self.assertIn('class="highlight-marker"', svg)
+        self.assertIn('rx="', svg)
+        self.assertNotIn('paint-order="stroke fill"', svg)
+
+    def test_accent_style_colors_selected_glyphs(self):
+        manifest = valid_visual_manifest()
+        manifest["content"]["emphasis"] = ""
+        manifest["content"]["styles"] = [{"start": 0, "end": 9, "type": "accent"}]
+        self.assertEqual([], RENDERER.validate_visual_manifest(manifest, Path.cwd()))
+        svg = RENDERER.render_svg(manifest, Path.cwd(), "statement")
+        self.assertIn('<tspan fill="#E3F4FF">', svg)
 
     def test_embeds_a_supplied_italic_face(self):
         manifest = valid_visual_manifest()
@@ -246,7 +338,7 @@ class VisualManifestTests(unittest.TestCase):
                 "light_path": str(logo),
             }
             svg = RENDERER.render_svg(manifest, Path(temp_dir), "statement")
-        self.assertRegex(svg, r'<image [^>]*width="331\.2" [^>]*height="82\.8"')
+        self.assertRegex(svg, r'<image [^>]*width="288\.0" [^>]*height="72\.0"')
 
     def test_render_options_hide_logo_and_quotes(self):
         manifest = valid_visual_manifest()

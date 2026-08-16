@@ -67,7 +67,7 @@ Il production manifest congela contenuto, direzione e brand approvati, poi descr
 }
 ```
 
-`brand`, `source` e i campi editoriali di `content` hanno lo stesso significato del visual manifest 0.2. Il profilo font può includere `regular_path`, `medium_path`, `bold_path` e `italic_path`; gli stili approvati devono conservare la stessa disponibilità tipografica della prova.
+`brand`, `source` e i campi editoriali di `content` hanno lo stesso significato del visual manifest 0.2. Gli stili possono includere `accent`, che colora i glifi con `brand.colors.accent`, oltre a `highlight`, che resta una banda di evidenziazione. Il profilo font può includere `regular_path`, `medium_path`, `bold_path` e `italic_path`; gli stili approvati devono conservare la stessa disponibilità tipografica della prova.
 
 ## Invarianti
 

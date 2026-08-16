@@ -176,7 +176,7 @@ class ProductionManifestTests(unittest.TestCase):
             self.assertTrue(capped)
             self.assertIn("legacy_scale_capped", mode)
 
-    def test_statement_max_fit_expands_when_graphic_is_hidden(self):
+    def test_statement_graphic_stays_outside_the_max_fit_text_area(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             proof_path = temp_path / "proof.png"
@@ -193,7 +193,7 @@ class ProductionManifestTests(unittest.TestCase):
             hidden_size, _ = PACK.fit_font_size(
                 item["lines"], hidden, temp_path, "statement", item["width"], item["height"], "center"
             )
-            self.assertGreater(hidden_size, visible_size)
+            self.assertEqual(hidden_size, visible_size)
 
     def test_output_mode_selects_all_or_one_aspect_ratio(self):
         with tempfile.TemporaryDirectory() as temp_dir:

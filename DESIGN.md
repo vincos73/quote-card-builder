@@ -78,7 +78,7 @@ components:
     rounded: "{rounded.square}"
     padding: "0 11px"
     height: "34px"
-  button-approval:
+  button-generate:
     backgroundColor: "{colors.chartreuse-signal}"
     textColor: "{colors.instrument-ink}"
     typography: "{typography.display}"
@@ -95,7 +95,7 @@ components:
 
 Quote Card Builder mette la prova renderizzata su uno strumento di misura, non dentro un mini-Canva e non dentro una dashboard a schede. Il mondo è tech-industriale e deliberatamente piatto: chrome melanzana quasi nero, letto di cemento freddo, linework da officina, guide lavanda e chartreuse usato come segnale raro. La topologia rende leggibile il lavoro in un colpo d’occhio: testata quieta, grande piano calibrato con prova dominante, rail strumenti compatto e ledger di audit persistente.
 
-L’interfaccia serve un flusso preciso: osservare lo SVG prodotto dal renderer, modificare contenuto e dichiarazioni editoriali, regolare la composizione, verificare il quality gate tecnico, quindi inviare o approvare. La C2 implementata nei riferimenti desktop e mobile ha concluso la finish review con disposizione **ship** e nessun finding aperto.
+L’interfaccia serve un flusso preciso: osservare lo SVG prodotto dal renderer, modificare contenuto e dichiarazioni editoriali, regolare la composizione, verificare il quality gate tecnico, quindi generare. La C2 implementata nei riferimenti desktop e mobile espone una sola CTA produttiva e ha concluso la verifica funzionale desktop/mobile con disposizione **ship**.
 
 **Key Characteristics:**
 
@@ -146,7 +146,7 @@ La palette contrappone chrome melanzana e superfici di cemento, con lavanda per 
 ### Hierarchy
 
 - **Identità prodotto** (Orbitron 750, 21px desktop / 12px mobile, maiuscolo): firma la testata senza diventare un hero; `Quote Card` usa lavanda chiaro e `Builder` lavanda medio.
-- **Azione di approvazione** (800, 15px): unica CTA con enfasi Barlow piena e non tutta maiuscola.
+- **Azione di generazione** (800, 15px): unica CTA con enfasi Barlow piena e non tutta maiuscola.
 - **Body UI** (400, 14px, 1.4): testo leggibile, candidato selezionato e contenuto editoriale modificabile.
 - **Label strumento** (500, 11px, tracking .03em, maiuscolo): nomi dei controlli e intestazioni del rail.
 - **Metadato** (400–500, 9–10px, maiuscolo quando è uno stato): misure, aiuti, formati, valori, revisione e ledger; valori numerici con cifre tabulari.
@@ -161,7 +161,7 @@ Il desktop è un banco a due regioni: una preview fluida con larghezza minima di
 
 Il linework è topologico: righelli e tacche definiscono il letto; quote 1080×1350 e crocini di registro definiscono la prova; la safe area è un overlay tratteggiato al 7%, attivabile senza alterare lo SVG. La actionbar divide tre responsabilità: esito QA a sinistra, ledger di dichiarazione/sessione al centro, azioni a destra.
 
-A 1120px il rail si compatta a 290px e la quota verticale scompare. A 820px il banco diventa verticale: preview sopra, strumenti sotto, form a due colonne e ledger ridotto. A 560px il form torna a una colonna, i righelli scendono a 32×34px, la griglia maggiore a 64px, le quote scompaiono e la actionbar si condensa in stato, dichiarazione e azioni essenziali. La larghezza minima supportata è 320px.
+A 1120px il rail si compatta a 290px e la quota verticale scompare. A 820px il banco diventa verticale: preview sopra, strumenti sotto, form a due colonne e ledger ridotto. A 560px il form torna a una colonna, i righelli scendono a 32×34px, la griglia maggiore a 64px e le quote scompaiono; il ledger centrale viene rimosso dalla actionbar, che mostra soltanto stato, output disponibili e `Genera`. La larghezza minima supportata è 320px.
 
 **The Proof-Dominance Rule.** La card deve restare il maggior oggetto continuo del primo viewport; rail e ledger sono strumenti periferici, non pannelli concorrenti.
 
@@ -195,11 +195,11 @@ Il rail melanzana è una sequenza di sezioni separate da cuciture da 1px: Proven
 
 ### Ledger di audit e actionbar
 
-Il ledger persiste in basso e tiene visibili conteggio QA, dichiarazioni correnti, stato sessione e revisione. Il check chartreuse indica gate superato; una X corallo e messaggi espliciti indicano errore. `Invia` salva; `Approva`, unica campitura chartreuse, salva le modifiche correnti e richiede l’approvazione in un solo passaggio.
+Il ledger persiste in basso e tiene visibili conteggio QA, dichiarazioni correnti, stato sessione e revisione. Il check chartreuse indica gate superato; una X corallo e messaggi espliciti indicano errore. `Genera`, unica campitura chartreuse, salva le modifiche correnti, esegue gate e renderer e, a esito positivo, mostra i link compatti ai formati prodotti.
 
 ### Stati, feedback e accessibilità
 
-Loading attenua temporaneamente lo SVG e imposta `aria-busy`; il preview message, la lista warning e il messaggio d’azione spiegano l’esito. Le modifiche salvano una bozza locale e aggiornano l’anteprima dopo 360ms. Invio e approvazione si disabilitano durante la richiesta; conflitti di revisione, feedback pendente e QA tecnica fallita restano stati testuali e bloccanti, non soli cambi di colore.
+Loading attenua temporaneamente lo SVG e imposta `aria-busy`; il preview message, la lista warning e il messaggio d’azione spiegano l’esito. Le modifiche salvano una bozza locale e aggiornano l’anteprima dopo 360ms. `Genera` si disabilita durante la richiesta; conflitti di revisione, generazione pendente e QA tecnica fallita restano stati testuali e bloccanti, non soli cambi di colore.
 
 Tutti i controlli interattivi usano elementi nativi, label o nomi accessibili. Il focus visibile è un outline chartreuse da 2px con offset 3px; gli stati selezionati aggiornano `aria-pressed`; warning e stato usano regioni live. Con `prefers-reduced-motion: reduce` transizioni e scroll animato vengono disattivati.
 

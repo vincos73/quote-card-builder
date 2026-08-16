@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="overrides.css">
 </head>
 <body>
-  <!-- THESIS: una quote card si approva su un banco di prova calibrato, non dentro un mini-Canva o una dashboard a schede. OWN-WORLD: plotter melanzana e cemento, guide lavanda, chartreuse raro per selezione, stato valido e approvazione; superfici piatte, cuciture da 1px e controlli compatti. STORY: osserva la prova reale, regola solo la composizione consentita, verifica integrità e QA, poi invia o approva. FIRST VIEWPORT: testata quieta, grande letto di misura con prova dominante, rail strumenti a destra e ledger di audit persistente in basso. FORM: Plotter Bench C2, seed key quote-card-plotter-c2. FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md -->
+  <!-- THESIS: una quote card si genera su un banco di prova calibrato, non dentro un mini-Canva o una dashboard a schede. OWN-WORLD: plotter melanzana e cemento, guide lavanda, chartreuse raro per selezione, stato valido e generazione; superfici piatte, cuciture da 1px e controlli compatti. STORY: osserva la prova reale, regola la composizione, verifica integrità e QA, poi genera gli output con una sola azione. FIRST VIEWPORT: testata quieta, grande letto di misura con prova dominante, rail strumenti a destra e ledger di audit persistente in basso. FORM: Plotter Bench C2, seed key quote-card-plotter-c2. FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md -->
   <header class="topbar">
     <div class="product-heading" aria-label="Quote Card Builder by Vincos">
       <h1>
@@ -68,22 +68,14 @@
         <span id="draft-state" class="draft-state">Bozza locale</span>
       </div>
 
-      <details class="evidence-drawer">
-        <summary>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>
-          <span>Provenienza</span>
-        </summary>
-        <div class="evidence-content">
-          <blockquote id="approved-quote">Caricamento del candidato selezionato.</blockquote>
-          <dl class="facts">
-            <div><dt>Attribuzione</dt><dd id="attribution">—</dd></div>
-            <div><dt>Fonte</dt><dd id="source">—</dd></div>
-            <div><dt>Brand</dt><dd id="brand">—</dd></div>
-          </dl>
-          <p id="integrity-note">La fonte osservata resta visibile; le scelte editoriali appartengono all’utente.</p>
-          <a id="return-text" class="back-text" href="#editorial-fields">Modifica testo e formattazione</a>
+      <section class="color-palette-panel" aria-labelledby="color-palette-heading">
+        <div class="palette-heading">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h2.5a6.5 6.5 0 0 0 0-13H12Z"/><circle cx="7.5" cy="10" r=".8"/><circle cx="10" cy="7" r=".8"/><circle cx="14" cy="7" r=".8"/></svg>
+          <div><h2 id="color-palette-heading">Palette della card</h2><p id="color-palette-subtitle">Colori applicati alla card</p></div>
         </div>
-      </details>
+        <div id="brand-colors" class="brand-colors" role="list" aria-label="Colori applicati alla card"></div>
+        <p id="color-palette-help" class="palette-help">Profilo colore scelto per questa card.</p>
+      </section>
 
       <form id="editor-form">
         <fieldset class="tool-section direction-section">
@@ -92,9 +84,9 @@
             <span>Direzione</span>
           </legend>
           <div class="directions" role="group" aria-label="Direzione visuale">
-            <button type="button" data-direction="editorial" aria-pressed="false"><span>ED</span><small>Pagina</small></button>
-            <button type="button" data-direction="statement" aria-pressed="false"><span>ST</span><small>Manifesto</small></button>
-            <button type="button" data-direction="contextual" aria-pressed="false"><span>CX</span><small>Scheda fonte</small></button>
+            <button type="button" data-direction="editorial" aria-pressed="false"><span>ED</span><small>Contorni</small></button>
+            <button type="button" data-direction="statement" aria-pressed="false"><span>ST</span><small>Moduli × Poster</small></button>
+            <button type="button" data-direction="contextual" aria-pressed="false"><span>CX</span><small>Campo</small></button>
           </div>
         </fieldset>
 
@@ -116,6 +108,9 @@
               </button>
               <button type="button" data-style="highlight" aria-label="Evidenziato" title="Evidenziato">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 8-8 4 4-8 8H6v-4ZM13 8l4 4M4 21h16"/></svg>
+              </button>
+              <button type="button" data-style="accent" aria-label="Colore accento" title="Colore accento">
+                <span class="format-letter format-accent" aria-hidden="true">A</span>
               </button>
               <span id="formatting-state" class="formatting-state" aria-live="polite">Seleziona il testo da formattare</span>
             </div>
@@ -205,13 +200,6 @@
         </div>
       </form>
 
-      <section class="qa-panel" aria-labelledby="qa-heading">
-        <div class="qa-heading">
-          <h2 id="qa-heading">Quality gate</h2>
-          <span class="qa-mini-state">Live</span>
-        </div>
-        <ul id="warnings" class="warnings" aria-live="polite" aria-atomic="false"><li class="empty-warning">Validazione in corso.</li></ul>
-      </section>
     </aside>
   </main>
 
@@ -231,11 +219,12 @@
     <div class="actions">
       <a id="back-link" class="button button-quiet" href="#">Testo</a>
       <button id="reset" class="button button-quiet" type="button" aria-label="Ripristina la bozza" title="Ripristina la bozza">Ripristina</button>
-      <button id="feedback" class="button button-secondary" type="button">Invia</button>
-      <button id="approve" class="button button-primary" type="button">Approva <span aria-hidden="true">→</span></button>
+      <div id="generated-output" class="generated-output" aria-label="Output generati" hidden></div>
+      <button id="generate" class="button button-primary" type="button"><span id="generate-label">Genera</span><span aria-hidden="true">→</span></button>
     </div>
   </footer>
 
+  <script src="formatting-core.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

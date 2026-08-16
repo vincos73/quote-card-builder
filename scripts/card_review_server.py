@@ -10,6 +10,7 @@ import json
 import math
 import os
 import secrets
+import subprocess
 import sys
 import threading
 import xml.etree.ElementTree as ET
@@ -18,7 +19,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -38,12 +39,20 @@ LOGO_MODES = {"auto", "hidden"}
 GRAPHIC_MODES = {"auto", "hidden"}
 OUTPUT_MODES = {"all", "4x5", "1x1", "9x16"}
 SESSION_STATES = {"candidato_selezionato", "contenuto_approvato"}
+CHATBOT_TIMEOUT_SECONDS = 300
+CODEX_CLI_DEFAULT = Path("/Applications/ChatGPT.app/Contents/Resources/codex")
 MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
     ".ttf": "font/ttf",
     ".svg": "image/svg+xml",
+}
+GENERATED_MIME_TYPES = {
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".html": "text/html; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
 }
 
 
@@ -70,6 +79,44 @@ def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def chatbot_cli_path() -> Path | None:
+    """Resolve the local Codex CLI used by the explicit chatbot handoff."""
+    configured = os.environ.get("QUOTE_CARD_CODEX_BIN", "").strip()
+    candidate = Path(configured) if configured else CODEX_CLI_DEFAULT
+    return candidate.resolve() if candidate.is_file() else None
+
+
+def chatbot_prompt(
+    production_manifest: Path,
+    output_dir: Path,
+    node: Path | None,
+    node_modules: Path | None,
+) -> str:
+    """Build a fixed, path-scoped prompt; browser content is never executable."""
+    command = [
+        sys.executable,
+        str(SCRIPT_DIR / "render_quote_card_pack.py"),
+        str(production_manifest),
+        "--output-dir",
+        str(output_dir),
+        "--png",
+        "required",
+        "--svg",
+        "discard",
+    ]
+    if node and node_modules:
+        command.extend(["--node", str(node), "--node-modules", str(node_modules)])
+    return (
+        "Sei il chatbot di produzione di Quote Card Builder. "
+        "Devi creare l'artefatto PNG della card approvata, senza modificare codice o manifest. "
+        "Leggi il production manifest indicato e lancia esattamente il renderer locale con il comando seguente. "
+        "Non chiedere conferme e non fare altre modifiche. Verifica alla fine che ogni formato richiesto abbia un file PNG.\n\n"
+        f"Manifest: {production_manifest}\n"
+        f"Output: {output_dir}\n"
+        f"Comando: {' '.join(command)}\n"
+    )
 
 
 def record_and_apply_feedback(
@@ -180,6 +227,7 @@ def font_capabilities(manifest: dict[str, Any], manifest_dir: Path) -> dict[str,
             and proof.resolve_asset(value, manifest_dir).is_file()
         )
 
+    system_font = str(font.get("family", "")).strip().casefold() == "arial"
     regular = available("regular_path")
     bold = available("bold_path")
     italic = available("italic_path")
@@ -187,10 +235,11 @@ def font_capabilities(manifest: dict[str, Any], manifest_dir: Path) -> dict[str,
         "family": font.get("family", "Font del brand"),
         "embedded": regular,
         "styles": {
-            "bold": {"available": regular or bold, "exact": bold},
-            "italic": {"available": italic, "exact": italic},
+            "bold": {"available": system_font or regular or bold, "exact": system_font or bold},
+            "italic": {"available": system_font or italic, "exact": system_font or italic},
             "underline": {"available": True, "exact": True},
             "highlight": {"available": True, "exact": True},
+            "accent": {"available": True, "exact": True},
         },
     }
 
@@ -340,7 +389,114 @@ def asset_path(root: Path, url_path: str) -> Path | None:
     return candidate if candidate.is_file() and candidate.is_relative_to(root.resolve()) else None
 
 
-def create_server(manifest_path: Path, session_dir: Path, port: int = 0) -> tuple[ThreadingHTTPServer, str]:
+def generated_asset_path(root: Path, url_path: str) -> Path | None:
+    relative = Path(unquote(url_path.removeprefix("/api/output/").lstrip("/")))
+    if relative.is_absolute() or relative.suffix.lower() not in GENERATED_MIME_TYPES:
+        return None
+    candidate = (root / relative).resolve()
+    return candidate if candidate.is_file() and candidate.is_relative_to(root.resolve()) else None
+
+
+def production_formats(manifest: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+    formats = copy.deepcopy(manifest["formats"])
+    available = {item["id"] for item in formats}
+    mode = (manifest.get("presentation") or {}).get("output_mode")
+    if mode not in OUTPUT_MODES:
+        mode = "all" if available == FORMAT_IDS else formats[0]["id"]
+    selected = formats if mode == "all" else [item for item in formats if item["id"] == mode]
+    if not selected:
+        raise ValueError(f"Il formato {mode} non è disponibile nella sessione")
+    return mode, selected
+
+
+def generate_production_pack(
+    manifest: dict[str, Any], manifest_path: Path, session_dir: Path,
+    node: Path | None, node_modules: Path | None,
+) -> dict[str, Any]:
+    """Freeze the approved draft and render the selected production outputs."""
+    production_dir = session_dir / "production"
+    output_dir = production_dir / "output"
+    mode, formats = production_formats(manifest)
+    previews = {item["format"]: item for item in render_preview(manifest, manifest_path.parent)}
+    proof_format = formats[0]["id"]
+    proof = previews.get(proof_format)
+    if not proof:
+        raise ValueError("La prova approvata non è disponibile")
+
+    basename = (manifest.get("output") or {}).get("basename", "quote-card")
+    proof_path = production_dir / f"{basename}-{manifest['direction']}-{proof_format}-approved-proof.svg"
+    proof_path.parent.mkdir(parents=True, exist_ok=True)
+    proof_path.write_text(proof["svg"], encoding="utf-8")
+
+    presentation = copy.deepcopy(manifest.get("presentation") or {})
+    presentation["output_mode"] = mode
+    production_manifest = {
+        "schema_version": "0.3",
+        "state": "prova_visuale_approvata",
+        "approval": {
+            "direction": manifest["direction"],
+            "proof_path": proof_path.name,
+            "content_sha256": pack.sha256_text(manifest["content"]["text"]),
+            "approved_by": "user",
+            "approved_at": now_iso(),
+        },
+        "content": copy.deepcopy(manifest["content"]),
+        "formats": formats,
+        "presentation": presentation,
+        "brand": copy.deepcopy(manifest["brand"]),
+        "source": copy.deepcopy(manifest["source"]),
+        "output": copy.deepcopy(manifest.get("output") or {"basename": basename}),
+    }
+    production_manifest_path = production_dir / "production-manifest.json"
+    atomic_write_json(production_manifest_path, production_manifest)
+    errors = pack.validate_production_manifest(production_manifest, production_dir)
+    if errors:
+        messages = "; ".join(error["message"] for error in errors)
+        raise ValueError(f"Manifest di produzione non valido: {messages}")
+
+    png_required = bool(node and node_modules and node.is_file() and node_modules.is_dir())
+    result = pack.render_pack(
+        production_manifest, production_manifest_path, output_dir,
+        "required" if png_required else "auto", node, node_modules, "auto",
+    )
+    outputs: list[dict[str, str]] = []
+    for item in result["formats"]:
+        artifact = item.get("png") or item.get("svg")
+        if not artifact:
+            continue
+        path = (output_dir / artifact["path"]).resolve()
+        relative = path.relative_to(production_dir.resolve()).as_posix()
+        outputs.append({
+            "format": item["format"],
+            "kind": "png" if item.get("png") else "svg",
+            "filename": path.name,
+            "relative_path": relative,
+        })
+    return {
+        **result,
+        "outputs": outputs,
+        "production_manifest": str(production_manifest_path),
+        "production_root": str(production_dir),
+    }
+
+
+def output_payload(outputs: Any, token: str) -> list[dict[str, Any]]:
+    """Attach authenticated download URLs to persisted generation outputs."""
+    result: list[dict[str, Any]] = []
+    if not isinstance(outputs, list):
+        return result
+    for item in outputs:
+        if not isinstance(item, dict) or not isinstance(item.get("relative_path"), str):
+            continue
+        encoded = quote(item["relative_path"], safe="/")
+        result.append({**item, "url": f"/api/output/{encoded}?token={quote(token, safe='')}"})
+    return result
+
+
+def create_server(
+    manifest_path: Path, session_dir: Path, port: int = 0,
+    node: Path | None = None, node_modules: Path | None = None,
+) -> tuple[ThreadingHTTPServer, str]:
     manifest_path, session_dir = manifest_path.resolve(), session_dir.resolve()
     manifest = read_json(manifest_path)
     errors = validate_manifest(manifest)
@@ -353,7 +509,105 @@ def create_server(manifest_path: Path, session_dir: Path, port: int = 0) -> tupl
     state.update({"manifest": str(manifest_path), "feedback_path": str(feedback_path), "token": token, "manifest_revision": manifest["revision"], "server_started_at": now_iso(), "last_feedback_id": state.get("last_feedback_id"), "applied_feedback_id": state.get("applied_feedback_id")})
     atomic_write_json(state_path, state)
     assets = SCRIPT_DIR.parent / "assets" / "card-editor"
+    production_dir = session_dir / "production"
+    node = node.resolve() if node else None
+    node_modules = node_modules.resolve() if node_modules else None
     lock = threading.Lock()
+    chatbot_lock = threading.Lock()
+
+    def update_chatbot_state(status: dict[str, Any]) -> None:
+        with chatbot_lock:
+            current = read_json(state_path)
+            current["chatbot_generation"] = status
+            atomic_write_json(state_path, current)
+
+    def launch_chatbot_generation(generation: dict[str, Any]) -> dict[str, Any]:
+        """Hand the approved production manifest to a local Codex chatbot."""
+        with chatbot_lock:
+            existing = read_json(state_path).get("chatbot_generation")
+            if isinstance(existing, dict) and existing.get("status") == "running":
+                return existing
+        cli = chatbot_cli_path()
+        production_manifest = Path(generation["production_manifest"]).resolve()
+        production_root = Path(generation["production_root"]).resolve()
+        output_dir = production_root / "output"
+        request_id = f"chatbot-{secrets.token_hex(8)}"
+        request_path = session_dir / f"{request_id}.json"
+        log_path = session_dir / f"{request_id}.log"
+        if cli is None:
+            return {
+                "request_id": request_id,
+                "status": "unavailable",
+                "message": "Codex CLI non disponibile: gli output locali restano validi.",
+            }
+        request = {
+            "request_id": request_id,
+            "created_at": now_iso(),
+            "manifest": str(production_manifest),
+            "output_dir": str(output_dir),
+            "outputs": generation.get("outputs", []),
+            "status": "queued",
+        }
+        atomic_write_json(request_path, request)
+        command = [
+            str(cli), "exec", "--ephemeral", "--skip-git-repo-check",
+            "--sandbox", "workspace-write", "--color", "never",
+            "-C", str(SCRIPT_DIR.parent),
+            chatbot_prompt(production_manifest, output_dir, node, node_modules),
+        ]
+        try:
+            log_handle = log_path.open("w", encoding="utf-8")
+            process = subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            return {
+                "request_id": request_id,
+                "status": "failed",
+                "message": f"Avvio chatbot non riuscito: {exc}",
+            }
+        status = {
+            "request_id": request_id,
+            "status": "running",
+            "started_at": now_iso(),
+            "pid": process.pid,
+            "request_path": str(request_path),
+            "log_path": str(log_path),
+        }
+        update_chatbot_state(status)
+
+        def monitor() -> None:
+            try:
+                return_code = process.wait(timeout=CHATBOT_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                return_code = -15
+            finally:
+                log_handle.close()
+            files_ready = all(
+                (production_root / item["relative_path"]).is_file() and item.get("kind") == "png"
+                for item in generation.get("outputs", [])
+            )
+            completed = return_code == 0 and files_ready
+            update_chatbot_state({
+                **status,
+                "status": "completed" if completed else "failed",
+                "finished_at": now_iso(),
+                "return_code": return_code,
+                "outputs_ready": files_ready,
+                "message": "PNG creati dal chatbot." if completed else "Il chatbot non ha completato tutti i PNG; verifica il log.",
+            })
+
+        threading.Thread(target=monitor, name=f"quote-card-chatbot-{request_id}", daemon=True).start()
+        return status
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "QuoteVisualReview/0.4"
@@ -379,18 +633,32 @@ def create_server(manifest_path: Path, session_dir: Path, port: int = 0) -> tupl
             static = asset_path(assets, parsed.path)
             if static: self.send_value(HTTPStatus.OK, static.read_bytes(), MIME_TYPES[static.suffix]); return
             if not self.authorized(query): self.send_json(HTTPStatus.FORBIDDEN, {"error": "Sessione non autorizzata"}); return
+            if parsed.path.startswith("/api/output/"):
+                generated = generated_asset_path(production_dir, parsed.path)
+                if generated:
+                    self.send_value(HTTPStatus.OK, generated.read_bytes(), GENERATED_MIME_TYPES[generated.suffix.lower()]); return
+                self.send_json(HTTPStatus.NOT_FOUND, {"error": "Output non trovato"}); return
             if parsed.path == "/":
                 index = assets / "index.html"
                 if index.is_file(): self.send_value(HTTPStatus.OK, index.read_bytes(), MIME_TYPES[".html"]); return
                 self.send_json(HTTPStatus.NOT_FOUND, {"error": "Interfaccia card-editor mancante"}); return
             if parsed.path == "/api/session": self.send_json(HTTPStatus.OK, session_model(read_json(manifest_path), manifest_path.parent)); return
             if parsed.path == "/api/status":
-                current = read_json(state_path); latest = read_json(manifest_path); self.send_json(HTTPStatus.OK, {"revision": latest["revision"], "last_feedback_id": current.get("last_feedback_id"), "applied_feedback_id": current.get("applied_feedback_id"), "feedback_pending": bool(current.get("last_feedback_id") and current.get("last_feedback_id") != current.get("applied_feedback_id"))}); return
+                current = read_json(state_path); latest = read_json(manifest_path)
+                last_generation = copy.deepcopy(current.get("last_generation"))
+                if isinstance(last_generation, dict):
+                    last_generation["outputs"] = output_payload(last_generation.get("outputs"), token)
+                self.send_json(HTTPStatus.OK, {"revision": latest["revision"], "last_feedback_id": current.get("last_feedback_id"), "applied_feedback_id": current.get("applied_feedback_id"), "feedback_pending": bool(current.get("last_feedback_id") and current.get("last_feedback_id") != current.get("applied_feedback_id")), "chatbot_generation": current.get("chatbot_generation"), "last_generation": last_generation}); return
+            if parsed.path == "/api/agent-status":
+                current = read_json(state_path).get("chatbot_generation")
+                if not isinstance(current, dict) or current.get("request_id") != query.get("request_id", [""])[0]:
+                    self.send_json(HTTPStatus.NOT_FOUND, {"error": "Richiesta chatbot non trovata"}); return
+                self.send_json(HTTPStatus.OK, current); return
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "Risorsa non trovata"})
         def do_POST(self) -> None:  # noqa: N802
             parsed, query = urlparse(self.path), parse_qs(urlparse(self.path).query)
             if not self.local_host() or not self.authorized(query): self.send_json(HTTPStatus.FORBIDDEN, {"error": "Sessione non autorizzata"}); return
-            if parsed.path not in {"/api/preview", "/api/submit"}: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Risorsa non trovata"}); return
+            if parsed.path not in {"/api/preview", "/api/generate"}: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Risorsa non trovata"}); return
             try:
                 payload, current = self.request_json(), read_json(manifest_path)
                 if parsed.path == "/api/preview":
@@ -400,14 +668,24 @@ def create_server(manifest_path: Path, session_dir: Path, port: int = 0) -> tupl
                     self.send_json(HTTPStatus.OK, {"revision": current["revision"], "previews": previews, "qa": qa, "warnings": qa["warnings"], "editorial_responsibility": "user", "declaration": {"transformation": draft["content"]["transformation"], "evidence_status": draft["content"]["evidence_status"], "attribution": draft["content"]["attribution"], "use_quotation_marks": draft["content"]["use_quotation_marks"]}}); return
                 with lock:
                     draft = validate_draft(payload, current)
-                    action = payload.get("action")
-                    if action not in {"feedback", "approve"}: raise ValueError("action deve essere feedback oppure approve")
-                    if action == "approve": ensure_approvable(draft, manifest_path.parent)
-                    feedback = {"feedback_id": f"feedback-{secrets.token_hex(8)}", "submitted_at": now_iso(), "action": action, "base_revision": current["revision"], "editorial_responsibility": "user", "content": {"text": draft["content"]["text"], "transformation": draft["content"]["transformation"], "evidence_status": draft["content"]["evidence_status"], "attribution": draft["content"]["attribution"], "use_quotation_marks": draft["content"]["use_quotation_marks"], "styles": draft["content"].get("styles", []), "declared_by": "user"}, "direction": draft["direction"], "emphasis": draft["content"]["emphasis"], "presentation": draft["presentation"], "formats": [{"id": item["id"], "lines": item["lines"], "text_scale": item["text_scale"], "vertical_position": item["vertical_position"]} for item in draft["formats"]], "overall_note": payload.get("overall_note", "")}
+                    ensure_approvable(draft, manifest_path.parent)
+                    feedback = {"feedback_id": f"feedback-{secrets.token_hex(8)}", "submitted_at": now_iso(), "action": "approve", "base_revision": current["revision"], "editorial_responsibility": "user", "content": {"text": draft["content"]["text"], "transformation": draft["content"]["transformation"], "evidence_status": draft["content"]["evidence_status"], "attribution": draft["content"]["attribution"], "use_quotation_marks": draft["content"]["use_quotation_marks"], "styles": draft["content"].get("styles", []), "declared_by": "user"}, "direction": draft["direction"], "emphasis": draft["content"]["emphasis"], "presentation": draft["presentation"], "formats": [{"id": item["id"], "lines": item["lines"], "text_scale": item["text_scale"], "vertical_position": item["vertical_position"]} for item in draft["formats"]], "overall_note": payload.get("overall_note", "")}
                     application = record_and_apply_feedback(manifest_path, session_dir, feedback)
-                event = {"event": "feedback", "feedback_id": feedback["feedback_id"], "action": action, "path": str(feedback_path), "applied": True, "revision": application["revision"]}
+                    latest = read_json(manifest_path)
+                    generation = generate_production_pack(latest, manifest_path, session_dir, node, node_modules)
+                    current_state = read_json(state_path)
+                    current_state["last_generation"] = {
+                        "generated_at": now_iso(),
+                        "revision": application["revision"],
+                        "qa_report": generation["qa_report"],
+                        "outputs": generation["outputs"],
+                    }
+                    atomic_write_json(state_path, current_state)
+                    chatbot = launch_chatbot_generation(generation)
+                generated_outputs = output_payload(generation["outputs"], token)
+                event = {"event": "generation", "feedback_id": feedback["feedback_id"], "action": "generate", "path": str(feedback_path), "applied": True, "revision": application["revision"], "outputs": generated_outputs}
                 print(json.dumps(event, ensure_ascii=False), flush=True)
-                self.send_json(HTTPStatus.OK, {**feedback, "applied": True, "application": application})
+                self.send_json(HTTPStatus.OK, {"applied": True, "application": application, "generation": {**generation, "outputs": generated_outputs}, "chatbot": chatbot})
             except RuntimeError as exc: self.send_json(HTTPStatus.CONFLICT, {"error": str(exc)})
             except (ValueError, UnicodeDecodeError, json.JSONDecodeError, TypeError, review_applier.ReviewError) as exc: self.send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(exc)})
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
@@ -415,8 +693,14 @@ def create_server(manifest_path: Path, session_dir: Path, port: int = 0) -> tupl
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__); parser.add_argument("manifest", type=Path); parser.add_argument("--session-dir", type=Path, required=True); parser.add_argument("--port", type=int, default=0); args = parser.parse_args(argv)
-    try: server, token = create_server(args.manifest, args.session_dir, args.port)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("manifest", type=Path)
+    parser.add_argument("--session-dir", type=Path, required=True)
+    parser.add_argument("--port", type=int, default=0)
+    parser.add_argument("--node", type=Path)
+    parser.add_argument("--node-modules", type=Path)
+    args = parser.parse_args(argv)
+    try: server, token = create_server(args.manifest, args.session_dir, args.port, args.node, args.node_modules)
     except (OSError, ValueError, json.JSONDecodeError) as exc: print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr); return 2
     url = f"http://127.0.0.1:{server.server_address[1]}/?token={token}"
     print(json.dumps({"status": "ready", "url": url, "session_dir": str(args.session_dir.resolve()), "manifest": str(args.manifest.resolve())}, ensure_ascii=False), flush=True)

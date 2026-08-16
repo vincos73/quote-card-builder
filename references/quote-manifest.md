@@ -61,7 +61,7 @@ Usare questo riferimento quando bisogna salvare, validare o passare il lavoro a 
 
 `selection` è obbligatorio da `contenuto_approvato` in poi.
 
-Quando è disponibile Visual Review Studio 0.6, dopo la scelta del candidato usare `candidato_selezionato` nel manifest editor 0.4. `Invia` salva le dichiarazioni dell'utente; `Approva` può salvarle e richiedere l'approvazione visuale nello stesso batch. Registrare `declared_by: user` per distinguere queste scelte dai dati osservati nella fonte.
+Quando è disponibile Visual Review Studio 0.6, dopo la scelta del candidato usare `candidato_selezionato` nel manifest editor 0.4. `Genera` salva le dichiarazioni dell'utente, registra la prova corrente come approvata dopo il gate tecnico e produce i formati selezionati nello stesso batch. Registrare `declared_by: user` per distinguere queste scelte dai dati osservati nella fonte.
 
 ## Stati ammessi nel core 0.1
 
