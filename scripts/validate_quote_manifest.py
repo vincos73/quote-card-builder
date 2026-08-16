@@ -133,10 +133,6 @@ def validate_manifest(data: Any) -> list[dict[str, str]]:
         label = attribution.get("label", "")
         if role != "none" and (not isinstance(label, str) or not label.strip()):
             add_error(errors, f"{path}.attribution.label", "required", "Il ruolo richiede un'etichetta visibile.")
-        quotation_marks = candidate.get("use_quotation_marks")
-        if not isinstance(quotation_marks, bool):
-            add_error(errors, f"{path}.use_quotation_marks", "type", "Deve essere true o false.")
-
         ranking = require_dict(candidate.get("ranking"), f"{path}.ranking", errors)
         score = ranking.get("score")
         if not isinstance(score, int) or isinstance(score, bool) or not 0 <= score <= 100:

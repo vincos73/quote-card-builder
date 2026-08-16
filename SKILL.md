@@ -7,7 +7,7 @@ description: Trasforma frasi, testi, URL, documenti e idee in quote card. Usa qu
 
 Versione: **0.8.0 — Render Verification**
 
-Separare sempre provenienza osservata, dichiarazioni editoriali dell'utente e produzione visuale. La skill non inventa dati né certifica le scelte dell'utente: propone etichette e segnala incongruenze, ma l'utente può modificare e approvare testo, classificazione, prova, attribuzione e virgolette ed è il garante finale.
+Separare sempre provenienza osservata, dichiarazioni editoriali dell'utente e produzione visuale. La skill non inventa dati né certifica le scelte dell'utente: propone etichette e segnala incongruenze, ma l'utente può modificare e approvare testo, classificazione, prova, attribuzione ed è il garante finale.
 
 Non ricavare il brand dalla fonte, dalla memoria o dal profilo dell'utente. Usare soltanto un profilo fornito o approvato nel lavoro corrente; offrire un profilo neutro solo come scelta esplicita.
 
@@ -50,7 +50,7 @@ Gestire il lavoro con questi stati: `bozza` → `candidati_pronti` → `candidat
 1. Dopo un confronto chiedere soltanto il numero del candidato e l'attribuzione visibile, distinguendo `speaker`, `author`, `publisher` e `none`. Se non è stato offerto alcun elenco di candidati, chiedere direttamente solo l'attribuzione visibile; non richiedere un numero fittizio.
 2. Registrare la scelta come `candidato_selezionato`; non chiedere in chat una seconda conferma di etichette quando l'editor locale è disponibile.
 3. Aprire l'editor con il candidato come base interamente modificabile nei campi editoriali.
-4. Consentire all'utente di cambiare liberamente testo, attribuzione e ruolo nell'editor; mostrare trasformazione e stato della prova come informazioni nel ledger inferiore. Le virgolette non hanno più un controllo nell'editor: se l'utente le richiede, aggiornare `content.use_quotation_marks` conversazionalmente. Se l'utente chiede di cambiare queste dichiarazioni, aggiornarle conversazionalmente senza downgrade o correzioni automatiche.
+4. Consentire all'utente di cambiare liberamente testo, attribuzione e ruolo nell'editor; mostrare trasformazione e stato della prova come informazioni nel ledger inferiore. Se l'utente chiede di cambiare queste dichiarazioni, aggiornarle conversazionalmente senza downgrade o correzioni automatiche.
 5. L'editor espone una sola azione primaria: `Genera`. Il clic salva le scelte correnti, registra la responsabilità editoriale dell'utente, supera il gate tecnico e produce direttamente i formati selezionati; non richiedere un passaggio preliminare di invio o approvazione.
 6. Registrare `declared_by: user` e mantenere separati i dati osservati dalla fonte dalle dichiarazioni dell'utente.
 7. Quando l'editor non è disponibile, chiedere conversazionalmente le scelte necessarie e registrarle come dichiarazioni dell'utente.
@@ -62,8 +62,8 @@ Procedere dopo `candidato_selezionato`; l'editor raccoglie le dichiarazioni dell
 
 1. Risolvere un profilo brand fornito, approvato nel lavoro corrente, configurato con l'utente oppure neutro scelto esplicitamente.
 2. Proporre tre direzioni adattate allo stesso contenuto e allo stesso brand:
-   - `editorial` / Contorni: pagina aperta, testo di grande scala con alternanza iniziale normale/grassetto e linee di livello agli angoli;
-   - `statement` / Manifesto: maiuscolo visuale e scala dominante, con una riga inizialmente in accento, moduli angolari discreti e fonte allineata a destra;
+   - `editorial` / Contorni: pagina aperta, testo di grande scala con alternanza iniziale normale/grassetto e contorni di livello nei margini;
+   - `statement` / Manifesto: maiuscolo visuale e scala dominante, con una riga inizialmente in accento, eco concentrica d'angolo e fonte allineata a destra;
    - `contextual` / Campo: foglio editoriale incastonato in un campo cromatico con una riga inizialmente evidenziata e una sola regola verticale.
 3. Differenziare le direzioni per composizione, non soltanto per colore o font.
 4. Preparare una proposta di a capo coerente con significato e impatto: privilegiare attacco forte, unità semantiche nette, ritmo e chiusura memorabile, evitando righe deboli o parole isolate. Quando l'editor deve ribilanciare formati non attivi dopo una modifica testuale, calcolare la divisione sulla lunghezza visiva delle parole e penalizzare le righe di una sola parola: il numero di righe precedente è soltanto una preferenza debole, non un vincolo. Lasciare però all'utente il controllo finale: ogni newline inserito nel formato attivo deve restare esattamente dove viene scritto; una riga vuota vale come riga intera di spazio verticale.
@@ -87,7 +87,7 @@ Procedere dopo `prova_visuale_approvata`, registrato automaticamente quando l'ut
 2. Includere nel production manifest tutti i rapporti soltanto con `presentation.output_mode: all`; altrimenti includere esclusivamente il formato `4x5`, `1x1` o `9x16` scelto. Definire a capo autonomi per i formati richiesti e verificare che ognuno ricostruisca esattamente il testo approvato; non ritagliare o ridimensionare un altro output.
 3. Produrre PNG come consegna predefinita. Quando Node.js e `sharp` sono già disponibili, eseguire `scripts/render_quote_card_pack.py <manifest.json> --output-dir <cartella> --png required --svg auto --node <node> --node-modules <node_modules>`: l'SVG è un intermedio tecnico e viene eliminato dopo la conversione riuscita. Non installare dipendenze.
 4. Se la conversione PNG non è disponibile, conservare l'SVG come fallback dichiarato. Quando Python espone Pillow, usarlo per il fitting sulle metriche reali; in sua assenza accettare il fallback dichiarato `deterministic_heuristic`.
-5. Mostrare fedeltà, etichette, attribuzione, virgolette, numeri, negazioni e cautele come riepilogo consultivo; non sovrascrivere le dichiarazioni approvate dall'utente.
+5. Mostrare fedeltà, etichette, attribuzione, numeri, negazioni e cautele come riepilogo consultivo; non sovrascrivere le dichiarazioni approvate dall'utente.
 6. Controllare leggibilità alla dimensione tipica del feed, contrasto, gerarchia, a capo, margini di sicurezza, sforamenti, font e risorse in ogni rapporto.
 7. Non modificare il testo approvato durante il fitting. Calcolare il massimo sicuro per ciascun formato e applicare `text_scale` come sola riduzione da quel massimo; tornare all'approvazione editoriale soltanto se la dimensione risultante non è leggibile.
 8. Leggere il report `*-production-qa.json` e verificare dimensioni, rapporti, metodo di fitting, contrasto e hash. Lo stato deve restare `qa` durante l'ispezione.

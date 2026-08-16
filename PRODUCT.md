@@ -50,7 +50,7 @@ Quando incontro un passaggio interessante o ho un'idea da pubblicare, voglio tra
 2. **Trasformazione e verificabilità sono assi distinti.** `VERBATIM` non significa automaticamente verificato.
 3. **Persona citata, autore del testo, editore e brand sono ruoli distinti.** Non usare un logo o una firma come attribuzione implicita.
 4. **Il brand non si inferisce.** Usare solo un profilo fornito o approvato nel lavoro corrente; il profilo neutro richiede una scelta esplicita.
-5. **L'utente è il garante editoriale.** Può cambiare testo, classificazione, prova, attribuzione e virgolette.
+5. **L'utente è il garante editoriale.** Può cambiare testo, classificazione, prova e attribuzione.
 6. **Solo la qualità tecnica e visuale è bloccante.** Le incongruenze editoriali sono segnalazioni consultive.
 7. **Il core deve essere indipendente dal formato.** Evidenze e brand potranno servire anche Carousel Builder e Infographic Builder.
 
@@ -104,7 +104,7 @@ Ogni candidato deve avere due etichette indipendenti.
 ### 6.3 Responsabilità editoriale
 
 - La skill propone etichette e mostra la provenienza osservata, senza sovrascrivere le scelte dell'utente.
-- Ogni combinazione di trasformazione, prova, attribuzione e virgolette è salvabile e renderizzabile.
+- Ogni combinazione di trasformazione, prova e attribuzione è salvabile e renderizzabile.
 - Le scelte approvate sono registrate con `declared_by: user`.
 - Restano obbligatori soltanto tipi, enum, campi strutturali e locator tecnicamente validi quando presenti.
 
@@ -158,7 +158,6 @@ Ottenere un'approvazione esplicita su:
 - testo;
 - dichiarazioni di trasformazione e prova;
 - attribuzione;
-- uso o meno delle virgolette.
 
 ### 6. Direzione visuale (`VISUAL CONCEPT`)
 
@@ -201,7 +200,6 @@ Controlli editoriali consultivi:
 - fedeltà alla fonte;
 - etichetta di trasformazione corretta;
 - stato della prova corretto;
-- possibili ambiguità fra attribuzione e virgolette;
 - assenza di perdita di cautele, negazioni, numeri o condizioni.
 
 Controlli visuali:
@@ -265,7 +263,7 @@ Il primo incremento è stato il **Content/Evidence Core**, una porzione completa
 
 - una frase letterale presente nella fonte può essere validata come `VERBATIM + VERIFIED`;
 - una frase modificata può conservare `VERBATIM` se l'utente lo dichiara;
-- parafrasi, virgolette, stato della prova e ruolo restano scelte dell'utente;
+- parafrasi, stato della prova e ruolo restano scelte dell'utente;
 - un conflitto è registrabile e non blocca la selezione;
 - il candidato selezionato include motivazione, attribuzione e stato editoriale;
 - il manifest è indipendente da renderer, brand e canale.
@@ -284,7 +282,7 @@ Gli incrementi successivi completano il percorso visuale senza indebolire il cor
 - **0.6.9 Distinct Layout Core:** Contorni, Moduli × Poster e Campo adottano tre grammatiche strutturali autonome; il maiuscolo del Manifesto resta soltanto visuale e l'editor conserva e riallinea la formattazione dopo le modifiche al testo.
 - **0.6.10 One-Step Generate:** una sola CTA `Genera` sostituisce i checkpoint separati, applica la bozza, esegue QA e renderer e restituisce i link ai PNG selezionati nella stessa richiesta.
 
-User-Owned Editorial Studio non espone un canvas libero. Consente di modificare testo, formattazione, attribuzione, ruolo e virgolette senza riclassificazioni automatiche; trattamento e prova sono dichiarazioni dell'utente mostrate nel ledger e aggiornabili conversazionalmente. Fonte osservata, brand e dimensioni restano immutabili.
+User-Owned Editorial Studio non espone un canvas libero. Consente di modificare testo, formattazione, attribuzione e ruolo senza riclassificazioni automatiche; trattamento e prova sono dichiarazioni dell'utente mostrate nel ledger e aggiornabili conversazionalmente. Fonte osservata, brand e dimensioni restano immutabili.
 
 ## 10. Architettura evolutiva
 
@@ -390,7 +388,7 @@ Direzione approvata persistente, fitting sulle metriche reali del font, master 4
 
 ### 0.4 — Visual Review Studio
 
-Editor locale desktop-first, preview prodotta dal renderer production, direzione e a capo per formato, scala limitata, posizione, logo, virgolette, QA live e batch revisionato dall'agente.
+Editor locale desktop-first, preview prodotta dal renderer production, direzione e a capo per formato, scala limitata, posizione, logo, QA live e batch revisionato dall'agente.
 
 ### 0.5 — Editorial + Visual Studio
 

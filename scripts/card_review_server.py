@@ -181,7 +181,6 @@ def validate_manifest(data: Any) -> list[str]:
         style_errors: list[dict[str, str]] = []
         proof.validate_text_styles(content["styles"], content.get("text", ""), style_errors)
         errors.extend(item["message"] for item in style_errors)
-    if not isinstance(content.get("use_quotation_marks"), bool): error(errors, "content.use_quotation_marks deve essere booleano")
     attribution = content.get("attribution")
     if not isinstance(attribution, dict) or attribution.get("role") not in proof.ATTRIBUTION_ROLES: error(errors, "content.attribution deve essere valido")
     elif attribution.get("role") != "none" and (not isinstance(attribution.get("label"), str) or not attribution["label"].strip()): error(errors, "content.attribution.label è obbligatorio per il ruolo scelto")
@@ -192,7 +191,6 @@ def validate_manifest(data: Any) -> list[str]:
         or presentation.get("logo_mode") not in LOGO_MODES
         or presentation.get("graphic_mode", "auto") not in GRAPHIC_MODES
         or presentation.get("output_mode", "all") not in OUTPUT_MODES
-        or not isinstance(presentation.get("show_quotation_marks"), bool)
     ): error(errors, "presentation non valida")
     formats = data.get("formats")
     if not isinstance(formats, list) or not (1 <= len(formats) <= MAX_FORMATS): return errors + ["formats deve contenere da 1 a 3 formati"]
@@ -254,7 +252,7 @@ def session_model(manifest: dict[str, Any], manifest_dir: Path | None = None) ->
 
 def validate_draft(payload: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict): raise ValueError("Il draft deve essere un oggetto JSON")
-    allowed = {"base_revision", "text", "transformation", "evidence_status", "attribution", "use_quotation_marks", "direction", "emphasis", "styles", "styles_customized", "presentation", "formats", "action", "overall_note"}
+    allowed = {"base_revision", "text", "transformation", "evidence_status", "attribution", "direction", "emphasis", "styles", "styles_customized", "presentation", "formats", "action", "overall_note"}
     if set(payload) - allowed: raise ValueError("Il draft contiene campi non modificabili")
     if payload.get("base_revision") != manifest["revision"]: raise RuntimeError("La revisione di base non coincide con il manifest")
     candidate = copy.deepcopy(manifest)
@@ -266,7 +264,6 @@ def validate_draft(payload: Any, manifest: dict[str, Any]) -> dict[str, Any]:
         "transformation": payload.get("transformation", candidate["content"].get("transformation")),
         "evidence_status": payload.get("evidence_status", candidate["content"].get("evidence_status")),
         "attribution": copy.deepcopy(payload.get("attribution", candidate["content"].get("attribution"))),
-        "use_quotation_marks": payload.get("use_quotation_marks", candidate["content"].get("use_quotation_marks")),
         "declared_by": "user",
     })
     for key in ("direction", "emphasis", "styles", "styles_customized", "presentation", "formats"):
@@ -290,7 +287,6 @@ def render_preview(manifest: dict[str, Any], manifest_dir: Path) -> list[dict[st
         adapted["canvas"] = {"width": item["width"], "height": item["height"]}
         adapted["direction"] = manifest["direction"]
         adapted["content"]["emphasis"] = manifest["content"]["emphasis"]
-        adapted["content"]["use_quotation_marks"] = manifest["presentation"]["show_quotation_marks"]
         if manifest["presentation"]["logo_mode"] == "hidden": adapted["brand"] = copy.deepcopy(adapted["brand"]); adapted["brand"].pop("logo", None)
         size, fit_mode, requested_size, auto_fitted, maximum_size = pack.resolve_font_size(
             item["lines"], adapted, manifest_dir, manifest["direction"],
@@ -345,7 +341,6 @@ def preview_quality(manifest: dict[str, Any], previews: list[dict[str, Any]], ma
         adapted["canvas"] = {"width": item["width"], "height": item["height"]}
         adapted["direction"] = manifest["direction"]
         adapted["content"]["emphasis"] = manifest["content"]["emphasis"]
-        adapted["content"]["use_quotation_marks"] = manifest["presentation"]["show_quotation_marks"]
         if manifest["presentation"]["logo_mode"] == "hidden":
             adapted["brand"] = copy.deepcopy(adapted["brand"])
             adapted["brand"].pop("logo", None)
@@ -679,11 +674,11 @@ def create_server(
                     draft = validate_draft(payload, current)
                     previews = render_preview(draft, manifest_path.parent)
                     qa = preview_quality(draft, previews, manifest_path.parent)
-                    self.send_json(HTTPStatus.OK, {"revision": current["revision"], "previews": previews, "qa": qa, "warnings": qa["warnings"], "editorial_responsibility": "user", "declaration": {"transformation": draft["content"]["transformation"], "evidence_status": draft["content"]["evidence_status"], "attribution": draft["content"]["attribution"], "use_quotation_marks": draft["content"]["use_quotation_marks"]}}); return
+                    self.send_json(HTTPStatus.OK, {"revision": current["revision"], "previews": previews, "qa": qa, "warnings": qa["warnings"], "editorial_responsibility": "user", "declaration": {"transformation": draft["content"]["transformation"], "evidence_status": draft["content"]["evidence_status"], "attribution": draft["content"]["attribution"]}}); return
                 with lock:
                     draft = validate_draft(payload, current)
                     ensure_approvable(draft, manifest_path.parent)
-                    feedback = {"feedback_id": f"feedback-{secrets.token_hex(8)}", "submitted_at": now_iso(), "action": "approve", "base_revision": current["revision"], "editorial_responsibility": "user", "content": {"text": draft["content"]["text"], "transformation": draft["content"]["transformation"], "evidence_status": draft["content"]["evidence_status"], "attribution": draft["content"]["attribution"], "use_quotation_marks": draft["content"]["use_quotation_marks"], "styles": draft["content"].get("styles", []), "styles_customized": draft["content"].get("styles_customized", False), "declared_by": "user"}, "direction": draft["direction"], "emphasis": draft["content"]["emphasis"], "presentation": draft["presentation"], "formats": [{"id": item["id"], "lines": item["lines"], "text_scale": item["text_scale"], "vertical_position": item["vertical_position"]} for item in draft["formats"]], "overall_note": payload.get("overall_note", "")}
+                    feedback = {"feedback_id": f"feedback-{secrets.token_hex(8)}", "submitted_at": now_iso(), "action": "approve", "base_revision": current["revision"], "editorial_responsibility": "user", "content": {"text": draft["content"]["text"], "transformation": draft["content"]["transformation"], "evidence_status": draft["content"]["evidence_status"], "attribution": draft["content"]["attribution"], "styles": draft["content"].get("styles", []), "styles_customized": draft["content"].get("styles_customized", False), "declared_by": "user"}, "direction": draft["direction"], "emphasis": draft["content"]["emphasis"], "presentation": draft["presentation"], "formats": [{"id": item["id"], "lines": item["lines"], "text_scale": item["text_scale"], "vertical_position": item["vertical_position"]} for item in draft["formats"]], "overall_note": payload.get("overall_note", "")}
                     application = record_and_apply_feedback(manifest_path, session_dir, feedback)
                     latest = read_json(manifest_path)
                     generation = generate_production_pack(latest, manifest_path, session_dir, node, node_modules)

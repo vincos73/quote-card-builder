@@ -31,7 +31,6 @@ def valid_manifest():
                     }
                 ],
                 "attribution": {"label": "Autore", "role": "author"},
-                "use_quotation_marks": True,
                 "ranking": {"score": 86, "reason": "È chiara e fedele."},
             }
         ],
@@ -72,7 +71,6 @@ class ValidateQuoteManifestTests(unittest.TestCase):
         candidate["evidence_status"] = "USER_SUPPLIED"
         candidate["evidence"] = []
         candidate["attribution"] = {"label": "Ada", "role": "speaker"}
-        candidate["use_quotation_marks"] = False
         self.assertEqual([], VALIDATOR.validate_manifest(manifest))
 
     def test_accepts_generated_author_as_user_declaration(self):
@@ -82,7 +80,6 @@ class ValidateQuoteManifestTests(unittest.TestCase):
         candidate["evidence_status"] = "USER_SUPPLIED"
         candidate["evidence"] = []
         candidate["attribution"] = {"label": "Ada", "role": "author"}
-        candidate["use_quotation_marks"] = False
         self.assertEqual([], VALIDATOR.validate_manifest(manifest))
 
     def test_accepts_conflicted_selection_as_user_declaration(self):

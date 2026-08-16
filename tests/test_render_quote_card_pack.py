@@ -37,7 +37,6 @@ def production_manifest(proof_path):
             "text": text,
             "transformation": "VERBATIM",
             "evidence_status": "VERIFIED",
-            "use_quotation_marks": True,
             "emphasis": "confronta.",
             "attribution": {"label": "example.test", "role": "publisher"},
         },
@@ -72,7 +71,7 @@ def production_manifest(proof_path):
             "font": {"family": "Test Sans"},
         },
         "source": {"title": "Test source", "locator": "test://source"},
-        "presentation": {"logo_mode": "auto", "show_quotation_marks": True, "graphic_mode": "auto"},
+        "presentation": {"logo_mode": "auto", "graphic_mode": "auto"},
         "output": {"basename": "test-quote"},
     }
 
@@ -112,7 +111,7 @@ class ProductionManifestTests(unittest.TestCase):
             manifest = production_manifest(proof_path)
             manifest["formats"][0]["text_scale"] = 1.2
             manifest["formats"][1]["vertical_position"] = "free"
-            manifest["presentation"] = {"logo_mode": "custom", "show_quotation_marks": True, "graphic_mode": "custom"}
+            manifest["presentation"] = {"logo_mode": "custom", "graphic_mode": "custom"}
             codes = {error["code"] for error in PACK.validate_production_manifest(manifest, Path(temp_dir))}
             self.assertIn("range", codes)
             self.assertIn("enum", codes)

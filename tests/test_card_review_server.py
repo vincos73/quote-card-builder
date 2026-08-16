@@ -14,7 +14,7 @@ SPEC.loader.exec_module(SERVER)
 
 
 def manifest():
-    return {"schema_version":"0.4","state":"contenuto_approvato","revision":1,"content":{"text":"Una frase verificata.","transformation":"VERBATIM","evidence_status":"VERIFIED","use_quotation_marks":True,"emphasis":"verificata","attribution":{"label":"example.test","role":"publisher"}},"direction":"statement","presentation":{"logo_mode":"auto","show_quotation_marks":True,"graphic_mode":"auto"},"formats":[{"id":"4x5","width":1440,"height":1800,"lines":["Una frase verificata."],"text_scale":1.0,"vertical_position":"center"}],"brand":{"name":"Test","colors":{"primary":"#072743","accent":"#E3F4FF","background":"#FEFDFB","text":"#323232"},"font":{"family":"Test Sans"}},"source":{"title":"Source","locator":"test://source"},"output":{"basename":"quote"}}
+    return {"schema_version":"0.4","state":"contenuto_approvato","revision":1,"content":{"text":"Una frase verificata.","transformation":"VERBATIM","evidence_status":"VERIFIED","emphasis":"verificata","attribution":{"label":"example.test","role":"publisher"}},"direction":"statement","presentation":{"logo_mode":"auto","graphic_mode":"auto"},"formats":[{"id":"4x5","width":1440,"height":1800,"lines":["Una frase verificata."],"text_scale":1.0,"vertical_position":"center"}],"brand":{"name":"Test","colors":{"primary":"#072743","accent":"#E3F4FF","background":"#FEFDFB","text":"#323232"},"font":{"family":"Test Sans"}},"source":{"title":"Source","locator":"test://source"},"output":{"basename":"quote"}}
 
 
 class CardReviewServerTests(unittest.TestCase):
@@ -49,17 +49,14 @@ class CardReviewServerTests(unittest.TestCase):
             "transformation": "PARAPHRASE",
             "evidence_status": "VERIFIED",
             "attribution": {"label": "Ada", "role": "speaker"},
-            "use_quotation_marks": True,
             "emphasis": "riscritta.",
-            "presentation": {"logo_mode": "auto", "show_quotation_marks": True},
+            "presentation": {"logo_mode": "auto"},
             "formats": [{"id": "4x5", "width": 1440, "height": 1800, "lines": ["Una frase", "riscritta."], "text_scale": 1.0, "vertical_position": "center"}],
         }, source)
         self.assertEqual("Una frase riscritta.", draft["content"]["text"])
         self.assertEqual("PARAPHRASE", draft["content"]["transformation"])
         self.assertEqual("VERIFIED", draft["content"]["evidence_status"])
         self.assertEqual({"label": "Ada", "role": "speaker"}, draft["content"]["attribution"])
-        self.assertTrue(draft["content"]["use_quotation_marks"])
-        self.assertTrue(draft["presentation"]["show_quotation_marks"])
         self.assertEqual("user", draft["content"]["declared_by"])
 
     def test_modified_text_can_keep_user_declared_verbatim(self):
@@ -76,7 +73,7 @@ class CardReviewServerTests(unittest.TestCase):
         source = manifest()
         draft = SERVER.validate_draft({
             "base_revision": 1,
-            "presentation": {"logo_mode": "auto", "show_quotation_marks": True, "graphic_mode": "hidden"},
+            "presentation": {"logo_mode": "auto", "graphic_mode": "hidden"},
         }, source)
         self.assertEqual("hidden", draft["presentation"]["graphic_mode"])
         source["presentation"]["graphic_mode"] = "custom"
@@ -180,7 +177,6 @@ class CardReviewServerTests(unittest.TestCase):
                     "transformation": item["content"]["transformation"],
                     "evidence_status": item["content"]["evidence_status"],
                     "attribution": item["content"]["attribution"],
-                    "use_quotation_marks": item["content"]["use_quotation_marks"],
                     "styles": [], "declared_by": "user",
                 },
                 "direction": "editorial", "emphasis": item["content"]["emphasis"],
@@ -289,8 +285,7 @@ class CardReviewServerTests(unittest.TestCase):
             "transformation": "PARAPHRASE",
             "evidence_status": "CONFLICT",
             "attribution": {"label": "Ada", "role": "speaker"},
-            "use_quotation_marks": True,
-        })
+            })
         with tempfile.TemporaryDirectory() as directory:
             previews = SERVER.render_preview(item, Path(directory))
             qa = SERVER.preview_quality(item, previews, Path(directory))

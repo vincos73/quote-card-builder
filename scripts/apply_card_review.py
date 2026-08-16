@@ -23,7 +23,12 @@ TRANSFORMATIONS = {"VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"}
 EVIDENCE_STATUSES = {"VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"}
 ATTRIBUTION_ROLES = {"speaker", "author", "publisher", "none"}
 STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent"}
-CONTENT_KEYS = {"text", "transformation", "evidence_status", "attribution", "use_quotation_marks", "styles", "declared_by"}
+# styles_customized belongs here even though nothing in this file reads it:
+# the editor always sends it, and the renderer needs it to tell "no styles
+# chosen yet" from "user removed every style". Leaving it out did not drop
+# the field, it rejected the whole batch -- which is why Genera failed on
+# every card rather than on some.
+CONTENT_KEYS = {"text", "transformation", "evidence_status", "attribution", "styles", "styles_customized", "declared_by"}
 
 
 class ReviewError(ValueError):
@@ -173,8 +178,6 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
         raise ReviewError("content.transformation non ammessa.")
     if target_content.get("evidence_status") not in EVIDENCE_STATUSES:
         raise ReviewError("content.evidence_status non ammesso.")
-    if not isinstance(target_content.get("use_quotation_marks"), bool):
-        raise ReviewError("content.use_quotation_marks deve essere booleano.")
     attribution = target_content.get("attribution")
     if not isinstance(attribution, dict) or set(attribution) - {"label", "role", "authorship_approved"}:
         raise ReviewError("content.attribution non valida.")
@@ -211,14 +214,10 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
         raise ReviewError("overall_note deve essere una stringa.")
 
     presentation = feedback.get("presentation", {})
-    if not isinstance(presentation, dict) or set(presentation) - {"logo_mode", "show_quotation_marks", "graphic_mode", "output_mode"}:
+    if not isinstance(presentation, dict) or set(presentation) - {"logo_mode", "graphic_mode", "output_mode"}:
         raise ReviewError("Sono consentite solo modifiche di presentazione previste.")
     if "logo_mode" in presentation and presentation["logo_mode"] not in LOGO_MODES:
         raise ReviewError("presentation.logo_mode non ammesso.")
-    if "show_quotation_marks" in presentation:
-        show = presentation["show_quotation_marks"]
-        if not isinstance(show, bool):
-            raise ReviewError("presentation.show_quotation_marks deve essere booleano.")
     if "graphic_mode" in presentation and presentation["graphic_mode"] not in GRAPHIC_MODES:
         raise ReviewError("presentation.graphic_mode non ammesso.")
     if "output_mode" in presentation and presentation["output_mode"] not in OUTPUT_MODES:
@@ -280,7 +279,7 @@ def _apply_patch(manifest: dict[str, Any], feedback: dict[str, Any]) -> bool:
     emphasis_patch = {"emphasis": feedback["emphasis"]} if "emphasis" in feedback else {}
     for section, patch, keys in (
         ("content", emphasis_patch, ("emphasis",)),
-        ("presentation", feedback.get("presentation", {}), ("logo_mode", "show_quotation_marks", "graphic_mode", "output_mode")),
+        ("presentation", feedback.get("presentation", {}), ("logo_mode", "graphic_mode", "output_mode")),
     ):
         if patch:
             target = manifest.setdefault(section, {})

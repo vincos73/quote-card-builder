@@ -25,7 +25,6 @@ def valid_visual_manifest():
             ],
             "transformation": "VERBATIM",
             "evidence_status": "VERIFIED",
-            "use_quotation_marks": True,
             "emphasis": "confronta.",
             "attribution": {"label": "example.test", "role": "publisher"},
         },
@@ -104,15 +103,15 @@ class VisualManifestTests(unittest.TestCase):
         statement = RENDERER.render_svg(manifest, Path.cwd(), "statement")
         contextual = RENDERER.render_svg(manifest, Path.cwd(), "contextual")
 
-        self.assertIn('class="quote-corner-mark quote-corner-mark--top"', editorial)
         self.assertIn('direction-graphic--contours', editorial)
         self.assertNotIn('PAGINA / 01', editorial)
         self.assertNotIn('class="source-bar"', editorial)
-        self.assertIn('class="marks"', statement)
         self.assertIn('direction-graphic--echo', statement)
         self.assertNotIn('MANIFESTO / 02', statement)
         self.assertNotIn('class="source-bar"', statement)
-        self.assertIn('class="marks"', contextual)
+        # With no quotation marks anywhere, the directions are told apart by
+        # composition alone -- their graphic and, for Campo, its rule.
+        self.assertIn('class="quote-index"', contextual)
         self.assertIn('direction-graphic--field', contextual)
         self.assertNotIn('DOSSIER / 03', contextual)
         self.assertNotIn('class="source-bar"', contextual)
@@ -158,16 +157,26 @@ class VisualManifestTests(unittest.TestCase):
             self.assertNotIn('class="direction-graphic', svg)
             self.assertIn(f"Quote card {direction}", svg)
 
-    def test_all_quote_marks_respect_the_user_toggle(self):
+    def test_no_direction_draws_a_quotation_mark_of_any_kind(self):
+        # Neither the glyph pair nor the corner brackets that once stood in
+        # for it. The setting that used to govern them is gone from the
+        # model too, so there is nothing left to turn them back on.
         manifest = valid_visual_manifest()
         for direction in RENDERER.DIRECTIONS:
-            svg = RENDERER.render_svg(
-                manifest,
-                Path.cwd(),
-                direction,
-                render_options={"show_quotation_marks": False},
-            )
-            self.assertNotIn('class="marks"', svg)
+            with self.subTest(direction=direction):
+                svg = RENDERER.render_svg(manifest, Path.cwd(), direction)
+                self.assertNotIn("“", svg)
+                self.assertNotIn("”", svg)
+                self.assertNotIn("quote-corner-mark", svg)
+                self.assertNotIn('class="marks"', svg)
+
+    def test_campos_vertical_rule_survives_as_composition(self):
+        # SKILL.md gives Campo "una sola regola verticale" as the direction's
+        # signature. It was briefly wired to the quotation setting; it is
+        # layout, not a mark standing in for one, so removing quotation
+        # marks must not have taken it with them.
+        svg = RENDERER.render_svg(valid_visual_manifest(), Path.cwd(), "contextual")
+        self.assertIn('class="quote-index"', svg)
 
     def test_statement_uses_a_dense_poster_stack_and_scaled_emphasis(self):
         manifest = valid_visual_manifest()
@@ -358,7 +367,7 @@ class VisualManifestTests(unittest.TestCase):
                 manifest,
                 Path(temp_dir),
                 "statement",
-                render_options={"logo_mode": "hidden", "show_quotation_marks": False},
+                render_options={"logo_mode": "hidden"},
             )
         self.assertNotIn("<image", svg)
         self.assertNotIn('class="marks"', svg)
