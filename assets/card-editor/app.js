@@ -24,7 +24,6 @@
     text: manifest.content?.text || '',
     direction: manifest.direction || '',
     attribution: manifest.content?.attribution || {},
-    use_quotation_marks: Boolean(manifest.content?.use_quotation_marks),
     presentation: manifest.presentation || {},
     formats: manifest.formats || [],
   });
@@ -348,13 +347,11 @@
     transformation: manifest.content.transformation,
     evidence_status: manifest.content.evidence_status,
     attribution: clone(manifest.content.attribution || { label: '', role: 'none' }),
-    use_quotation_marks: Boolean(manifest.content.use_quotation_marks),
     direction: manifest.direction,
     styles: initialStyles(manifest.content, manifest.direction),
     styles_customized: Boolean(manifest.content.styles_customized),
     presentation: {
       logo_mode: 'auto',
-      show_quotation_marks: Boolean(manifest.content.use_quotation_marks),
       graphic_mode: 'auto',
       output_mode: 'all',
       ...clone(manifest.presentation || {}),
@@ -379,9 +376,6 @@
             ...initial.presentation,
             ...clone(saved.draft.presentation || {}),
           },
-          use_quotation_marks: typeof saved.draft.use_quotation_marks === 'boolean'
-            ? saved.draft.use_quotation_marks
-            : Boolean(saved.draft.presentation?.show_quotation_marks),
         };
         restored.formats = normalizeFormats(saved.draft.formats);
         return restored;
@@ -540,7 +534,6 @@
       transformation: state.draft.transformation,
       evidence_status: state.draft.evidence_status,
       attribution: clone(state.draft.attribution),
-      use_quotation_marks: state.draft.use_quotation_marks,
       styles: clone(state.draft.styles),
       styles_customized: Boolean(state.draft.styles_customized),
       direction: state.draft.direction,

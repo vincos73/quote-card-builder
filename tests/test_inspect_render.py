@@ -29,7 +29,6 @@ def visual_manifest(text, lines, emphasis="", width=1440, height=1800):
             "lines": lines,
             "transformation": "VERBATIM",
             "evidence_status": "VERIFIED",
-            "use_quotation_marks": True,
             "emphasis": emphasis,
             "styles": [],
             "attribution": {"label": "example.test", "role": "publisher"},
@@ -82,6 +81,10 @@ CONTENT = [
     ("Un agente non si commuove per il tuo claim: confronta.",
      ["Un agente non si commuove", "per il tuo claim:", "confronta."], "confronta."),
     ("Una frase con riga vuota.", ["Una frase", "", "con riga vuota."], ""),
+    # One short word fitted to the whole card: the case that leaves a
+    # corner module no room, and that shipped with the mark drawn on top
+    # of the text until the module learned to size itself.
+    ("Breve.", ["Breve."], ""),
 ]
 
 
@@ -194,12 +197,11 @@ class QualityGateTests(unittest.TestCase):
             "schema_version": "0.4", "state": "contenuto_approvato", "revision": 1,
             "content": {
                 "text": "Una frase verificata.", "transformation": "VERBATIM",
-                "evidence_status": "VERIFIED", "use_quotation_marks": True,
-                "emphasis": "verificata",
+                "evidence_status": "VERIFIED", "emphasis": "verificata",
                 "attribution": {"label": "example.test", "role": "publisher"},
             },
             "direction": "statement",
-            "presentation": {"logo_mode": "auto", "show_quotation_marks": True, "graphic_mode": "auto"},
+            "presentation": {"logo_mode": "auto", "graphic_mode": "auto"},
             "formats": [{"id": "4x5", "width": 1440, "height": 1800,
                          "lines": ["Una frase verificata."], "text_scale": 1.0,
                          "vertical_position": "center"}],

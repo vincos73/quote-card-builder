@@ -191,7 +191,7 @@ Il letto di cemento combina griglia, righelli, tacche, quote e linee di registro
 
 ### Rail strumenti
 
-Il rail melanzana è una sequenza di sezioni separate da cuciture da 1px: Provenienza richiudibile, Direzione, Testo e formattazione, Scala dal massimo, Posizione, Logo, Virgolette e Quality gate. Il testo usa un editor visuale con toolbar per grassetto, corsivo, sottolineato ed evidenziato; Invio crea una riga e una riga vuota produce un'interlinea completa. Trattamento e stato della prova non sono controlli: restano informazioni persistenti nel ledger. Campi ed editor hanno fondo aubergine-chrome, raggio zero e bordo tenue; hover rafforza il bordo, focus lo porta al chartreuse. I gruppi segmentati e le direzioni condividono lo stesso stato attivo bordo+testo, senza card interne.
+Il rail melanzana è una sequenza di sezioni separate da cuciture da 1px: Provenienza richiudibile, Direzione, Testo e formattazione, Scala dal massimo, Posizione, Logo, Elemento grafico, Output finale e Quality gate. Il testo usa un editor visuale con toolbar per grassetto, corsivo, sottolineato ed evidenziato; Invio crea una riga e una riga vuota produce un'interlinea completa. Trattamento e stato della prova non sono controlli: restano informazioni persistenti nel ledger. Campi ed editor hanno fondo aubergine-chrome, raggio zero e bordo tenue; hover rafforza il bordo, focus lo porta al chartreuse. I gruppi segmentati e le direzioni condividono lo stesso stato attivo bordo+testo, senza card interne.
 
 ### Ledger di audit e actionbar
 

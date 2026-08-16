@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,12 +18,31 @@ def manifest():
     return {
         "schema_version": "0.4", "revision": 3, "state": "prova_visuale_approvata", "direction": "statement",
         "content": {"text": text, "transformation": "VERBATIM", "evidence_status": "VERIFIED",
-                    "emphasis": "confronta.", "use_quotation_marks": True,
-                    "attribution": {"label": "vincos.it", "role": "publisher"}},
-        "presentation": {"logo_mode": "auto", "show_quotation_marks": True, "graphic_mode": "auto"},
+                    "emphasis": "confronta.", "attribution": {"label": "vincos.it", "role": "publisher"}},
+        "presentation": {"logo_mode": "auto", "graphic_mode": "auto"},
         "formats": [{"id": "4x5", "width": 1440, "height": 1800, "lines": [text], "text_scale": 1.0, "vertical_position": "center"}],
         "brand": {"name": "Brand"},
     }
+
+
+class FeedbackContractTests(unittest.TestCase):
+    """The editor writes the batch and this module validates it, so the two
+    have to agree on the field list. They silently did not: the server sent
+    styles_customized, this file's whitelist had never been told about it,
+    and the mismatch rejected every batch -- Genera failed on every card,
+    not on an unlucky one. Pinning the contract to the server's own list
+    catches the next field the same way, instead of after a user reports it.
+    """
+
+    def test_every_field_the_editor_sends_is_accepted_here(self):
+        server = (ROOT / "scripts" / "card_review_server.py").read_text(encoding="utf-8")
+        blocks = re.findall(r'"content": \{([^}]*)\}', server)
+        self.assertEqual(1, len(blocks), "the feedback batch is no longer built in one place")
+        # Only names followed by a colon are keys; the subscripts inside the
+        # values (draft["content"]["text"]) must not be mistaken for them.
+        sent = set(re.findall(r'"(\w+)":', blocks[0]))
+        self.assertIn("styles_customized", sent, "server no longer sends it; update this test")
+        self.assertEqual(set(), sent - APPLIER.CONTENT_KEYS)
 
 
 class ApplyCardReviewTests(unittest.TestCase):
@@ -80,10 +100,10 @@ class ApplyCardReviewTests(unittest.TestCase):
             "content": {
                 "text": edited, "transformation": "VERBATIM", "evidence_status": "CONFLICT",
                 "attribution": {"label": "Ada", "role": "speaker"},
-                "use_quotation_marks": True, "declared_by": "user",
+                "declared_by": "user",
             },
             "emphasis": "",
-            "presentation": {"logo_mode": "auto", "show_quotation_marks": True},
+            "presentation": {"logo_mode": "auto"},
             "formats": [{"id": "4x5", "lines": [edited], "text_scale": 1.0, "vertical_position": "center"}],
         }
         temp, root, manifest_path, feedback_path = self.make_files(feedback)
@@ -93,18 +113,14 @@ class ApplyCardReviewTests(unittest.TestCase):
             self.assertTrue(result["approval_requested"])
             self.assertEqual("CONFLICT", saved["content"]["evidence_status"])
             self.assertEqual({"label": "Ada", "role": "speaker"}, saved["content"]["attribution"])
-            self.assertTrue(saved["presentation"]["show_quotation_marks"])
 
-    def test_rejects_bad_lines_but_allows_quote_toggle(self):
+    def test_rejects_lines_that_do_not_rebuild_the_approved_text(self):
         feedback = {"feedback_id": "f-1", "base_revision": 3, "action": "feedback",
                     "formats": [{"id": "4x5", "lines": ["Parafrasi"]}]}
         temp, root, manifest_path, feedback_path = self.make_files(feedback)
         with temp:
             with self.assertRaises(APPLIER.ReviewError):
                 APPLIER.apply_review(manifest_path, feedback_path, root)
-        doc = manifest(); doc["content"]["use_quotation_marks"] = False
-        APPLIER._validate_patch(
-            {"feedback_id": "f", "base_revision": 3, "action": "feedback", "presentation": {"show_quotation_marks": True}}, doc)
 
     def test_applies_spacer_rows_and_inline_styles(self):
         text = manifest()["content"]["text"]
@@ -132,9 +148,9 @@ class ApplyCardReviewTests(unittest.TestCase):
         edited = "Un agente confronta i fatti."
         feedback = {
             "feedback_id": "f-1", "base_revision": 3, "action": "feedback",
-            "content": {"text": edited, "transformation": "EDITED", "evidence_status": "USER_SUPPLIED", "use_quotation_marks": False},
+            "content": {"text": edited, "transformation": "EDITED", "evidence_status": "USER_SUPPLIED"},
             "emphasis": "fatti.",
-            "presentation": {"logo_mode": "auto", "show_quotation_marks": False},
+            "presentation": {"logo_mode": "auto"},
             "formats": [{"id": "4x5", "lines": ["Un agente", "confronta i fatti."], "text_scale": 1.0, "vertical_position": "center"}],
         }
         temp, root, manifest_path, feedback_path = self.make_files(feedback)
@@ -149,13 +165,11 @@ class ApplyCardReviewTests(unittest.TestCase):
             self.assertEqual(edited, saved["content"]["text"])
             self.assertEqual("EDITED", saved["content"]["transformation"])
             self.assertEqual("USER_SUPPLIED", saved["content"]["evidence_status"])
-            self.assertFalse(saved["content"]["use_quotation_marks"])
-            self.assertFalse(saved["presentation"]["show_quotation_marks"])
             self.assertEqual(["Un agente", "confronta i fatti."], saved["formats"][0]["lines"])
 
     def test_text_edit_can_keep_verified_but_must_update_format_lines(self):
         base = {"feedback_id": "f-1", "base_revision": 3, "action": "feedback",
-                "content": {"text": "Testo nuovo.", "transformation": "EDITED", "evidence_status": "VERIFIED", "use_quotation_marks": False}}
+                "content": {"text": "Testo nuovo.", "transformation": "EDITED", "evidence_status": "VERIFIED"}}
         temp, root, manifest_path, feedback_path = self.make_files(base)
         with temp:
             with self.assertRaisesRegex(APPLIER.ReviewError, "tutti i formati"):

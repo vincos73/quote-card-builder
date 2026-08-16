@@ -189,10 +189,6 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
     if evidence_status not in EVIDENCE_STATUSES:
         add_error(errors, "content.evidence_status", "enum", "Stato della prova non ammesso.")
 
-    use_quotes = content.get("use_quotation_marks")
-    if not isinstance(use_quotes, bool):
-        add_error(errors, "content.use_quotation_marks", "type", "Deve essere true o false.")
-
     emphasis = content.get("emphasis", "")
     if not isinstance(emphasis, str):
         add_error(errors, "content.emphasis", "type", "Deve essere una stringa.")
@@ -962,19 +958,6 @@ def legible_color(preferred: str, fallback: str, surface: str, *, minimum: float
     return preferred if contrast_ratio(preferred, surface) >= minimum else fallback
 
 
-def quote_marks(
-    use_quotes: bool, *, accent: str, fallback: str, surface: str,
-    open_x: float, open_y: float, close_x: float, close_y: float,
-) -> str:
-    if not use_quotes:
-        return ""
-    color = legible_color(accent, fallback, surface)
-    return (
-        f'<text class="marks" x="{open_x:.1f}" y="{open_y:.1f}" fill="{color}">“</text>'
-        f'<text class="marks" x="{close_x:.1f}" y="{close_y:.1f}" fill="{color}">”</text>'
-    )
-
-
 def direction_graphic(
     direction: str, *, width: int, height: int, colors: dict[str, str], enabled: bool
 ) -> str:
@@ -1061,33 +1044,6 @@ def direction_graphic(
     )
 
 
-def editorial_corner_marks(
-    use_quotes: bool, *, color: str, stroke_width: float, corner_size: float,
-    top_left_x: float, top_left_y: float,
-    bottom_right_x: float, bottom_right_y: float,
-) -> str:
-    """Two open corner brackets -- top-left and bottom-right -- framing the
-    quote like crop marks, in place of quotation glyphs. A single vertical
-    bar sitting beside text reads as a capital I at a glance; an L-shaped
-    corner cannot be mistaken for a letter at any weight, and a pair of
-    them frames the whole block instead of marking two isolated points.
-    Tied to line 1's cap-height and the last line's own baseline, so
-    neither can drift into empty space the way a fixed-position glyph does.
-    """
-    if not use_quotes:
-        return ""
-    return (
-        f'<path class="quote-corner-mark quote-corner-mark--top" '
-        f'd="M {top_left_x:.1f} {top_left_y + corner_size:.1f} '
-        f'V {top_left_y:.1f} H {top_left_x + corner_size:.1f}" '
-        f'fill="none" stroke="{color}" stroke-width="{stroke_width:.1f}" stroke-linecap="square"/>'
-        f'<path class="quote-corner-mark quote-corner-mark--bottom" '
-        f'd="M {bottom_right_x - corner_size:.1f} {bottom_right_y:.1f} '
-        f'H {bottom_right_x:.1f} V {bottom_right_y - corner_size:.1f}" '
-        f'fill="none" stroke="{color}" stroke-width="{stroke_width:.1f}" stroke-linecap="square"/>'
-    )
-
-
 def logo_image(
     asset: tuple[str, float] | None,
     *,
@@ -1146,14 +1102,12 @@ def render_svg(
         styles = initial_direction_styles(content["text"], direction)
     attribution = content["attribution"].get("label", "")
     source = data.get("source") or {}
-    use_quotes = content["use_quotation_marks"]
     options = {**(data.get("presentation") or {}), **(render_options or {})}
     logo_mode = options.get("logo_mode", "auto")
     graphic_mode = options.get("graphic_mode", "auto")
     graphic = direction_graphic(
         direction, width=width, height=height, colors=colors, enabled=graphic_mode != "hidden"
     )
-    show_quotes = bool(options.get("show_quotation_marks", use_quotes)) and use_quotes
     vertical_position = options.get("vertical_position", "center")
     geometry = direction_geometry(direction, width, height, vertical_position)
     safe = width * 0.085
@@ -1162,10 +1116,6 @@ def render_svg(
         + f".quote{{font-family:{font_stack};font-weight:500;font-synthesis:weight;letter-spacing:-0.018em;}}"
         + f".meta{{font-family:{font_stack};font-weight:500;letter-spacing:0.08em;}}"
         + ".data{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600;letter-spacing:0.08em;}"
-        + f".marks{{font-family:{font_stack};font-weight:700;font-size:{width * 0.17:.1f}px;}}"
-        + f".editorial-marks .marks{{font-size:{width * 0.14:.1f}px;}}"
-        + f".statement-marks .marks{{font-size:{width * 0.09:.1f}px;}}"
-        + f".field-marks .marks{{font-size:{width * 0.12:.1f}px;}}"
     )
 
     if direction == "editorial":
@@ -1189,41 +1139,13 @@ def render_svg(
             styles=styles, highlight_color=colors["accent"],
             extra_style="font-weight:400;letter-spacing:-0.025em"
         )
-        last_baseline = start_y + line_height * max(0, len(lines) - 1)
-        last_line_end = quote_x + measured_text_width(
-            last_text_line(lines), font_size, letter_spacing_em=QUOTE_TRACKING_EM
-        )
-        mark_color = legible_color(colors["accent"], colors["primary"], background)
         # Always the guide's fixed bottom margin, independent of text
         # length or font size -- a stable anchor rather than one that
         # drifts with content.
         attribution_y = height * 0.915
-        # Close to the text, like the quotation glyphs they replace -- but
-        # never outside the editor's own safe-area guide (a uniform 7%
-        # inset, see .safe-area in styles.css), and the bottom-right corner
-        # always clears the attribution line above it rather than crowding
-        # or passing it.
-        corner_gap = font_size * 0.30
-        corner_size = font_size * 0.26
-        text_top = start_y - font_size * 0.75
-        text_bottom = last_baseline + font_size * 0.22
-        edge_x = width * 0.062
-        edge_y = height * 0.062
-        marks = editorial_corner_marks(
-            show_quotes, color=mark_color,
-            stroke_width=max(4.0, width * 0.0035), corner_size=corner_size,
-            top_left_x=max(quote_x - corner_gap - corner_size, edge_x),
-            top_left_y=max(text_top - corner_gap - corner_size, edge_y),
-            bottom_right_x=min(last_line_end + corner_gap + corner_size, width - edge_x),
-            bottom_right_y=min(
-                text_bottom + corner_gap + corner_size,
-                height - edge_y,
-                attribution_y - font_size * 0.55,
-            ),
-        )
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
-            f'{graphic}{logo}{marks}{quote}'
+            f'{graphic}{logo}{quote}'
             f'<text class="meta attribution source-field" x="{width * 0.91:.1f}" y="{attribution_y:.1f}" '
             f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["text"]}">'
             f'{html.escape(attribution)}</text>'
@@ -1256,23 +1178,11 @@ def render_svg(
             strong_rows=strong_rows, styles=styles, highlight_color=colors["accent"]
         )
         block_height = statement_block_height(font_size, poster_lines, strong_rows)
-        statement_close_y = min(height * 0.84, start_y + block_height + width * 0.12)
-        marks = (
-            '<g class="statement-marks">'
-            + quote_marks(
-                show_quotes, accent=colors["accent"], fallback=colors["background"], surface=background,
-                open_x=statement_safe, open_y=start_y - width * 0.065,
-                close_x=width * 0.86,
-                close_y=statement_close_y,
-            )
-            + '</g>'
-            if show_quotes else ""
-        )
         # Always the guide's fixed bottom margin, independent of text.
         statement_attribution_y = height * 0.915
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
-            f'{graphic}{logo}{marks}{quote}'
+            f'{graphic}{logo}{quote}'
             f'<text class="meta attribution source-field" x="{width * 0.945:.1f}" y="{statement_attribution_y:.1f}" '
             f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["background"]}">'
             f'{html.escape(attribution)}</text>'
@@ -1304,19 +1214,13 @@ def render_svg(
         )
         bar_y = start_y - font_size * 0.84
         bar_height = block_height + font_size * 0.16
-        field_last_line_end = content_x + measured_text_width(
-            last_text_line(lines), font_size, letter_spacing_em=QUOTE_TRACKING_EM
-        )
+        # Campo's own composition: SKILL.md lists the single vertical rule
+        # as the direction's signature, so it is part of the layout rather
+        # than a mark standing in for anything.
         marks = (
-            '<g class="field-marks">'
-            + quote_marks(
-                show_quotes, accent=colors["accent"], fallback=colors["primary"], surface=colors["background"],
-                open_x=width * 0.12, open_y=start_y - width * 0.11,
-                close_x=min(content_right, field_last_line_end + font_size * 0.18),
-                close_y=min(height * 0.80, start_y + block_height + width * 0.055),
-            )
-            + '</g>'
-            if show_quotes else ""
+            f'<rect class="quote-index" x="{width * 0.12:.1f}" y="{bar_y:.1f}" '
+            f'width="{max(8.0, width * 0.008):.1f}" height="{bar_height:.1f}" '
+            f'rx="{width * 0.004:.1f}" fill="{colors["primary"]}"/>'
         )
         # Always the guide's fixed bottom margin, independent of text.
         field_attribution_y = height * 0.88
@@ -1326,9 +1230,6 @@ def render_svg(
             f'width="{sheet_width:.1f}" height="{sheet_height:.1f}" fill="{colors["background"]}"/>'
             f'{graphic}'
             f'{logo}{marks}'
-            f'<rect class="quote-index" x="{width * 0.12:.1f}" y="{bar_y:.1f}" '
-            f'width="{max(8.0, width * 0.008):.1f}" height="{bar_height:.1f}" rx="{width * 0.004:.1f}" '
-            f'fill="{colors["primary"]}"/>'
             f'{quote}'
             f'<text class="meta attribution source-field" x="{content_right:.1f}" y="{field_attribution_y:.1f}" '
             f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["text"]}">'

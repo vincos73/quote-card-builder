@@ -160,9 +160,6 @@ def validate_production_manifest(data: Any, manifest_dir: Path) -> list[dict[str
             add_error(errors, "formats", "selection", "Con output_mode all sono richiesti tutti e tre i formati.")
         elif output_mode in FORMAT_RATIOS and seen != {output_mode}:
             add_error(errors, "formats", "selection", f"Il pacchetto deve contenere soltanto il formato {output_mode} scelto.")
-        show_quotes = presentation.get("show_quotation_marks", content.get("use_quotation_marks"))
-        if not isinstance(show_quotes, bool):
-            add_error(errors, "presentation.show_quotation_marks", "type", "Usare true o false.")
     return errors
 
 
@@ -383,9 +380,6 @@ def render_pack(
             "vertical_position": item.get("vertical_position", "center"),
             "logo_mode": presentation.get("logo_mode", "auto"),
             "graphic_mode": presentation.get("graphic_mode", "auto"),
-            "show_quotation_marks": presentation.get(
-                "show_quotation_marks", data["content"].get("use_quotation_marks", False)
-            ),
         }
         stem = f"{basename}-{direction}-{item['id']}"
         svg_path = output_dir / f"{stem}.svg"
