@@ -104,12 +104,12 @@ class VisualManifestTests(unittest.TestCase):
         statement = RENDERER.render_svg(manifest, Path.cwd(), "statement")
         contextual = RENDERER.render_svg(manifest, Path.cwd(), "contextual")
 
-        self.assertIn('class="marks"', editorial)
+        self.assertIn('class="quote-corner-mark quote-corner-mark--top"', editorial)
         self.assertIn('direction-graphic--contours', editorial)
         self.assertNotIn('PAGINA / 01', editorial)
         self.assertNotIn('class="source-bar"', editorial)
         self.assertIn('class="marks"', statement)
-        self.assertIn('direction-graphic--modules', statement)
+        self.assertIn('direction-graphic--echo', statement)
         self.assertNotIn('MANIFESTO / 02', statement)
         self.assertNotIn('class="source-bar"', statement)
         self.assertIn('class="marks"', contextual)
@@ -126,14 +126,17 @@ class VisualManifestTests(unittest.TestCase):
             "emphasis": "",
             "styles": [],
         })
+        # The cue is computed once on the canonical joined text (the final
+        # clause, snapped to a word boundary), not per-format wrapped lines,
+        # so the same words emphasise across 4:5/1:1/9:16 alike.
         self.assertEqual(
-            [{"start": 12, "end": 25, "type": "bold"}],
-            RENDERER.initial_direction_styles(manifest["content"]["lines"], "editorial"),
+            [{"start": 20, "end": 37, "type": "bold"}],
+            RENDERER.initial_direction_styles(manifest["content"]["text"], "editorial"),
         )
         editorial = RENDERER.render_svg(manifest, Path.cwd(), "editorial")
         statement = RENDERER.render_svg(manifest, Path.cwd(), "statement")
         contextual = RENDERER.render_svg(manifest, Path.cwd(), "contextual")
-        self.assertIn('<tspan font-weight="700">Seconda riga.</tspan>', editorial)
+        self.assertIn('<tspan font-weight="700">Terza riga.</tspan>', editorial)
         self.assertIn('fill="#E3F4FF"', statement)
         self.assertIn('class="highlight-marker"', contextual)
 
@@ -195,8 +198,7 @@ class VisualManifestTests(unittest.TestCase):
         self.assertNotIn('class="page-spine"', editorial)
 
         statement = RENDERER.render_svg(manifest, Path.cwd(), "statement")
-        self.assertIn('class="corner-module corner-module--top"', statement)
-        self.assertIn('class="corner-module corner-module--bottom"', statement)
+        self.assertEqual(8, statement.count('class="echo-ring"'))
         self.assertNotIn('class="registration-mark"', statement)
 
         contextual = RENDERER.render_svg(manifest, Path.cwd(), "contextual")
@@ -268,7 +270,10 @@ class VisualManifestTests(unittest.TestCase):
         final_row = rows[2]
         final_y = float(final_row.attrib["y"])
         final_size = float(final_row.attrib["font-size"])
-        self.assertAlmostEqual(final_y - final_size * 0.76, float(marker.attrib["y"]), places=1)
+        # Poster text is uppercased, and uppercase glyphs have a taller
+        # cap-height relative to font-size than mixed-case text, so the
+        # marker gets more headroom (1.02) than the mixed-case case (0.76).
+        self.assertAlmostEqual(final_y - final_size * 1.02, float(marker.attrib["y"]), delta=0.1)
         self.assertGreater(float(marker.attrib["x"]), float(final_row.attrib["x"]))
         self.assertLess(float(marker.attrib["width"]), RENDERER.visual_units("verificata.") * final_size)
 

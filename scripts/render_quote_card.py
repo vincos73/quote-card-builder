@@ -12,6 +12,7 @@ import math
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import unicodedata
@@ -26,6 +27,10 @@ EVIDENCE_STATUSES = {"VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"}
 ATTRIBUTION_ROLES = {"speaker", "author", "publisher", "none"}
 STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent"}
 SYSTEM_CARD_FONTS = {"arial"}
+# Not a design suggestion: a defensive ceiling only, so malformed/pasted
+# input can't produce a pathological line array. The real constraint is
+# vertical/horizontal fit, already enforced by the safe-area QA checks.
+MAX_LINES = 40
 HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 UNSAFE_SVG = re.compile(r"<(?:script|foreignObject)\b|\bon\w+\s*=", re.IGNORECASE)
 
@@ -115,11 +120,11 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
     lines = content.get("lines")
     if (
         not isinstance(lines, list)
-        or not 1 <= len(lines) <= 6
+        or not 1 <= len(lines) <= MAX_LINES
         or any(not isinstance(line, str) for line in lines if isinstance(lines, list))
         or (isinstance(lines, list) and not any(line.strip() for line in lines if isinstance(line, str)))
     ):
-        add_error(errors, "content.lines", "lines", "Inserire da 1 a 6 righe, con almeno una riga di testo.")
+        add_error(errors, "content.lines", "lines", f"Inserire almeno una riga di testo (fino a {MAX_LINES}, oltre è lo spazio del formato a decidere se il testo entra).")
         lines = []
     if lines and normalize_spaces(" ".join(lines)) != normalize_spaces(text):
         add_error(
@@ -304,7 +309,149 @@ def logo_data(brand: dict[str, Any], manifest_dir: Path, *, light: bool) -> tupl
     return file_data_uri(path), aspect_ratio
 
 
+_FONT_METRICS_CACHE: dict[str, dict[str, float] | None] = {}
+_ACTIVE_CHAR_WIDTHS: dict[str, float] | None = None
+
+
+def _ttf_table_directory(data: bytes) -> dict[str, tuple[int, int]]:
+    num_tables = struct.unpack(">H", data[4:6])[0]
+    tables: dict[str, tuple[int, int]] = {}
+    offset = 12
+    for _ in range(num_tables):
+        tag = data[offset:offset + 4].decode("ascii", errors="replace")
+        table_offset, length = struct.unpack(">II", data[offset + 8:offset + 16])
+        tables[tag] = (table_offset, length)
+        offset += 16
+    return tables
+
+
+def _ttf_cmap_format4(data: bytes, off: int) -> dict[int, int]:
+    seg_count_x2 = struct.unpack(">H", data[off + 6:off + 8])[0]
+    seg_count = seg_count_x2 // 2
+    end_codes_off = off + 14
+    end_codes = struct.unpack(f">{seg_count}H", data[end_codes_off:end_codes_off + seg_count_x2])
+    start_codes_off = end_codes_off + seg_count_x2 + 2
+    start_codes = struct.unpack(f">{seg_count}H", data[start_codes_off:start_codes_off + seg_count_x2])
+    id_delta_off = start_codes_off + seg_count_x2
+    id_deltas = struct.unpack(f">{seg_count}h", data[id_delta_off:id_delta_off + seg_count_x2])
+    id_range_off_off = id_delta_off + seg_count_x2
+    id_range_offsets = struct.unpack(f">{seg_count}H", data[id_range_off_off:id_range_off_off + seg_count_x2])
+    mapping: dict[int, int] = {}
+    for i in range(seg_count):
+        start, end, delta, range_off = start_codes[i], end_codes[i], id_deltas[i], id_range_offsets[i]
+        if start == 0xFFFF and end == 0xFFFF:
+            continue
+        for code in range(start, end + 1):
+            if range_off == 0:
+                glyph = (code + delta) & 0xFFFF
+            else:
+                addr = id_range_off_off + i * 2 + range_off + (code - start) * 2
+                if addr + 2 > len(data):
+                    continue
+                raw = struct.unpack(">H", data[addr:addr + 2])[0]
+                glyph = (raw + delta) & 0xFFFF if raw != 0 else 0
+            if glyph != 0:
+                mapping[code] = glyph
+    return mapping
+
+
+def _load_ttf_char_widths(path: Path) -> dict[str, float]:
+    """Read real per-character advance widths (em fractions) straight out of
+    a TrueType/OpenType font's cmap/hmtx tables. Pure stdlib, no dependency
+    on Pillow or fontTools: parses the sfnt tables by hand.
+    """
+    data = path.read_bytes()
+    tables = _ttf_table_directory(data)
+    head_off, _ = tables["head"]
+    units_per_em = struct.unpack(">H", data[head_off + 18:head_off + 20])[0]
+    hhea_off, _ = tables["hhea"]
+    num_h_metrics = struct.unpack(">H", data[hhea_off + 34:hhea_off + 36])[0]
+    hmtx_off, _ = tables["hmtx"]
+    advance_widths = []
+    pos = hmtx_off
+    for _ in range(num_h_metrics):
+        advance_widths.append(struct.unpack(">H", data[pos:pos + 2])[0])
+        pos += 4
+
+    cmap_off, _ = tables["cmap"]
+    num_subtables = struct.unpack(">H", data[cmap_off + 2:cmap_off + 4])[0]
+    subtable_off = None
+    for i in range(num_subtables):
+        rec_off = cmap_off + 4 + i * 8
+        platform_id, encoding_id, sub_off = struct.unpack(">HHI", data[rec_off:rec_off + 8])
+        fmt = struct.unpack(">H", data[cmap_off + sub_off:cmap_off + sub_off + 2])[0]
+        if fmt == 4 and (platform_id, encoding_id) in {(3, 1), (0, 3)}:
+            subtable_off = cmap_off + sub_off
+            break
+    if subtable_off is None:
+        raise ValueError("no usable (platform 3,1) cmap format 4 subtable")
+    unicode_to_glyph = _ttf_cmap_format4(data, subtable_off)
+
+    widths: dict[str, float] = {}
+    for codepoint, glyph in unicode_to_glyph.items():
+        aw = advance_widths[glyph] if glyph < len(advance_widths) else advance_widths[-1]
+        widths[chr(codepoint)] = aw / units_per_em
+    return widths
+
+
+def _system_font_candidates(family: str) -> list[Path]:
+    if family.strip().casefold() not in SYSTEM_CARD_FONTS:
+        return []
+    return [
+        Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
+        Path("C:/Windows/Fonts/arial.ttf"),
+        Path("/usr/share/fonts/truetype/msttcorefonts/Arial.ttf"),
+    ]
+
+
+def activate_font_metrics(font: dict[str, Any], manifest_dir: Path) -> None:
+    """Point visual_units() at real glyph advance widths for this render's
+    brand font when a real font file can be located and parsed. Falls back
+    silently to the generic character-category heuristic otherwise (unknown
+    family, unreadable file, unsupported cmap format) -- this must never be
+    the reason a render fails.
+    """
+    global _ACTIVE_CHAR_WIDTHS
+    _ACTIVE_CHAR_WIDTHS = None
+    candidates: list[Path] = []
+    regular_path = font.get("regular_path")
+    if regular_path:
+        try:
+            candidates.append(resolve_asset(regular_path, manifest_dir))
+        except Exception:
+            pass
+    candidates.extend(_system_font_candidates(font.get("family", "")))
+    for candidate in candidates:
+        cache_key = str(candidate)
+        if cache_key not in _FONT_METRICS_CACHE:
+            widths: dict[str, float] | None
+            try:
+                widths = _load_ttf_char_widths(candidate) if candidate.is_file() else None
+            except Exception:
+                widths = None
+            _FONT_METRICS_CACHE[cache_key] = widths
+        if _FONT_METRICS_CACHE[cache_key]:
+            _ACTIVE_CHAR_WIDTHS = _FONT_METRICS_CACHE[cache_key]
+            return
+
+
+def font_metrics_active() -> bool:
+    """True when visual_units() is currently backed by real glyph widths
+    parsed from a font file, rather than the generic character heuristic."""
+    return _ACTIVE_CHAR_WIDTHS is not None
+
+
 def visual_units(value: str) -> float:
+    if _ACTIVE_CHAR_WIDTHS is not None:
+        units = 0.0
+        for char in value:
+            if char in _ACTIVE_CHAR_WIDTHS:
+                units += _ACTIVE_CHAR_WIDTHS[char]
+            elif char.isspace():
+                units += _ACTIVE_CHAR_WIDTHS.get(" ", 0.28)
+            else:
+                units += 0.6
+        return units
     units = 0.0
     for char in value:
         if char.isspace():
@@ -320,9 +467,22 @@ def visual_units(value: str) -> float:
     return units
 
 
-def fitted_font_size(lines: list[str], available_width: float, available_height: float, maximum: float) -> float:
-    max_units = max(visual_units(line) for line in lines)
-    width_size = available_width / max(max_units, 1)
+def fitted_font_size(
+    lines: list[str], available_width: float, available_height: float, maximum: float,
+    *, letter_spacing_em: float = 0.0,
+) -> float:
+    """Largest size at which every line's *rendered* width (including
+    tracking) still fits ``available_width``. Tracking is per line -- a
+    line with more characters accrues more negative tracking, which is
+    exactly what ``highlight_rects``'s ``measured()`` computes at draw
+    time, so this bound matches what actually gets drawn instead of
+    over-estimating width and picking a smaller size than necessary.
+    """
+    def width_units(line: str) -> float:
+        return visual_units(line) + letter_spacing_em * max(0, len(line) - 1)
+
+    max_units = max(width_units(line) for line in lines)
+    width_size = available_width / max(max_units, 1e-6)
     height_size = available_height / (len(lines) * 1.18)
     return max(48, min(maximum, width_size, height_size))
 
@@ -384,48 +544,62 @@ def statement_strong_rows(
             strong.add(index)
         cursor = line_end
         has_text = True
-    if not strong:
-        strong.add(max(index for index, line in enumerate(lines) if line))
+    # No last-line fallback here: both call sites already guarantee a
+    # meaningful default (initial_direction_styles) whenever styles and
+    # emphasis are both genuinely absent, before this function ever runs.
+    # A "not styles and not emphasis" fallback fired here too, so a style
+    # range that exists but happens to land only on a line-join space
+    # (e.g. after removing emphasis right at a line break) got silently
+    # overridden back onto the last line instead of leaving no row strong.
     return strong
 
 
-def initial_direction_styles(lines: list[str], direction: str) -> list[dict[str, Any]]:
+def default_emphasis_span(text: str) -> tuple[int, int] | None:
+    """Pick a stable, meaning-based emphasis span on the canonical joined
+    text: the final clause, snapped outward to word boundaries.
+
+    Computed once on ``content.text`` -- never on a specific format's
+    wrapped ``lines`` -- so the same words are emphasised in 4:5, 1:1 and
+    9:16 alike. A row-position rule (e.g. "the second row") drifts because
+    each format re-wraps that same text into a different number of rows.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return None
+    target = max(0, round(len(stripped) * 0.6))
+    start = target
+    while start > 0 and not stripped[start - 1].isspace():
+        start -= 1
+    while start < len(stripped) and stripped[start].isspace():
+        start += 1
+    end = len(stripped)
+    if start >= end:
+        last_space = stripped.rstrip().rfind(" ")
+        start = last_space + 1 if last_space >= 0 else 0
+    return (start, end)
+
+
+def initial_direction_styles(text: str, direction: str) -> list[dict[str, Any]]:
     """Give an untouched first preview one expressive, direction-specific cue.
 
-    These defaults are calculated from preserved line boundaries and are used
-    only when no user-owned inline treatment or legacy emphasis exists. A
-    manual selection therefore always replaces the first-run cue.
+    Anchored to ``default_emphasis_span`` on the canonical text, so the span
+    is identical across every format; only the style ``type`` varies by
+    direction. Used only when no user-owned inline treatment or legacy
+    emphasis exists -- a manual selection always replaces the first-run cue.
     """
-    ranges: list[tuple[int, int]] = []
-    cursor = 0
-    has_text = False
-    for line in lines:
-        if not line:
-            continue
-        if has_text:
-            cursor += 1
-        ranges.append((cursor, cursor + len(line)))
-        cursor += len(line)
-        has_text = True
-    if not ranges:
+    span = default_emphasis_span(text)
+    if span is None:
         return []
-    if direction == "editorial":
-        # Normal / bold / normal on three rows; the second row is the hinge.
-        target = ranges[len(ranges) // 2]
-        return [{"start": target[0], "end": target[1], "type": "bold"}]
-    if direction == "statement":
-        # One decisive row carries the accent while the poster stays dominant.
-        target = ranges[-1]
-        return [{"start": target[0], "end": target[1], "type": "accent"}]
-    # Campo: one marker band proves the annotation treatment without noise.
-    target = ranges[min(1, len(ranges) - 1)]
-    return [{"start": target[0], "end": target[1], "type": "highlight"}]
+    start, end = span
+    style_type = "bold" if direction == "editorial" else "accent" if direction == "statement" else "highlight"
+    return [{"start": start, "end": end, "type": style_type}]
 
 
 def statement_fitted_font_size(
-    lines: list[str], strong_rows: set[int], width: int, height: int
+    lines: list[str], strong_rows: set[int], width: int, height: int, safe: float | None = None
 ) -> float:
-    safe = width * 0.04
+    if safe is None:
+        safe = width * 0.04
     available_width = width - 2 * safe
     available_height = height * 0.58
     strong_multiplier = 1.12
@@ -597,8 +771,12 @@ def highlight_rects(
                 start_x = x - full_width / 2 + before
             else:
                 start_x = x + before
-            marker_y = line_y - row_size * 0.76
-            marker_h = row_size * 0.82
+            # Uppercase glyphs (poster) have a taller cap-height relative to
+            # font-size than mixed-case text, so the marker needs more
+            # headroom or capital tops poke out above the band.
+            is_uppercase = text_transform is str.upper
+            marker_y = line_y - row_size * (1.02 if is_uppercase else 0.76)
+            marker_h = row_size * (1.12 if is_uppercase else 0.82)
             rendered.append(
                 f'<rect class="highlight-marker" x="{start_x:.1f}" y="{marker_y:.1f}" '
                 f'width="{width:.1f}" height="{marker_h:.1f}" rx="0" '
@@ -704,9 +882,28 @@ def statement_text_block(
     return f"{markers}{text_element}"
 
 
-def quote_marks(use_quotes: bool, *, color: str, open_x: float, open_y: float, close_x: float, close_y: float) -> str:
+def legible_color(preferred: str, fallback: str, surface: str, *, minimum: float = 3.0) -> str:
+    """Pick ``preferred`` for a decorative/line element only if it actually
+    reads against ``surface`` at the WCAG non-text floor (3:1); otherwise
+    fall back to ``fallback`` (always ``primary``, itself already validated
+    at 4.5:1 against every surface a brand profile can supply).
+
+    This replaces alpha-blending a brand color into the surface to fake a
+    lighter weight: that composites an unapproved third hue and does
+    nothing for contrast when the two colors are already close in
+    lightness. Visual weight should be tuned with area (stroke width,
+    element count), never with opacity on top of a legibility problem.
+    """
+    return preferred if contrast_ratio(preferred, surface) >= minimum else fallback
+
+
+def quote_marks(
+    use_quotes: bool, *, accent: str, fallback: str, surface: str,
+    open_x: float, open_y: float, close_x: float, close_y: float,
+) -> str:
     if not use_quotes:
         return ""
+    color = legible_color(accent, fallback, surface)
     return (
         f'<text class="marks" x="{open_x:.1f}" y="{open_y:.1f}" fill="{color}">“</text>'
         f'<text class="marks" x="{close_x:.1f}" y="{close_y:.1f}" fill="{color}">”</text>'
@@ -716,10 +913,21 @@ def quote_marks(use_quotes: bool, *, color: str, open_x: float, open_y: float, c
 def direction_graphic(
     direction: str, *, width: int, height: int, colors: dict[str, str], enabled: bool
 ) -> str:
-    """Render one product-specific visual grammar for each direction."""
+    """Render one product-specific visual grammar for each direction.
+
+    Every stroke and fill here is a full-opacity brand color: opacity is
+    never used to soften a color's presence, because alpha-blending one
+    brand color over another invents a third, unapproved hue and can
+    silently erase contrast that validation already checked for the flat
+    colors. Visual weight is tuned with area (stroke width, element count)
+    instead.
+    """
     if not enabled:
         return ""
     if direction == "editorial":
+        # The page itself is `colors["background"]`; pick whichever brand
+        # color actually reads against it instead of assuming accent does.
+        stroke_color = legible_color(colors["accent"], colors["primary"], colors["background"])
         paths: list[str] = []
         for index in range(6):
             top_x = width * (0.89 + index * 0.026)
@@ -743,25 +951,33 @@ def direction_graphic(
             )
         return (
             '<g class="direction-graphic direction-graphic--contours" fill="none" '
-            f'stroke="{colors["accent"]}" stroke-width="{max(2.0, width * 0.0022):.1f}" '
-            f'opacity="0.82">{"".join(paths)}</g>'
+            f'stroke="{stroke_color}" stroke-width="{max(2.0, width * 0.0022):.1f}">{"".join(paths)}</g>'
         )
     if direction == "statement":
-        stroke = max(18.0, width * 0.021)
-        return (
-            '<g class="direction-graphic direction-graphic--modules">'
-            f'<path class="corner-module corner-module--top" '
-            f'd="M {width * 0.85:.1f} {-stroke:.1f} V {height * 0.07:.1f} '
-            f'Q {width * 0.85:.1f} {height * 0.12:.1f} {width * 0.91:.1f} {height * 0.12:.1f} '
-            f'H {width + stroke:.1f}" fill="none" stroke="{colors["accent"]}" '
-            f'stroke-width="{stroke:.1f}" opacity="0.30"/>'
-            f'<path class="corner-module corner-module--bottom" '
-            f'd="M {-stroke:.1f} {height * 0.94:.1f} H {width * 0.05:.1f} '
-            f'Q {width * 0.11:.1f} {height * 0.94:.1f} {width * 0.11:.1f} {height * 0.985:.1f} '
-            f'V {height + stroke:.1f}" fill="none" stroke="{colors["accent"]}" '
-            f'stroke-width="{stroke:.1f}" opacity="0.30"/>'
-            '</g>'
-        )
+        # Concentric rings radiating from two opposite corners, like an
+        # echo/ripple. Stroke width tapers outward (never opacity) to read
+        # as a fade while every ring stays a full-opacity brand color.
+        ring_color = colors["accent"]
+        corners = [(width, 0.0), (0.0, height)]
+        ring_count = 4
+        base_radius = width * 0.05
+        step = width * 0.07
+        max_stroke = width * 0.016
+        min_stroke = max(2.0, width * 0.003)
+        rings: list[str] = []
+        for cx, cy in corners:
+            for i in range(ring_count):
+                radius = base_radius + i * step
+                fade = i / (ring_count - 1)
+                stroke = max_stroke + (min_stroke - max_stroke) * fade
+                rings.append(
+                    f'<circle class="echo-ring" cx="{cx:.1f}" cy="{cy:.1f}" r="{radius:.1f}" '
+                    f'fill="none" stroke="{ring_color}" stroke-width="{stroke:.1f}"/>'
+                )
+        return '<g class="direction-graphic direction-graphic--echo">' + "".join(rings) + '</g>'
+    # Contextual/Frame: dots sit over the accent field; "statement_emphasis"
+    # already guarantees primary reads at >=4.5:1 against accent, so draw
+    # them at full opacity rather than blending a third hue.
     dots: list[str] = []
     gap = width * 0.027
     for row in range(4):
@@ -776,7 +992,34 @@ def direction_graphic(
             )
     return (
         '<g class="direction-graphic direction-graphic--field" '
-        f'fill="{colors["primary"]}" opacity="0.74">{"".join(dots)}</g>'
+        f'fill="{colors["primary"]}">{"".join(dots)}</g>'
+    )
+
+
+def editorial_corner_marks(
+    use_quotes: bool, *, color: str, stroke_width: float, corner_size: float,
+    top_left_x: float, top_left_y: float,
+    bottom_right_x: float, bottom_right_y: float,
+) -> str:
+    """Two open corner brackets -- top-left and bottom-right -- framing the
+    quote like crop marks, in place of quotation glyphs. A single vertical
+    bar sitting beside text reads as a capital I at a glance; an L-shaped
+    corner cannot be mistaken for a letter at any weight, and a pair of
+    them frames the whole block instead of marking two isolated points.
+    Tied to line 1's cap-height and the last line's own baseline, so
+    neither can drift into empty space the way a fixed-position glyph does.
+    """
+    if not use_quotes:
+        return ""
+    return (
+        f'<path class="quote-corner-mark quote-corner-mark--top" '
+        f'd="M {top_left_x:.1f} {top_left_y + corner_size:.1f} '
+        f'V {top_left_y:.1f} H {top_left_x + corner_size:.1f}" '
+        f'fill="none" stroke="{color}" stroke-width="{stroke_width:.1f}" stroke-linecap="square"/>'
+        f'<path class="quote-corner-mark quote-corner-mark--bottom" '
+        f'd="M {bottom_right_x - corner_size:.1f} {bottom_right_y:.1f} '
+        f'H {bottom_right_x:.1f} V {bottom_right_y - corner_size:.1f}" '
+        f'fill="none" stroke="{color}" stroke-width="{stroke_width:.1f}" stroke-linecap="square"/>'
     )
 
 
@@ -799,6 +1042,18 @@ def logo_image(
     )
 
 
+def measured_text_width(text: str, font_size: float, *, letter_spacing_em: float = 0.0) -> float:
+    """Rendered pixel width of ``text`` at ``font_size``, tracking included --
+    the same estimate ``fitted_font_size`` and ``highlight_rects`` use, so a
+    mark or rule anchored with this lines up with what actually gets drawn.
+    """
+    return visual_units(text) * font_size + letter_spacing_em * font_size * max(0, len(text) - 1)
+
+
+def last_text_line(lines: list[str]) -> str:
+    return next((line for line in reversed(lines) if line), "")
+
+
 def render_svg(
     data: dict[str, Any],
     manifest_dir: Path,
@@ -814,11 +1069,16 @@ def render_svg(
     colors = brand["colors"]
     family = brand["font"]["family"]
     font_stack = card_font_stack(family)
+    activate_font_metrics(brand["font"], manifest_dir)
     lines = content["lines"]
     emphasis = content.get("emphasis", "")
     styles = content.get("styles")
-    if not styles and not emphasis:
-        styles = initial_direction_styles(lines, direction)
+    # An empty list is ambiguous by itself -- it means both "never touched"
+    # and "user removed every style". styles_customized disambiguates: only
+    # apply the first-run auto-signature cue when the user has never acted
+    # on formatting at all.
+    if not styles and not emphasis and not content.get("styles_customized"):
+        styles = initial_direction_styles(content["text"], direction)
     attribution = content["attribution"].get("label", "")
     source = data.get("source") or {}
     use_quotes = content["use_quotation_marks"]
@@ -848,7 +1108,8 @@ def render_svg(
         quote_color = colors["primary"]
         quote_x = width * 0.075
         font_size = font_size_override or fitted_font_size(
-            lines, width * 0.85, height * 0.54, width * 0.090
+            lines, width * 0.85, height * 0.54, float(max(width, height)),
+            letter_spacing_em=-0.025,
         )
         line_height = font_size * 1.05
         block_height = line_height * max(0, len(lines) - 1) + font_size
@@ -863,32 +1124,57 @@ def render_svg(
             styles=styles, highlight_color=colors["accent"],
             extra_style="font-weight:400;letter-spacing:-0.025em"
         )
-        marks = (
-            '<g class="editorial-marks">'
-            + quote_marks(
-                show_quotes, color=colors["accent"],
-                open_x=quote_x, open_y=start_y - width * 0.095,
-                close_x=width * 0.84,
-                close_y=min(height * 0.82, start_y + block_height + width * 0.055),
-            )
-            + '</g>'
-            if show_quotes else ""
+        last_baseline = start_y + line_height * max(0, len(lines) - 1)
+        last_line_end = quote_x + measured_text_width(
+            last_text_line(lines), font_size, letter_spacing_em=-0.025
+        )
+        mark_color = legible_color(colors["accent"], colors["primary"], background)
+        # Always the guide's fixed bottom margin, independent of text
+        # length or font size -- a stable anchor rather than one that
+        # drifts with content.
+        attribution_y = height * 0.915
+        # Close to the text, like the quotation glyphs they replace -- but
+        # never outside the editor's own safe-area guide (a uniform 7%
+        # inset, see .safe-area in styles.css), and the bottom-right corner
+        # always clears the attribution line above it rather than crowding
+        # or passing it.
+        corner_gap = font_size * 0.30
+        corner_size = font_size * 0.26
+        text_top = start_y - font_size * 0.75
+        text_bottom = last_baseline + font_size * 0.22
+        edge_x = width * 0.062
+        edge_y = height * 0.062
+        marks = editorial_corner_marks(
+            show_quotes, color=mark_color,
+            stroke_width=max(4.0, width * 0.0035), corner_size=corner_size,
+            top_left_x=max(quote_x - corner_gap - corner_size, edge_x),
+            top_left_y=max(text_top - corner_gap - corner_size, edge_y),
+            bottom_right_x=min(last_line_end + corner_gap + corner_size, width - edge_x),
+            bottom_right_y=min(
+                text_bottom + corner_gap + corner_size,
+                height - edge_y,
+                attribution_y - font_size * 0.55,
+            ),
         )
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
             f'{graphic}{logo}{marks}{quote}'
-            f'<text class="meta attribution source-field" x="{width * 0.91:.1f}" y="{height * 0.915:.1f}" '
+            f'<text class="meta attribution source-field" x="{width * 0.91:.1f}" y="{attribution_y:.1f}" '
             f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["text"]}">'
             f'{html.escape(attribution)}</text>'
         )
     elif direction == "statement":
         background = colors["primary"]
         quote_color = colors["background"]
-        statement_safe = width * 0.04
+        # Matches the editor's own safe-area guide (.safe-area { inset: 7% }
+        # in styles.css) -- fitting must use this same value, or text sized
+        # against a narrower margin runs past the guide the user actually
+        # sees.
+        statement_safe = width * 0.072
         poster_lines = statement_visual_lines(lines, width, height)
         strong_rows = statement_strong_rows(poster_lines, styles, emphasis)
         font_size = font_size_override or statement_fitted_font_size(
-            poster_lines, strong_rows, width, height
+            poster_lines, strong_rows, width, height, safe=statement_safe
         )
         start_y = height * 0.31 + vertical_offset
         has_light_logo = bool((brand.get("logo") or {}).get("light_path"))
@@ -905,21 +1191,24 @@ def render_svg(
             strong_rows=strong_rows, styles=styles, highlight_color=colors["accent"]
         )
         block_height = statement_block_height(font_size, poster_lines, strong_rows)
+        statement_close_y = min(height * 0.84, start_y + block_height + width * 0.12)
         marks = (
             '<g class="statement-marks">'
             + quote_marks(
-                show_quotes, color=colors["accent"],
+                show_quotes, accent=colors["accent"], fallback=colors["background"], surface=background,
                 open_x=statement_safe, open_y=start_y - width * 0.065,
                 close_x=width * 0.86,
-                close_y=min(height * 0.84, start_y + block_height + width * 0.12),
+                close_y=statement_close_y,
             )
             + '</g>'
             if show_quotes else ""
         )
+        # Always the guide's fixed bottom margin, independent of text.
+        statement_attribution_y = height * 0.915
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
             f'{graphic}{logo}{marks}{quote}'
-            f'<text class="meta attribution source-field" x="{width * 0.945:.1f}" y="{height * 0.915:.1f}" '
+            f'<text class="meta attribution source-field" x="{width * 0.945:.1f}" y="{statement_attribution_y:.1f}" '
             f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["background"]}">'
             f'{html.escape(attribution)}</text>'
         )
@@ -932,7 +1221,8 @@ def render_svg(
         content_x = width * 0.17
         content_right = width * 0.88
         font_size = font_size_override or fitted_font_size(
-            lines, content_right - content_x, height * 0.50, width * 0.085
+            lines, content_right - content_x, height * 0.50, float(max(width, height)),
+            letter_spacing_em=-0.025,
         )
         line_height = font_size * 1.06
         block_height = line_height * max(0, len(lines) - 1) + font_size
@@ -949,28 +1239,33 @@ def render_svg(
         )
         bar_y = start_y - font_size * 0.84
         bar_height = block_height + font_size * 0.16
+        field_last_line_end = content_x + measured_text_width(
+            last_text_line(lines), font_size, letter_spacing_em=-0.025
+        )
         marks = (
             '<g class="field-marks">'
             + quote_marks(
-                show_quotes, color=colors["accent"],
+                show_quotes, accent=colors["accent"], fallback=colors["primary"], surface=colors["background"],
                 open_x=width * 0.12, open_y=start_y - width * 0.11,
-                close_x=width * 0.82,
+                close_x=min(content_right, field_last_line_end + font_size * 0.18),
                 close_y=min(height * 0.80, start_y + block_height + width * 0.055),
             )
             + '</g>'
             if show_quotes else ""
         )
+        # Always the guide's fixed bottom margin, independent of text.
+        field_attribution_y = height * 0.88
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
-            f'{graphic}'
             f'<rect class="field-sheet" x="{sheet_x:.1f}" y="{sheet_y:.1f}" '
             f'width="{sheet_width:.1f}" height="{sheet_height:.1f}" fill="{colors["background"]}"/>'
+            f'{graphic}'
             f'{logo}{marks}'
             f'<rect class="quote-index" x="{width * 0.12:.1f}" y="{bar_y:.1f}" '
             f'width="{max(8.0, width * 0.008):.1f}" height="{bar_height:.1f}" rx="{width * 0.004:.1f}" '
             f'fill="{colors["primary"]}"/>'
             f'{quote}'
-            f'<text class="meta attribution source-field" x="{content_right:.1f}" y="{height * 0.88:.1f}" '
+            f'<text class="meta attribution source-field" x="{content_right:.1f}" y="{field_attribution_y:.1f}" '
             f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["text"]}">'
             f'{html.escape(attribution)}</text>'
         )

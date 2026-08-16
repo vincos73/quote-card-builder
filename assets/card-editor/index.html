@@ -81,19 +81,19 @@
         <fieldset class="tool-section direction-section">
           <legend>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h11M4 17h7"/></svg>
-            <span>Direzione</span>
+            <span>Stili</span>
           </legend>
-          <div class="directions" role="group" aria-label="Direzione visuale">
-            <button type="button" data-direction="editorial" aria-pressed="false"><span>ED</span><small>Contorni</small></button>
-            <button type="button" data-direction="statement" aria-pressed="false"><span>ST</span><small>Moduli × Poster</small></button>
-            <button type="button" data-direction="contextual" aria-pressed="false"><span>CX</span><small>Campo</small></button>
+          <div class="directions" role="group" aria-label="Stile visuale">
+            <button type="button" data-direction="editorial" aria-pressed="false"><span>ED</span><small>Editorial</small></button>
+            <button type="button" data-direction="statement" aria-pressed="false"><span>PS</span><small>Poster</small></button>
+            <button type="button" data-direction="contextual" aria-pressed="false"><span>FR</span><small>Frame</small></button>
           </div>
         </fieldset>
 
         <div id="editorial-fields" class="tool-section lines-section content-section">
           <div class="field-label" id="visual-text-label">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h12M4 11h12M4 16h8M18 8v8l-3-3M18 16l3-3"/></svg>
-            <span>Testo e formattazione</span><small>1–6 righe</small>
+            <span>Testo e formattazione</span><small>righe libere</small>
           </div>
           <div class="visual-text-frame">
             <div id="format-toolbar" class="format-toolbar" role="toolbar" aria-label="Formattazione del testo selezionato">
@@ -117,7 +117,7 @@
             <div id="visual-text-editor" class="visual-text-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="visual-text-label" aria-describedby="font-support-note lines-help" spellcheck="true"></div>
           </div>
           <p id="font-support-note" class="field-help font-support-note" role="status" hidden></p>
-          <p id="lines-help" class="field-help">Invio crea una nuova riga; una riga vuota aggiunge spazio. Le parole si sincronizzano fra i formati.</p>
+          <p id="lines-help" class="field-help">Invio crea una nuova riga; una riga vuota aggiunge spazio. Testo e a capo restano identici in tutti i formati.</p>
           <div class="editorial-meta-grid">
             <label for="attribution-label"><span>Attribuzione</span><input id="attribution-label" type="text" autocomplete="off"></label>
             <label for="attribution-role"><span>Ruolo</span><select id="attribution-role">
@@ -190,14 +190,6 @@
           <p class="field-help">Il pacchetto contiene PNG; l’SVG resta soltanto un passaggio tecnico.</p>
         </fieldset>
 
-        <div class="tool-section quotes-section">
-          <label class="check-row">
-            <input id="quotation-marks" type="checkbox">
-            <span class="check-control" aria-hidden="true"></span>
-            <span>Virgolette</span>
-            <small id="quotes-rule">Segno distintivo di ED</small>
-          </label>
-        </div>
       </form>
 
     </aside>

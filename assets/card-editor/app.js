@@ -9,8 +9,8 @@
   const formatting = window.QcbFormatting;
   if (!formatting) throw new Error('Motore di formattazione non disponibile');
   const {
-    STYLE_TYPES, canonicalLineStart, clampStyleRanges, normalizeStyleRanges,
-    normalizeText: normalize, pointLength, remapStyleRanges, suggestBalancedLines,
+    DIRECTION_EMPHASIS_TYPE, STYLE_TYPES, canonicalLineStart, clampStyleRanges, defaultEmphasisSpan,
+    normalizeStyleRanges, normalizeText: normalize, pointLength, remapStyleRanges,
   } = formatting;
   const normalizeScale = (value) => {
     const numeric = Number(value);
@@ -75,7 +75,7 @@
     scale: $('#scale'), scaleValue: $('#scale-value'), scaleFitNote: $('#scale-fit-note'),
     textIntegrityHint: $('#text-integrity-hint'),
     attributionLabel: $('#attribution-label'), attributionRole: $('#attribution-role'),
-    quotes: $('#quotation-marks'), quotesRule: $('#quotes-rule'), preview: $('#preview-content'),
+    preview: $('#preview-content'),
     shell: $('#preview-shell'), stage: $('#preview-stage'), message: $('#preview-message'),
     warningCount: $('#qa-count'), qaLabel: $('#qa-label'), draftState: $('#draft-state'),
     actionMessage: $('#action-message'), zoom: $('#zoom-output'), safeToggle: $('#safe-toggle'),
@@ -148,13 +148,23 @@
     }
   };
 
-  const initialStyles = (content) => {
+  const initialStyles = (content, direction) => {
     const existing = normalizeStyleRanges(content.styles || []);
-    if (existing.length || !content.emphasis) return existing;
-    const index = content.text.indexOf(content.emphasis);
-    if (index < 0) return [];
-    const start = pointLength(content.text.slice(0, index));
-    return [{ start, end: start + pointLength(content.emphasis), type: 'bold' }];
+    if (existing.length) return existing;
+    if (content.emphasis) {
+      const index = content.text.indexOf(content.emphasis);
+      if (index < 0) return [];
+      const start = pointLength(content.text.slice(0, index));
+      return [{ start, end: start + pointLength(content.emphasis), type: 'bold' }];
+    }
+    // No explicit styles and no legacy emphasis: the renderer still applies
+    // an automatic first-run cue (default_emphasis_span in
+    // render_quote_card.py). Seed the same span here as an explicit,
+    // editable style so it shows in the toolbar and the user can remove it.
+    const span = defaultEmphasisSpan(content.text);
+    if (!span) return [];
+    const type = DIRECTION_EMPHASIS_TYPE[direction] || 'bold';
+    return [{ start: span.start, end: span.end, type }];
   };
 
   const editorMarkup = (lines, styles) => {
@@ -287,6 +297,10 @@
       return;
     }
     const applied = toggleStyleRange(type, offsets.start, offsets.end);
+    // From here on an empty styles list means "user removed everything",
+    // never "untouched" -- stop the renderer's own auto-signature fallback
+    // from silently reapplying a default once the user has acted at all.
+    state.draft.styles_customized = true;
     renderVisualEditor();
     els.formattingState.textContent = `${STYLE_LABELS[type]} ${applied ? 'applicato' : 'rimosso'}`;
     schedulePreview();
@@ -298,12 +312,12 @@
     const nextLines = editorLines();
     const nextText = normalize(nextLines.join(' '));
     const previousText = normalize(state.draft.text);
-    format.lines = nextLines;
+    // Lines (including manual breaks) are shared across every format --
+    // what the user types is what every aspect ratio shows, unchanged.
+    // Only the fitted font size differs per format.
+    state.draft.formats.forEach((item) => { item.lines = [...nextLines]; });
     if (nextText && nextText !== previousText) {
       state.draft.text = nextText;
-      state.draft.formats.forEach((item) => {
-        if (item.id !== format.id) item.lines = suggestBalancedLines(nextText, item.lines.filter(Boolean).length);
-      });
       if (state.draft.styles.length) {
         state.draft.styles = clampStyleRanges(
           remapStyleRanges(state.draft.styles, previousText, nextText),
@@ -336,7 +350,8 @@
     attribution: clone(manifest.content.attribution || { label: '', role: 'none' }),
     use_quotation_marks: Boolean(manifest.content.use_quotation_marks),
     direction: manifest.direction,
-    styles: initialStyles(manifest.content),
+    styles: initialStyles(manifest.content, manifest.direction),
+    styles_customized: Boolean(manifest.content.styles_customized),
     presentation: {
       logo_mode: 'auto',
       show_quotation_marks: Boolean(manifest.content.use_quotation_marks),
@@ -454,11 +469,6 @@
 
   const renderDraftControls = () => {
     const draft = state.draft;
-    els.quotes.checked = Boolean(draft.use_quotation_marks);
-    els.quotes.disabled = false;
-    els.quotesRule.textContent = 'Segno distintivo di ED';
-    els.quotes.closest('.check-row').classList.remove('is-locked');
-    els.quotes.closest('.quotes-section').hidden = draft.direction !== 'editorial';
     els.attributionLabel.value = draft.attribution?.label || '';
     els.attributionRole.value = draft.attribution?.role || 'none';
     activate($('#logo-control'), 'logo', draft.presentation.logo_mode);
@@ -500,8 +510,8 @@
     const errors = [];
     const sourceText = normalize(state.draft.text);
     state.draft.formats.forEach((format) => {
-      if (!Array.isArray(format.lines) || format.lines.length < 1 || format.lines.length > 6 || !format.lines.some((line) => normalize(line))) {
-        errors.push(`${format.id}: usa da 1 a 6 righe.`);
+      if (!Array.isArray(format.lines) || format.lines.length < 1 || format.lines.length > 40 || !format.lines.some((line) => normalize(line))) {
+        errors.push(`${format.id}: usa da 1 a 40 righe.`);
       } else if (!format.lines.every((line) => typeof line === 'string')) {
         errors.push(`${format.id}: ogni riga deve essere testuale.`);
       } else if (normalize(format.lines.join(' ')) !== sourceText) {
@@ -532,6 +542,7 @@
       attribution: clone(state.draft.attribution),
       use_quotation_marks: state.draft.use_quotation_marks,
       styles: clone(state.draft.styles),
+      styles_customized: Boolean(state.draft.styles_customized),
       direction: state.draft.direction,
       emphasis: '',
       presentation: clone(state.draft.presentation),
@@ -634,8 +645,6 @@
     clearGeneratedOutputs();
     if (!state.submitting && !state.chatbotRequestId) setGenerateState('idle');
     updateActiveFormat();
-    state.draft.use_quotation_marks = els.quotes.checked;
-    state.draft.presentation.show_quotation_marks = els.quotes.checked;
     state.draft.attribution = {
       label: els.attributionLabel.value.trim(),
       role: els.attributionRole.value,
@@ -837,7 +846,6 @@
   $$('.directions button').forEach((button) => button.addEventListener('click', () => {
     state.draft.direction = button.dataset.direction;
     activate($('.directions'), 'direction', state.draft.direction);
-    els.quotes.closest('.quotes-section').hidden = state.draft.direction !== 'editorial';
     schedulePreview();
   }));
   els.formatToolbar.addEventListener('pointerdown', (event) => {
@@ -874,7 +882,7 @@
     selection.addRange(range);
     els.lines.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste', data: text }));
   });
-  [els.scale, els.quotes, els.attributionLabel, els.attributionRole].forEach((input) => input.addEventListener('input', () => {
+  [els.scale, els.attributionLabel, els.attributionRole].forEach((input) => input.addEventListener('input', () => {
     if (input === els.scale) {
       const value = Number(input.value);
       els.scaleValue.value = `${value}%`;

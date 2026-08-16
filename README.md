@@ -2,14 +2,14 @@
 
 Skill per Codex che trasforma frasi, testi, URL, documenti e idee in quote card verificabili e coerenti con un brand approvato.
 
-Versione corrente: **0.6.18 — Live Preview Recovery**
+Versione corrente: **0.7.0 — Cross-Format Consistency**
 
 ## Caratteristiche
 
 - provenienza, trasformazione e stato della prova mantenuti separati;
 - tre direzioni visuali autonome: Contorni, Manifesto Moduli × Poster e Campo;
 - editor locale con a capo manuali, righe vuote, grassetto, corsivo, sottolineato, evidenziato e colore accento;
-- ribilanciamento automatico dei formati non attivi sulla lunghezza visiva, con protezione dalle parole orfane;
+- testo, a capo manuali e formattazioni restano identici tra `4:5`, `1:1` e `9:16`: cambiare formato adatta solo la dimensione carattere, mai la composizione del testo;
 - Arial come baseline neutra su macOS e Windows, con trattamenti iniziali distinti per Contorni, Moduli × Poster e Campo;
 - pannello non editabile con i colori del profilo applicato alla card, con campioni, codici HEX e uso previsto;
 - selezioni multilinea affidabili e riallineamento degli stili dopo le modifiche al testo;
