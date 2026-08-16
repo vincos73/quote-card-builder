@@ -99,7 +99,7 @@
     const words = normalizeText(text).split(' ').filter(Boolean);
     if (words.length < 2) return words;
 
-    const maxLines = Math.min(6, words.length);
+    const maxLines = Math.min(40, words.length);
     const wordUnits = words.map((word) => pointLength(word));
     const prefix = [0];
     wordUnits.forEach((units) => prefix.push(prefix.at(-1) + units));
@@ -149,10 +149,36 @@
     return best?.lines || [words.join(' ')];
   };
 
+  // Mirrors render_quote_card.py's default_emphasis_span(): the final
+  // clause of the canonical text, snapped outward to word boundaries.
+  // Must stay identical to the Python version -- it decides which words
+  // the renderer colors by default when no explicit styles exist.
+  const defaultEmphasisSpan = (text) => {
+    const stripped = String(text || '').trim();
+    const characters = Array.from(stripped);
+    if (!characters.length) return null;
+    const target = Math.max(0, Math.round(characters.length * 0.6));
+    let start = target;
+    while (start > 0 && !/\s/.test(characters[start - 1])) start -= 1;
+    while (start < characters.length && /\s/.test(characters[start])) start += 1;
+    const end = characters.length;
+    if (start >= end) {
+      const trimmed = characters.join('').replace(/\s+$/, '');
+      const lastSpace = trimmed.lastIndexOf(' ');
+      start = lastSpace >= 0 ? lastSpace + 1 : 0;
+    }
+    return { start, end };
+  };
+
+  // Mirrors render_quote_card.py's initial_direction_styles() type choice.
+  const DIRECTION_EMPHASIS_TYPE = { editorial: 'bold', statement: 'accent', contextual: 'highlight' };
+
   return {
+    DIRECTION_EMPHASIS_TYPE,
     STYLE_TYPES,
     canonicalLineStart,
     clampStyleRanges,
+    defaultEmphasisSpan,
     normalizeStyleRanges,
     normalizeText,
     pointLength,

@@ -169,7 +169,9 @@ def layout_constraints(direction: str, width: int, height: int) -> tuple[float, 
     if direction == "editorial":
         return width * 0.85, height * 0.54, width * 0.090, 1.05
     if direction == "statement":
-        statement_safe = width * 0.04
+        # Matches render_quote_card.py's statement_safe and the editor's own
+        # safe-area guide (.safe-area { inset: 7% } in styles.css).
+        statement_safe = width * 0.072
         return width - 2 * statement_safe, height * 0.58, width * 0.12, 0.98
     return width * 0.71, height * 0.50, width * 0.085, 1.06
 
@@ -208,6 +210,20 @@ def vertical_limits(
     return upper_limit, lower_limit
 
 
+def resolve_statement_strong_rows(visual_lines: list[str], data: dict[str, Any]) -> set[int]:
+    """render_svg falls back to an auto-generated signature style when
+    content.styles/emphasis are both empty, but that fallback is computed
+    inside render_svg itself -- mirror it here too, or an auto-signature
+    strong row measures at its un-upscaled 1.0x width during fitting and
+    then renders 1.12x larger, overflowing the fitted box.
+    """
+    content_styles = data["content"].get("styles")
+    content_emphasis = data["content"].get("emphasis", "")
+    if not content_styles and not content_emphasis and not data["content"].get("styles_customized"):
+        content_styles = proof.initial_direction_styles(data["content"]["text"], "statement")
+    return proof.statement_strong_rows(visual_lines, content_styles, content_emphasis)
+
+
 def text_vertical_bounds(
     lines: list[str], font_size: float, data: dict[str, Any], direction: str,
     width: int, height: int, vertical_position: str,
@@ -223,9 +239,7 @@ def text_vertical_bounds(
         )
     if direction == "statement":
         visual_lines = proof.statement_visual_lines(lines, width, height)
-        strong_rows = proof.statement_strong_rows(
-            visual_lines, data["content"].get("styles"), data["content"].get("emphasis", "")
-        )
+        strong_rows = resolve_statement_strong_rows(visual_lines, data)
         start_y = height * 0.31 + offset
         return (
             start_y - font_size * 0.82,
@@ -244,11 +258,10 @@ def measure_text_box(
     direction: str, width: int, height: int,
 ) -> tuple[float, float, str]:
     """Measure the same visual block used by both fitting and live QA."""
+    proof.activate_font_metrics(data["brand"]["font"], manifest_dir)
     if direction == "statement":
         visual_lines = proof.statement_visual_lines(lines, width, height)
-        strong_rows = proof.statement_strong_rows(
-            visual_lines, data["content"].get("styles"), data["content"].get("emphasis", "")
-        )
+        strong_rows = resolve_statement_strong_rows(visual_lines, data)
         measured_width = max(
             proof.visual_units(line.upper()) * font_size * (1.12 if index in strong_rows else 1.0)
             for index, line in enumerate(visual_lines) if line
@@ -276,10 +289,18 @@ def measure_text_box(
             )
         except (ImportError, OSError, ValueError):
             pass
+    # editorial and contextual both render the quote at letter-spacing:-0.025em
+    # (render_quote_card.render_svg); matching that here keeps this estimate
+    # from over-predicting width and under-sizing the fitted font.
+    tracking_em = -0.025
+    measured_width = max(
+        proof.visual_units(line) * font_size + tracking_em * font_size * max(0, len(line) - 1)
+        for line in lines
+    )
     return (
-        max(proof.visual_units(line) for line in lines) * font_size,
+        measured_width,
         font_size * line_ratio * len(lines),
-        "deterministic_heuristic",
+        "font_metrics_ttf" if proof.font_metrics_active() else "deterministic_heuristic",
     )
 
 
