@@ -16,6 +16,7 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
+import inspect_render as inspector
 import render_quote_card as proof
 
 
@@ -365,6 +366,7 @@ def render_pack(
     basename = (data.get("output") or {}).get("basename", "quote-card")
     rendered: list[dict[str, Any]] = []
     contact_assets: list[Path] = []
+    inspected: list[str] = []
 
     for item in data["formats"]:
         adapted = proof_manifest_for_format(data, item)
@@ -385,16 +387,26 @@ def render_pack(
         }
         stem = f"{basename}-{direction}-{item['id']}"
         svg_path = output_dir / f"{stem}.svg"
-        svg_path.write_text(
-            proof.render_svg(
-                adapted,
-                manifest_path.parent,
-                direction,
-                font_size_override=size,
-                render_options=render_options,
-            ),
-            encoding="utf-8",
+        svg = proof.render_svg(
+            adapted,
+            manifest_path.parent,
+            direction,
+            font_size_override=size,
+            render_options=render_options,
         )
+        # Read the finished drawing, not the estimate that produced it: a
+        # production pack must never deliver a card whose text has left the
+        # safe area or whose marks sit on the words.
+        defects = inspector.inspect_render(
+            svg, direction, item["width"], item["height"],
+            vertical_position=render_options["vertical_position"],
+        )
+        if defects:
+            raise RuntimeError(
+                f"{item['id']}: " + "; ".join(defect["message"] for defect in defects)
+            )
+        inspected.append(item["id"])
+        svg_path.write_text(svg, encoding="utf-8")
         png_path: Path | None = None
         if png_mode != "never":
             candidate = output_dir / f"{stem}.png"
@@ -460,6 +472,13 @@ def render_pack(
                 "background_on_primary": round(proof.contrast_ratio(colors["background"], colors["primary"]), 2),
                 "accent_on_primary": round(proof.contrast_ratio(colors["accent"], colors["primary"]), 2),
             },
+            # Geometry and contrast are verified on the rendered SVG of
+            # every format (see inspect_render), so nobody has to catch
+            # overflow or colliding marks by eye. The flag below stays True
+            # regardless: finalize_quote_card_pack clears it to record that
+            # a human signed off editorially, which is a different claim
+            # from "the drawing is geometrically sound".
+            "render_inspection": {"formats": inspected, "defects": []},
             "visual_inspection_required": True,
         },
         "formats": rendered,
