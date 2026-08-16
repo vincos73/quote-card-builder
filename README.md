@@ -2,7 +2,7 @@
 
 Skill per Codex che trasforma frasi, testi, URL, documenti e idee in quote card verificabili e coerenti con un brand approvato.
 
-Versione corrente: **0.8.0 — Render Verification**
+Versione corrente: **1.0.0 — Verified Delivery**
 
 ## Caratteristiche
 
