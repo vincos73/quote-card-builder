@@ -2,7 +2,7 @@
 
 Skill per Codex che trasforma frasi, testi, URL, documenti e idee in quote card verificabili e coerenti con un brand approvato.
 
-Versione corrente: **0.7.0 — Cross-Format Consistency**
+Versione corrente: **0.8.0 — Render Verification**
 
 ## Caratteristiche
 
@@ -18,6 +18,7 @@ Versione corrente: **0.7.0 — Cross-Format Consistency**
 - consegna di tutti i rapporti oppure di un singolo formato scelto dall’utente;
 - un’unica CTA `Genera` per salvare, validare e consegnare gli output al chatbot Codex locale;
 - PNG come output predefinito, con SVG conservato soltanto come fallback tecnico;
+- verifica automatica della card **disegnata**, non solo della stima che l'ha prodotta: testo fuori dal margine di sicurezza, segni decorativi sovrapposti alle parole o all'attribuzione e colori sotto la soglia di contrasto bloccano sia l'anteprima sia il pacchetto di produzione;
 - controlli tecnici compatti e finalizzazione con hash degli artefatti.
 - evidenziazione ST allineata alla baseline reale e limitata esattamente alle parole selezionate;
 - testo evidenziato sempre bianco su fascia accentata, anche dopo un a capo o una riga vuota.
