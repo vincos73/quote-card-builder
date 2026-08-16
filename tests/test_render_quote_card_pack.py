@@ -219,10 +219,14 @@ class ProductionManifestTests(unittest.TestCase):
             node = temp_path / "node"; node.write_bytes(b"node")
             modules = temp_path / "node_modules"; modules.mkdir()
 
-            def fake_convert(_svg, png, _node, _modules, _width, _height):
+            # Stub the whole conversion: with a real backend chain this
+            # test would launch headless Chrome, which is slow and makes
+            # the result depend on what is installed on the machine.
+            def fake_rasterize(_svg, png, _width, _height, **_options):
                 png.write_bytes(b"png")
+                return "sharp"
 
-            with mock.patch.object(PACK.proof, "convert_with_sharp", side_effect=fake_convert):
+            with mock.patch.object(PACK.raster, "rasterize", side_effect=fake_rasterize):
                 result = PACK.render_pack(
                     manifest, manifest_path, output_dir, "required", node, modules, "auto"
                 )

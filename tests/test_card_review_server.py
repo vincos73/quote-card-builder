@@ -3,6 +3,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 MODULE_PATH = Path(__file__).parents[1] / "scripts" / "card_review_server.py"
@@ -132,7 +133,11 @@ class CardReviewServerTests(unittest.TestCase):
             source = manifest()
             source["presentation"]["output_mode"] = "4x5"
             manifest_path.write_text(json.dumps(source), encoding="utf-8")
-            result = SERVER.generate_production_pack(source, manifest_path, root / "session", None, None)
+            # No converter at all: the point of this test is the declared
+            # SVG fallback, and on a machine with Chrome installed the
+            # chain would legitimately succeed and never reach it.
+            with mock.patch.object(SERVER.pack.raster, "BACKENDS", ()):
+                result = SERVER.generate_production_pack(source, manifest_path, root / "session", None, None)
             self.assertEqual(["4x5"], [item["format"] for item in result["outputs"]])
             self.assertEqual("svg", result["outputs"][0]["kind"])
             self.assertTrue((root / "session" / "production" / result["outputs"][0]["relative_path"]).is_file())

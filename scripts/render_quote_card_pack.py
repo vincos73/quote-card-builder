@@ -8,7 +8,6 @@ import copy
 import hashlib
 import json
 import math
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -17,6 +16,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import inspect_render as inspector
+import rasterize as raster
 import render_quote_card as proof
 
 
@@ -367,6 +367,8 @@ def render_pack(
     rendered: list[dict[str, Any]] = []
     contact_assets: list[Path] = []
     inspected: list[str] = []
+    png_failures: list[str] = []
+    png_backends: set[str] = set()
 
     for item in data["formats"]:
         adapted = proof_manifest_for_format(data, item)
@@ -408,21 +410,23 @@ def render_pack(
         inspected.append(item["id"])
         svg_path.write_text(svg, encoding="utf-8")
         png_path: Path | None = None
+        png_backend: str | None = None
         if png_mode != "never":
             candidate = output_dir / f"{stem}.png"
-            converted = False
-            if node and node_modules and node.is_file() and node_modules.is_dir():
-                try:
-                    proof.convert_with_sharp(
-                        svg_path, candidate, node.resolve(), node_modules.resolve(), item["width"], item["height"]
-                    )
-                    converted = True
-                except (OSError, subprocess.CalledProcessError):
-                    converted = False
-            if converted:
+            try:
+                # Tries every converter present and checks what came back;
+                # the old path swallowed the converter's own error, so a
+                # missing PNG arrived with nothing to act on.
+                png_backend = raster.rasterize(
+                    svg_path, candidate, item["width"], item["height"],
+                    node=node, node_modules=node_modules,
+                )
                 png_path = candidate
-            elif png_mode == "required":
-                raise RuntimeError("Conversione PNG non disponibile.")
+                png_backends.add(png_backend)
+            except raster.RasterError as error:
+                if png_mode == "required":
+                    raise RuntimeError(f"{item['id']}: {error}") from error
+                png_failures.append(f"{item['id']}: {error}")
         if svg_mode == "discard" and png_path is None:
             raise RuntimeError("Non è possibile eliminare l’SVG senza un PNG riuscito.")
         keep_svg = svg_mode == "keep" or png_path is None
@@ -444,6 +448,7 @@ def render_pack(
                 "auto_fitted": auto_fitted,
                 "vertical_position": render_options["vertical_position"],
                 "graphic_mode": render_options["graphic_mode"],
+                "png_backend": png_backend,
                 "svg": svg_record,
                 "png": {"path": png_path.name, "sha256": sha256_file(png_path)} if png_path else None,
             }
@@ -479,18 +484,34 @@ def render_pack(
             # a human signed off editorially, which is a different claim
             # from "the drawing is geometrically sound".
             "render_inspection": {"formats": inspected, "defects": []},
+            # Rasterisers disagree slightly on text metrics, so which one
+            # produced these files is part of the artifact's provenance.
+            "png_backends": sorted(png_backends),
+            "png_failures": png_failures,
             "visual_inspection_required": True,
         },
         "formats": rendered,
         "contact_sheet": {"path": contact_sheet.name, "sha256": sha256_file(contact_sheet)},
     }
     qa_path.write_text(json.dumps(qa_data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    warnings: list[str] = list(png_failures)
+    # Rasterisers do not agree to the pixel: on the same card, headless
+    # Chrome drew the widest row about 3% wider than sharp, close enough
+    # to the safe-area edge to matter. A substitute backend is better than
+    # no PNG, but the user is told which one drew their file.
+    substitutes = sorted(png_backends - {raster.PRIMARY_BACKEND})
+    if substitutes:
+        warnings.append(
+            f"PNG prodotti con {', '.join(substitutes)} invece di {raster.PRIMARY_BACKEND}: "
+            "le metriche del testo possono differire lievemente dall'SVG verificato."
+        )
     return {
         "valid": True,
         "state": "qa",
         "formats": rendered,
         "contact_sheet": str(contact_sheet),
         "qa_report": str(qa_path),
+        "warnings": warnings,
     }
 
 

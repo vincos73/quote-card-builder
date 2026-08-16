@@ -9,17 +9,18 @@ import hashlib
 import html
 import json
 import math
-import os
 import re
-import shutil
 import struct
-import subprocess
 import sys
 import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Callable
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+import rasterize
 
 DIRECTIONS = ("editorial", "statement", "contextual")
 TRANSFORMATIONS = {"VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"}
@@ -1363,20 +1364,6 @@ img{{display:block;width:100%;height:auto}}figcaption{{padding:12px 2px 2px;font
     output_path.write_text(document, encoding="utf-8")
 
 
-def convert_with_sharp(svg_path: Path, png_path: Path, node: Path, node_modules: Path, width: int, height: int) -> None:
-    helper = Path(__file__).with_name("svg_to_png.cjs")
-    env = os.environ.copy()
-    env["NODE_PATH"] = str(node_modules)
-    subprocess.run(
-        [str(node), str(helper), str(svg_path), str(png_path), str(width), str(height)],
-        check=True,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path)
@@ -1412,25 +1399,19 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.png != "never":
             png_path = args.output_dir / f"{basename}-{direction}.png"
-            converted = False
-            if args.node and args.node_modules and args.node.is_file() and args.node_modules.is_dir():
-                try:
-                    convert_with_sharp(
-                        svg_path,
-                        png_path,
-                        args.node.resolve(),
-                        args.node_modules.resolve(),
-                        data["canvas"]["width"],
-                        data["canvas"]["height"],
-                    )
-                    converted = True
-                except (OSError, subprocess.CalledProcessError):
-                    converted = False
-            if converted:
+            try:
+                rasterize.rasterize(
+                    svg_path, png_path,
+                    data["canvas"]["width"], data["canvas"]["height"],
+                    node=args.node, node_modules=args.node_modules,
+                )
                 png_paths.append(png_path)
-            elif args.png == "required":
-                print(json.dumps({"valid": False, "errors": [{"path": "output", "code": "png_unavailable", "message": "Conversione PNG non disponibile."}]}, ensure_ascii=False, indent=2))
-                return 1
+            except rasterize.RasterError as error:
+                # Report why, rather than the bare "non disponibile" that
+                # used to hide the converter's own error message.
+                if args.png == "required":
+                    print(json.dumps({"valid": False, "errors": [{"path": "output", "code": "png_unavailable", "message": str(error)}]}, ensure_ascii=False, indent=2))
+                    return 1
 
     contact_sheet = None
     if len(svg_paths) > 1:
