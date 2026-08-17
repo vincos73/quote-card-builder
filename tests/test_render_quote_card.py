@@ -296,6 +296,7 @@ class VisualManifestTests(unittest.TestCase):
 
     def test_inline_text_styles_are_rendered_together(self):
         manifest = valid_visual_manifest()
+        manifest["direction"] = "editorial"
         manifest["content"]["emphasis"] = ""
         manifest["content"]["styles"] = [
             {"start": 0, "end": 9, "type": "bold"},
@@ -304,13 +305,20 @@ class VisualManifestTests(unittest.TestCase):
             {"start": 44, "end": 54, "type": "highlight"},
         ]
         self.assertEqual([], RENDERER.validate_visual_manifest(manifest, Path.cwd()))
-        svg = RENDERER.render_svg(manifest, Path.cwd(), "statement")
+        svg = RENDERER.render_svg(manifest, Path.cwd(), "editorial")
         self.assertIn('font-weight="700"', svg)
         self.assertIn('font-style="italic"', svg)
         self.assertIn('text-decoration:underline', svg)
         self.assertIn('class="highlight-marker"', svg)
         self.assertIn('rx="', svg)
         self.assertNotIn('paint-order="stroke fill"', svg)
+
+    def test_statement_rejects_highlight_style(self):
+        manifest = valid_visual_manifest()
+        manifest["content"]["emphasis"] = ""
+        manifest["content"]["styles"] = [{"start": 0, "end": 9, "type": "highlight"}]
+        errors = RENDERER.validate_visual_manifest(manifest, Path.cwd())
+        self.assertTrue(any(error["code"] == "unsupported_direction_style" for error in errors))
 
     def test_accent_style_colors_selected_glyphs(self):
         manifest = valid_visual_manifest()

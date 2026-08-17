@@ -20,11 +20,16 @@
     ...format,
     text_scale: normalizeScale(format.text_scale),
   }));
+  const normalizePresentation = (presentation = {}) => ({
+    logo_mode: presentation.logo_mode || 'auto',
+    graphic_mode: presentation.graphic_mode || 'auto',
+    output_mode: presentation.output_mode || 'all',
+  });
   const baselineSignature = (manifest) => JSON.stringify({
     text: manifest.content?.text || '',
     direction: manifest.direction || '',
     attribution: manifest.content?.attribution || {},
-    presentation: manifest.presentation || {},
+    presentation: normalizePresentation(manifest.presentation || {}),
     formats: manifest.formats || [],
   });
   const TRANSFORMATION_LABELS = {
@@ -164,6 +169,16 @@
     if (!span) return [];
     const type = DIRECTION_EMPHASIS_TYPE[direction] || 'bold';
     return [{ start: span.start, end: span.end, type }];
+  };
+
+  const styleSupportedByDirection = (type, direction) => !(direction === 'statement' && type === 'highlight');
+
+  const sanitizeDirectionStyles = (draft) => {
+    const before = normalizeStyleRanges(draft.styles || []);
+    const after = before.filter((style) => styleSupportedByDirection(style.type, draft.direction));
+    draft.styles = after;
+    if (after.length !== before.length) draft.styles_customized = true;
+    return before.length - after.length;
   };
 
   const editorMarkup = (lines, styles) => {
@@ -342,22 +357,21 @@
     activate($('#position-control'), 'position', format.vertical_position);
   };
 
-  const initialDraft = (manifest) => ({
-    text: manifest.content.text,
-    transformation: manifest.content.transformation,
-    evidence_status: manifest.content.evidence_status,
-    attribution: clone(manifest.content.attribution || { label: '', role: 'none' }),
-    direction: manifest.direction,
-    styles: initialStyles(manifest.content, manifest.direction),
-    styles_customized: Boolean(manifest.content.styles_customized),
-    presentation: {
-      logo_mode: 'auto',
-      graphic_mode: 'auto',
-      output_mode: 'all',
-      ...clone(manifest.presentation || {}),
-    },
-    formats: normalizeFormats(manifest.formats),
-  });
+  const initialDraft = (manifest) => {
+    const draft = {
+      text: manifest.content.text,
+      transformation: manifest.content.transformation,
+      evidence_status: manifest.content.evidence_status,
+      attribution: clone(manifest.content.attribution || { label: '', role: 'none' }),
+      direction: manifest.direction,
+      styles: initialStyles(manifest.content, manifest.direction),
+      styles_customized: Boolean(manifest.content.styles_customized),
+      presentation: normalizePresentation(manifest.presentation || {}),
+      formats: normalizeFormats(manifest.formats),
+    };
+    sanitizeDirectionStyles(draft);
+    return draft;
+  };
 
   const loadSavedDraft = (manifest) => {
     try {
@@ -372,12 +386,10 @@
           ...saved.draft,
           evidence_status: saved.draft.evidence_status || manifest.content.evidence_status,
           attribution: clone(saved.draft.attribution || manifest.content.attribution || { label: '', role: 'none' }),
-          presentation: {
-            ...initial.presentation,
-            ...clone(saved.draft.presentation || {}),
-          },
+          presentation: normalizePresentation(saved.draft.presentation || initial.presentation),
         };
         restored.formats = normalizeFormats(saved.draft.formats);
+        sanitizeDirectionStyles(restored);
         return restored;
       }
     } catch (_) {
@@ -451,6 +463,20 @@
     els.fontSupport.hidden = false;
   };
 
+  const renderDirectionStyleSupport = () => {
+    const control = els.formatToolbar.querySelector('button[data-style="highlight"]');
+    if (!control) return;
+    const available = styleSupportedByDirection('highlight', state.draft?.direction);
+    control.setAttribute('aria-disabled', String(!available));
+    if (available) {
+      delete control.dataset.blockedReason;
+      control.title = 'Evidenziato';
+      return;
+    }
+    control.dataset.blockedReason = 'Evidenziazione non disponibile nello stile Poster';
+    control.title = control.dataset.blockedReason;
+  };
+
   const renderDeclarationState = (serverDeclaration = null) => {
     const transformation = serverDeclaration?.transformation || state.draft.transformation;
     const evidence = serverDeclaration?.evidence_status || state.draft.evidence_status;
@@ -473,6 +499,7 @@
       button.classList.toggle('is-active', active);
       button.setAttribute('aria-pressed', String(active));
     });
+    renderDirectionStyleSupport();
     syncFormatControls();
     renderDeclarationState();
     storeDraft();
@@ -518,6 +545,9 @@
       !STYLE_TYPES.has(style.type) || !Number.isInteger(style.start) || !Number.isInteger(style.end)
       || style.start < 0 || style.start >= style.end || style.end > textLength
     ))) errors.push('La formattazione contiene una selezione non valida.');
+    if (state.draft.direction === 'statement' && state.draft.styles.some((style) => style.type === 'highlight')) {
+      errors.push('L’evidenziazione non è disponibile nello stile Poster.');
+    }
     if (!['VERBATIM', 'EDITED', 'PARAPHRASE', 'AI_GENERATED'].includes(state.draft.transformation)) errors.push('Scegli un trattamento valido.');
     if (!['VERIFIED', 'USER_SUPPLIED', 'UNVERIFIED', 'CONFLICT'].includes(state.draft.evidence_status)) errors.push('Scegli uno stato della prova valido.');
     if (!['speaker', 'author', 'publisher', 'none'].includes(state.draft.attribution?.role)) errors.push('Scegli un ruolo di attribuzione valido.');
@@ -538,7 +568,7 @@
       styles_customized: Boolean(state.draft.styles_customized),
       direction: state.draft.direction,
       emphasis: '',
-      presentation: clone(state.draft.presentation),
+      presentation: normalizePresentation(state.draft.presentation),
       formats: clone(state.draft.formats),
     };
   };
@@ -838,7 +868,13 @@
   $$('.format-tab').forEach((button) => button.addEventListener('click', () => setFormat(button.dataset.format)));
   $$('.directions button').forEach((button) => button.addEventListener('click', () => {
     state.draft.direction = button.dataset.direction;
+    const removedStyles = sanitizeDirectionStyles(state.draft);
     activate($('.directions'), 'direction', state.draft.direction);
+    renderDirectionStyleSupport();
+    if (removedStyles) {
+      renderVisualEditor();
+      els.formattingState.textContent = 'Evidenziazione rimossa: non disponibile nello stile Poster';
+    }
     schedulePreview();
   }));
   els.formatToolbar.addEventListener('pointerdown', (event) => {

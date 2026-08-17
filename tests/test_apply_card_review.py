@@ -44,6 +44,11 @@ class FeedbackContractTests(unittest.TestCase):
         self.assertIn("styles_customized", sent, "server no longer sends it; update this test")
         self.assertEqual(set(), sent - APPLIER.CONTENT_KEYS)
 
+    def test_removed_quotation_mark_field_is_not_reintroduced_in_editor(self):
+        editor = (ROOT / "assets" / "card-editor" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("normalizePresentation", editor)
+        self.assertNotIn("show_quotation_marks", editor)
+
 
 class ApplyCardReviewTests(unittest.TestCase):
     def make_files(self, feedback):

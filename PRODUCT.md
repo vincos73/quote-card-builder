@@ -1,6 +1,6 @@
 # Quote Card Builder — Product Requirements Document
 
-Stato: rilascio v0.6.10
+Stato: rilascio v1.0.1
 Data: 15 agosto 2026
 Ambito: skill Codex, con primo nucleo editoriale riutilizzabile
 

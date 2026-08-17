@@ -23,7 +23,6 @@ Il production manifest congela contenuto, direzione e brand approvati, poi descr
     "text": "Un agente non si commuove per il tuo claim: confronta.",
     "transformation": "VERBATIM",
     "evidence_status": "VERIFIED",
-    "use_quotation_marks": true,
     "emphasis": "",
     "styles": [
       {"start": 44, "end": 54, "type": "highlight"}
@@ -55,7 +54,6 @@ Il production manifest congela contenuto, direzione e brand approvati, poi descr
   ],
   "presentation": {
     "logo_mode": "auto",
-    "show_quotation_marks": true,
     "graphic_mode": "auto",
     "output_mode": "all"
   },
