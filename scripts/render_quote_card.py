@@ -49,7 +49,7 @@ DIRECTION_GEOMETRY = {
     # inset: left/right text margin. start_y: first baseline.
     # fit_height: vertical budget the fitter may fill.
     "editorial": {"inset": 0.075, "start_y": 0.36, "fit_height": 0.54, "line_ratio": 1.05},
-    "statement": {"inset": 0.072, "start_y": 0.31, "fit_height": 0.58, "line_ratio": 0.98},
+    "statement": {"inset": 0.072, "start_y": 0.31, "fit_height": 0.58, "line_ratio": 1.15},
     "contextual": {"inset": 0.17, "start_y": 0.40, "fit_height": 0.50, "line_ratio": 1.06,
                    "right_inset": 0.12},
 }
@@ -199,15 +199,6 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
     styles = content.get("styles")
     if styles is not None:
         validate_text_styles(styles, text, errors)
-        if root.get("direction") == "statement" and isinstance(styles, list) and any(
-            isinstance(style, dict) and style.get("type") == "highlight" for style in styles
-        ):
-            add_error(
-                errors,
-                "content.styles",
-                "unsupported_direction_style",
-                "L'evidenziazione non è disponibile nello stile Poster.",
-            )
 
     attribution = require_dict(content.get("attribution"), "content.attribution", errors)
     role = attribution.get("role")
@@ -364,6 +355,7 @@ def logo_data(brand: dict[str, Any], manifest_dir: Path, *, light: bool) -> tupl
 
 _FONT_METRICS_CACHE: dict[str, dict[str, float] | None] = {}
 _ACTIVE_CHAR_WIDTHS: dict[str, float] | None = None
+_ACTIVE_BOLD_CHAR_WIDTHS: dict[str, float] | None = None
 
 
 def _ttf_table_directory(data: bytes) -> dict[str, tuple[int, int]]:
@@ -457,23 +449,17 @@ def _system_font_candidates(family: str) -> list[Path]:
     ]
 
 
-def activate_font_metrics(font: dict[str, Any], manifest_dir: Path) -> None:
-    """Point visual_units() at real glyph advance widths for this render's
-    brand font when a real font file can be located and parsed. Falls back
-    silently to the generic character-category heuristic otherwise (unknown
-    family, unreadable file, unsupported cmap format) -- this must never be
-    the reason a render fails.
-    """
-    global _ACTIVE_CHAR_WIDTHS
-    _ACTIVE_CHAR_WIDTHS = None
-    candidates: list[Path] = []
-    regular_path = font.get("regular_path")
-    if regular_path:
-        try:
-            candidates.append(resolve_asset(regular_path, manifest_dir))
-        except Exception:
-            pass
-    candidates.extend(_system_font_candidates(font.get("family", "")))
+def _system_bold_font_candidates(family: str) -> list[Path]:
+    if family.strip().casefold() not in SYSTEM_CARD_FONTS:
+        return []
+    return [
+        Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
+        Path("C:/Windows/Fonts/arialbd.ttf"),
+        Path("/usr/share/fonts/truetype/msttcorefonts/Arial_Bold.ttf"),
+    ]
+
+
+def _resolve_char_widths(candidates: list[Path]) -> dict[str, float] | None:
     for candidate in candidates:
         cache_key = str(candidate)
         if cache_key not in _FONT_METRICS_CACHE:
@@ -484,8 +470,49 @@ def activate_font_metrics(font: dict[str, Any], manifest_dir: Path) -> None:
                 widths = None
             _FONT_METRICS_CACHE[cache_key] = widths
         if _FONT_METRICS_CACHE[cache_key]:
-            _ACTIVE_CHAR_WIDTHS = _FONT_METRICS_CACHE[cache_key]
-            return
+            return _FONT_METRICS_CACHE[cache_key]
+    return None
+
+
+def activate_font_metrics(font: dict[str, Any], manifest_dir: Path) -> None:
+    """Point visual_units() at real glyph advance widths for this render's
+    brand font when a real font file can be located and parsed. Falls back
+    silently to the generic character-category heuristic otherwise (unknown
+    family, unreadable file, unsupported cmap format) -- this must never be
+    the reason a render fails.
+
+    Also loads bold glyph widths separately when available (brand
+    ``bold_path`` or the system bold face), so callers that render at
+    font-weight 700 -- the Poster/statement direction renders its entire
+    quote block bold -- can measure against the true, wider bold glyphs
+    instead of under-measuring with regular-weight metrics. Regular glyphs
+    are narrower than bold ones at the same point size, so reusing regular
+    metrics for bold text systematically undersizes anything measured from
+    them, such as a highlight marker band trailing short of the glyphs it
+    is meant to cover.
+    """
+    global _ACTIVE_CHAR_WIDTHS, _ACTIVE_BOLD_CHAR_WIDTHS
+    _ACTIVE_CHAR_WIDTHS = None
+    _ACTIVE_BOLD_CHAR_WIDTHS = None
+    candidates: list[Path] = []
+    regular_path = font.get("regular_path")
+    if regular_path:
+        try:
+            candidates.append(resolve_asset(regular_path, manifest_dir))
+        except Exception:
+            pass
+    candidates.extend(_system_font_candidates(font.get("family", "")))
+    _ACTIVE_CHAR_WIDTHS = _resolve_char_widths(candidates)
+
+    bold_candidates: list[Path] = []
+    bold_path = font.get("bold_path")
+    if bold_path:
+        try:
+            bold_candidates.append(resolve_asset(bold_path, manifest_dir))
+        except Exception:
+            pass
+    bold_candidates.extend(_system_bold_font_candidates(font.get("family", "")))
+    _ACTIVE_BOLD_CHAR_WIDTHS = _resolve_char_widths(bold_candidates)
 
 
 def font_metrics_active() -> bool:
@@ -494,14 +521,15 @@ def font_metrics_active() -> bool:
     return _ACTIVE_CHAR_WIDTHS is not None
 
 
-def visual_units(value: str) -> float:
-    if _ACTIVE_CHAR_WIDTHS is not None:
+def visual_units(value: str, *, bold: bool = False) -> float:
+    active = _ACTIVE_BOLD_CHAR_WIDTHS if bold and _ACTIVE_BOLD_CHAR_WIDTHS is not None else _ACTIVE_CHAR_WIDTHS
+    if active is not None:
         units = 0.0
         for char in value:
-            if char in _ACTIVE_CHAR_WIDTHS:
-                units += _ACTIVE_CHAR_WIDTHS[char]
+            if char in active:
+                units += active[char]
             elif char.isspace():
-                units += _ACTIVE_CHAR_WIDTHS.get(" ", 0.28)
+                units += active.get(" ", 0.28)
             else:
                 units += 0.6
         return units
@@ -517,7 +545,12 @@ def visual_units(value: str) -> float:
             units += 0.95
         else:
             units += 0.66
-    return units
+    # Bold glyphs run wider than regular at the same point size; without
+    # real glyph metrics to measure against, approximate that with a
+    # modest across-the-board expansion rather than reusing the regular
+    # heuristic unchanged, which would undersize anything measured for
+    # bold-rendered text (e.g. a Poster highlight marker band).
+    return units * 1.07 if bold else units
 
 
 def fitted_font_size(
@@ -725,6 +758,7 @@ def emphasized_lines(
 def styled_lines(
     lines: list[str], styles: list[dict[str, Any]], highlight_color: str,
     text_transform: Callable[[str], str] | None = None, highlight_mode: str = "marker",
+    highlight_text_color: str | None = None,
 ) -> list[str]:
     """Render user-owned inline styles against text offsets, preserving spacer rows."""
     transform = text_transform or (lambda value: value)
@@ -765,11 +799,17 @@ def styled_lines(
                 attributes.append('font-style="italic"')
             if "underline" in active:
                 attributes.append('style="text-decoration:underline;text-decoration-thickness:.07em;text-underline-offset:.12em"')
-            if "accent" in active:
+            # At most one fill wins per span. Highlights are rendered as
+            # marker bands behind the text by ``highlight_rects``; this
+            # tspan draws no stroke or band of its own, but its glyph fill
+            # still needs to read against that band, which is not
+            # necessarily the same color the rest of the line (off the
+            # band) is using -- including an "accent"-colored glyph, which
+            # would otherwise blend straight into an accent-colored band.
+            if "highlight" in active and highlight_text_color:
+                attributes.append(f'fill="{highlight_text_color}"')
+            elif "accent" in active:
                 attributes.append(f'fill="{highlight_color}"')
-            # Highlights are rendered as marker bands behind the text by
-            # ``highlight_rects``. Keeping this tspan free of a glyph stroke
-            # avoids the old letter-by-letter halo effect.
             fragments.append(f"<tspan {' '.join(attributes)}>{value}</tspan>")
         rendered.append("".join(fragments))
         cursor = line_end
@@ -783,6 +823,7 @@ def highlight_rects(
     text_transform: Callable[[str], str] | None = None,
     anchor: str = "start", row_sizes: list[float] | None = None,
     row_baselines: list[float] | None = None, letter_spacing_em: float = 0.0,
+    bold: bool = False,
 ) -> str:
     """Draw continuous marker bands behind highlighted text spans.
 
@@ -795,7 +836,7 @@ def highlight_rects(
     def measured(value: str, size: float) -> float:
         """Match the SVG text width, including the poster's negative tracking."""
         transformed = transform(value)
-        glyph_width = visual_units(transformed) * size
+        glyph_width = visual_units(transformed, bold=bold) * size
         tracking = letter_spacing_em * size * max(0, len(transformed) - 1)
         return max(0.0, glyph_width + tracking)
 
@@ -839,12 +880,21 @@ def highlight_rects(
                 start_x = x - full_width / 2 + before
             else:
                 start_x = x + before
+            # Leading edge is an exact fit: it lines up with the start of
+            # the text block, and bleeding past that breaks the alignment
+            # rather than reading as a highlighter stroke. Trailing edge
+            # gets real overshoot, as a highlighter does when the pen
+            # lifts -- proportional to size so it scales with the card.
+            width += row_size * 0.18
             # Uppercase glyphs (poster) have a taller cap-height relative to
-            # font-size than mixed-case text, so the marker needs more
-            # headroom or capital tops poke out above the band.
+            # font-size than mixed-case text, so the marker needs a bit more
+            # headroom than the mixed-case band or capital tops poke out
+            # above it -- but Arial Bold's cap-height is already ~0.72em, so
+            # the band only needs to clear that by a small margin, not the
+            # much larger one this used to carry.
             is_uppercase = text_transform is str.upper
-            marker_y = line_y - row_size * (1.02 if is_uppercase else 0.76)
-            marker_h = row_size * (1.12 if is_uppercase else 0.82)
+            marker_y = line_y - row_size * (0.82 if is_uppercase else 0.76)
+            marker_h = row_size * (0.88 if is_uppercase else 0.82)
             rendered.append(
                 f'<rect class="highlight-marker" x="{start_x:.1f}" y="{marker_y:.1f}" '
                 f'width="{width:.1f}" height="{marker_h:.1f}" rx="0" '
@@ -891,6 +941,7 @@ def statement_text_block(
     lines: list[str], *, x: float, y: float, font_size: float, color: str,
     emphasis: str, emphasis_color: str, strong_rows: set[int],
     styles: list[dict[str, Any]] | None = None, highlight_color: str | None = None,
+    highlight_text_color: str | None = None,
 ) -> str:
     statement_line_ratio = DIRECTION_GEOMETRY["statement"]["line_ratio"]
     formatted = (
@@ -899,6 +950,7 @@ def statement_text_block(
         else styled_lines(
             lines, styles, highlight_color or emphasis_color,
             text_transform=str.upper, highlight_mode="slab",
+            highlight_text_color=highlight_text_color,
         )
     )
     rows: list[str] = []
@@ -941,7 +993,7 @@ def statement_text_block(
             lines, styles or [], x=x, y=y, font_size=font_size,
             line_height=font_size * statement_line_ratio, color=highlight_color or emphasis_color,
             text_transform=str.upper, row_sizes=row_sizes, row_baselines=row_baselines,
-            letter_spacing_em=QUOTE_TRACKING_EM,
+            letter_spacing_em=QUOTE_TRACKING_EM, bold=True,
         )
         if styles else ""
     )
@@ -1184,7 +1236,8 @@ def render_svg(
         quote = statement_text_block(
             poster_lines, x=statement_safe, y=start_y, font_size=font_size,
             color=quote_color, emphasis=emphasis, emphasis_color=colors["accent"],
-            strong_rows=strong_rows, styles=styles, highlight_color=colors["accent"]
+            strong_rows=strong_rows, styles=styles, highlight_color=colors["accent"],
+            highlight_text_color=colors["primary"],
         )
         block_height = statement_block_height(font_size, poster_lines, strong_rows)
         # Always the guide's fixed bottom margin, independent of text.
