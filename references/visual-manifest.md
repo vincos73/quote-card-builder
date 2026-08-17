@@ -75,7 +75,7 @@ Il visual manifest registra il contenuto dichiarato e approvato dall'utente, poi
 1. Accettare soltanto lo stato `contenuto_approvato` per una prova.
 2. Ricostruire `content.text` unendo `content.lines` con spazi e normalizzando soltanto gli spazi. Rifiutare qualsiasi differenza di parole, segni o maiuscole.
 3. Consentire da 1 a 6 linee e almeno una riga di testo; una stringa vuota è una riga intera di spazio verticale e non modifica la ricostruzione del testo.
-4. Validare `styles`, quando presente, come lista di intervalli sul testo con tipo `bold`, `italic`, `underline`, `highlight` o `accent`. `accent` colora i glifi con `brand.colors.accent`; `highlight` resta una banda di evidenziazione. Accettare `emphasis` come compatibilità legacy soltanto se compare esattamente nel testo.
+4. Validare `styles`, quando presente, come lista di intervalli sul testo con tipo `bold`, `italic`, `underline`, `highlight`, `accent` o `outline`. `accent` colora i glifi con `brand.colors.accent`; `highlight` resta una banda di evidenziazione; `outline` disegna glifi cavi nel colore d'inchiostro della riga. I tre decidono il riempimento del glifo e su un intervallo che ne dichiara più di uno vince `highlight`, poi `outline`, poi `accent`. Accettare `emphasis` come compatibilità legacy soltanto se compare esattamente nel testo.
 5. Rifiutare `evidence_status: CONFLICT`.
 6. Accettare le combinazioni editoriali dichiarate dall'utente; verificare soltanto tipi, enum e campi obbligatori.
 7. Richiedere un canvas 4:5; il renderer 0.2 non produce ancora altri rapporti.

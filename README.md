@@ -2,13 +2,15 @@
 
 Skill per Codex che trasforma frasi, testi, URL, documenti e idee in quote card verificabili e coerenti con un brand approvato.
 
-Versione corrente: **1.0.0 — Verified Delivery**
+Versione corrente: **1.2.0 — Outline & Undo**
 
 ## Caratteristiche
 
 - provenienza, trasformazione e stato della prova mantenuti separati;
 - tre direzioni visuali autonome: Contorni, Manifesto Moduli × Poster e Campo;
-- editor locale con a capo manuali, righe vuote, grassetto, corsivo, sottolineato, evidenziato e colore accento;
+- editor locale con a capo manuali, righe vuote, grassetto, corsivo, sottolineato e un controllo di riempimento a stati fra accento, evidenziato e contorno;
+- la selezione sopravvive a ogni trattamento e l'editor ha una propria cronologia di annullamento su righe e stili;
+- riequilibrio degli a capo su richiesta, calcolato sulla lunghezza visiva delle parole;
 - testo, a capo manuali e formattazioni restano identici tra `4:5`, `1:1` e `9:16`: cambiare formato adatta solo la dimensione carattere, mai la composizione del testo;
 - Arial come baseline neutra su macOS e Windows, con trattamenti iniziali distinti per Contorni, Moduli × Poster e Campo;
 - profilo neutro esplicito: blu notte, azzurro chiaro, bianco caldo e antracite, con Arial;

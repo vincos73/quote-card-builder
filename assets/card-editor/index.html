@@ -91,9 +91,10 @@
         </fieldset>
 
         <div id="editorial-fields" class="tool-section lines-section content-section">
-          <div class="field-label" id="visual-text-label">
+          <div class="field-label">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h12M4 11h12M4 16h8M18 8v8l-3-3M18 16l3-3"/></svg>
-            <span>Testo e formattazione</span><small>righe libere</small>
+            <span id="visual-text-label">Testo e formattazione</span>
+            <button id="rebalance-lines" class="label-action" type="button" title="Riequilibra gli a capo sul testo corrente (⌘↵)">Riequilibra</button>
           </div>
           <div class="visual-text-frame">
             <div id="format-toolbar" class="format-toolbar" role="toolbar" aria-label="Formattazione del testo selezionato">
@@ -106,11 +107,8 @@
               <button type="button" data-style="underline" aria-label="Sottolineato" title="Sottolineato">
                 <span class="format-letter format-underline" aria-hidden="true">U</span>
               </button>
-              <button type="button" data-style="highlight" aria-label="Evidenziato" title="Evidenziato">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 8-8 4 4-8 8H6v-4ZM13 8l4 4M4 21h16"/></svg>
-              </button>
-              <button type="button" data-style="accent" aria-label="Colore accento" title="Colore accento">
-                <span class="format-letter format-accent" aria-hidden="true">A</span>
+              <button id="fill-control" type="button" data-fill="none" aria-label="Riempimento: nessuno" title="Riempimento del testo — nessuno">
+                <span class="format-letter format-fill" aria-hidden="true">A</span>
               </button>
               <span id="formatting-state" class="formatting-state" aria-live="polite">Seleziona il testo da formattare</span>
             </div>

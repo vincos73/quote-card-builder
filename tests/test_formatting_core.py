@@ -65,6 +65,57 @@ class FormattingCoreTests(unittest.TestCase):
         )
         self.assertTrue(all(len(line.split()) > 1 for line in result))
 
+    def test_outline_is_an_allowed_inline_style(self):
+        result = self.run_core("Array.from(core.STYLE_TYPES).includes('outline')")
+        self.assertTrue(result)
+
+    def test_the_fill_cycle_returns_to_plain_text_after_the_last_treatment(self):
+        result = self.run_core(
+            "[null,'accent','highlight','outline'].map((type)=>core.nextFillType(type))"
+        )
+        self.assertEqual(["accent", "highlight", "outline", None], result)
+
+    def test_a_fill_reports_itself_only_when_it_covers_the_whole_range(self):
+        styles = "[{start:0,end:10,type:'accent'},{start:2,end:6,type:'bold'}]"
+        self.assertEqual("accent", self.run_core(f"core.fillTypeAt({styles},2,6)"))
+        self.assertIsNone(self.run_core(f"core.fillTypeAt({styles},2,20)"))
+
+    def test_applying_a_fill_splits_the_one_underneath_instead_of_stacking(self):
+        result = self.run_core(
+            "core.clearFillRanges("
+            "[{start:0,end:10,type:'accent'},{start:2,end:6,type:'bold'}],2,6,'outline')"
+        )
+        self.assertEqual(
+            [
+                {"start": 0, "end": 2, "type": "accent"},
+                {"start": 2, "end": 6, "type": "bold"},
+                {"start": 6, "end": 10, "type": "accent"},
+            ],
+            result,
+        )
+
+    def test_clearing_fills_leaves_the_treatment_being_applied_untouched(self):
+        result = self.run_core(
+            "core.clearFillRanges([{start:0,end:10,type:'accent'}],2,6,'accent')"
+        )
+        self.assertEqual([{"start": 0, "end": 10, "type": "accent"}], result)
+
+    def test_a_weak_split_is_improved_at_the_same_row_count(self):
+        """The editor's rebalance action feeds the canonical text back in
+        with the current row count as a weak preference. A long opening row
+        closed by a one-word orphan has to lose to an even split, without
+        the count itself being treated as the thing to preserve."""
+        result = self.run_core(
+            "core.suggestBalancedLines("
+            "'Un agente non si commuove per il tuo claim: confronta.', 2)"
+        )
+        self.assertEqual(
+            ["Un agente non si commuove", "per il tuo claim: confronta."], result
+        )
+        self.assertNotEqual(
+            ["Un agente non si commuove per il tuo claim:", "confronta."], result
+        )
+
     def test_clamped_styles_cannot_block_preview_after_text_shortens(self):
         result = self.run_core(
             "core.clampStyleRanges([{start:0,end:99,type:'underline'},{start:8,end:9,type:'bold'}], 12)"

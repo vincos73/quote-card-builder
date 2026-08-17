@@ -162,6 +162,41 @@ class DefectDetectionTests(unittest.TestCase):
         codes = {f["code"] for f in INSPECT.inspect_render(svg, "editorial", 1440, 1800)}
         self.assertNotIn("decoration_contrast", codes)
 
+    def _outlined_card(self, stroke, font_size=80.0):
+        """One quote row whose closing word is hollow rather than filled."""
+        return (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1800">'
+            '<rect width="1440" height="1800" fill="#FFFFFF"/>'
+            f'<text class="quote" x="108.0" y="400.0" font-size="{font_size}" fill="#072743">'
+            f'<tspan x="108.0" y="400.0">Testo di <tspan fill="none" stroke="{stroke}" '
+            f'stroke-width="2.8">prova</tspan></tspan></text></svg>'
+        )
+
+    def test_an_outlined_span_is_graded_on_its_stroke_not_its_missing_fill(self):
+        """fill="none" is not a colour. Reading only fill left the one
+        treatment with the least ink on the page unchecked entirely."""
+        findings = INSPECT.inspect_render(self._outlined_card("#767676"), "editorial", 1440, 1800)
+        self.assertIn("outline_contrast", {f["code"] for f in findings})
+
+    def test_an_outline_is_held_above_the_floor_a_filled_glyph_passes(self):
+        """#767676 on white clears the 4.5:1 text floor, so the same colour
+        filled draws no finding -- hollow, it must still be refused."""
+        self.assertGreater(RENDERER.contrast_ratio("#767676", "#FFFFFF"), INSPECT.TEXT_CONTRAST)
+        filled = self._outlined_card("#767676").replace('fill="none" stroke=', 'fill=')
+        self.assertEqual([], INSPECT.inspect_render(filled, "editorial", 1440, 1800))
+
+    def test_a_dark_outline_on_the_page_passes(self):
+        findings = INSPECT.inspect_render(self._outlined_card("#072743"), "editorial", 1440, 1800)
+        self.assertEqual([], findings)
+
+    def test_an_outline_too_small_to_stay_open_is_reported(self):
+        """Below roughly 4.5% of the card's width a hairline closes the
+        counters up, whatever the contrast ratio says."""
+        small = self._outlined_card("#072743", font_size=40.0)
+        codes = {f["code"] for f in INSPECT.inspect_render(small, "editorial", 1440, 1800)}
+        self.assertIn("outline_too_small", codes)
+        self.assertNotIn("outline_contrast", codes)
+
     def test_malformed_svg_is_reported_rather_than_raising(self):
         findings = INSPECT.inspect_render("<svg><unclosed>", "editorial", 1440, 1800)
         self.assertEqual(["svg_invalid"], [f["code"] for f in findings])

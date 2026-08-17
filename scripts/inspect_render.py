@@ -42,6 +42,15 @@ CONTAINMENT_TOLERANCE = 1.0
 # WCAG 2.1: 4.5:1 for text, 3:1 for meaningful non-text.
 TEXT_CONTRAST = 4.5
 NON_TEXT_CONTRAST = 3.0
+# Hollow glyphs put a fraction of a solid glyph's ink on the page, so the
+# 4.5:1 floor -- which assumes filled letterforms at normal weight -- reads
+# far weaker here than the number suggests. Outlined text is held to the
+# AAA floor instead, as the honest proxy for the ink it actually lays down.
+OUTLINE_CONTRAST = 7.0
+# Below this fraction of the card's width a hairline outline closes up and
+# the counters fill in, whatever the contrast says. 0.045 is ~65px on the
+# 1440px master and ~49px on a 1080px story.
+OUTLINE_MIN_SIZE_RATIO = 0.045
 
 
 def _tag(element: ET.Element) -> str:
@@ -76,25 +85,36 @@ def text_width(value: str, font_size: float, tracking_em: float) -> float:
     )
 
 
-def _row_segments(source: ET.Element, base_fill: str) -> list[tuple[str, str]]:
-    """Split a row's content into ``(text, fill)`` runs in draw order.
+def _row_segments(
+    source: ET.Element, base_fill: str, base_stroke: str = ""
+) -> list[tuple[str, str, str]]:
+    """Split a row's content into ``(text, fill, stroke)`` runs in draw order.
 
     A row is usually one uniform run, but a nested tspan -- e.g. a
     highlighted span drawn in a color that reads against its marker band
     instead of the row's own fill -- overrides fill for just its own text.
     Missing that override would measure the wrong color against the wrong
     ground for exactly the text a highlight most needs checked.
+
+    Stroke is carried alongside fill because an outlined span has no fill at
+    all: its ink is the stroke, and reading only ``fill`` would hand the
+    contrast check the string "none" and let it skip the one treatment with
+    the least ink on the page.
     """
-    segments: list[tuple[str, str]] = []
+    segments: list[tuple[str, str, str]] = []
     if source.text:
-        segments.append((source.text, base_fill))
+        segments.append((source.text, base_fill, base_stroke))
     for child in source:
         if _tag(child) == "tspan":
             child_text = "".join(child.itertext())
             if child_text:
-                segments.append((child_text, child.attrib.get("fill", base_fill)))
+                segments.append((
+                    child_text,
+                    child.attrib.get("fill", base_fill),
+                    child.attrib.get("stroke", base_stroke),
+                ))
         if child.tail:
-            segments.append((child.tail, base_fill))
+            segments.append((child.tail, base_fill, base_stroke))
     return segments
 
 
@@ -126,6 +146,7 @@ def text_boxes(root: ET.Element) -> list[dict[str, Any]]:
         base_y = _float(text_el, "y", 0.0) or 0.0
         base_size = _float(text_el, "font-size", 0.0) or 0.0
         base_fill = text_el.attrib.get("fill", "")
+        base_stroke = text_el.attrib.get("stroke", "")
         anchor = text_el.attrib.get("text-anchor", "start")
         tracking = _tracking_em(text_el, 0.0)
         classes = _classes(text_el)
@@ -142,8 +163,13 @@ def text_boxes(root: ET.Element) -> list[dict[str, Any]]:
             x = _float(source, "x", base_x) or base_x
             y = _float(source, "y", base_y) or base_y
             row_fill = source.attrib.get("fill", base_fill)
+            row_stroke = source.attrib.get("stroke", base_stroke)
             row_tracking = _tracking_em(source, tracking)
-            segments = _row_segments(source, row_fill) if row is not text_el else [(content, row_fill)]
+            segments = (
+                _row_segments(source, row_fill, row_stroke)
+                if row is not text_el
+                else [(content, row_fill, row_stroke)]
+            )
             # Tracking is a per-gap adjustment, not a per-character one:
             # summing each segment's own text_width() independently drops
             # the gap that sits between two segments, so splitting a row
@@ -152,14 +178,14 @@ def text_boxes(root: ET.Element) -> list[dict[str, Any]]:
             # back one gap per segment boundary keeps the total identical
             # to the un-split calculation.
             boundary_tracking = row_tracking * size * max(0, len(segments) - 1)
-            full_width = sum(text_width(text, size, row_tracking) for text, _ in segments) + boundary_tracking
+            full_width = sum(text_width(text, size, row_tracking) for text, _, _ in segments) + boundary_tracking
             if anchor == "end":
                 cursor_x = x - full_width
             elif anchor == "middle":
                 cursor_x = x - full_width / 2
             else:
                 cursor_x = x
-            for index, (text, fill) in enumerate(segments):
+            for index, (text, fill, stroke) in enumerate(segments):
                 width = text_width(text, size, row_tracking)
                 boxes.append({
                     "kind": "text",
@@ -167,6 +193,7 @@ def text_boxes(root: ET.Element) -> list[dict[str, Any]]:
                     "text": text,
                     "font_size": size,
                     "fill": fill,
+                    "stroke": stroke,
                     "box": (cursor_x, y - size * ASCENT_RATIO, cursor_x + width, y + size * DESCENT_RATIO),
                 })
                 cursor_x += width
@@ -331,16 +358,29 @@ def inspect_render(
     #    checks the pairs that were really emitted, which is where an
     #    accent-on-background stroke slipped through at 1.07:1.
     for item in texts:
-        fill = item["fill"]
         ground = ground_for(item["box"], grounds)
-        if not proof.HEX_COLOR.match(fill) or not proof.HEX_COLOR.match(ground):
+        # An outlined span carries no fill: its ink is the stroke, and it is
+        # held to a higher floor because a hairline traces far less of the
+        # letterform than a solid glyph of the same colour.
+        outlined = item["fill"] == "none" and bool(item["stroke"])
+        ink = item["stroke"] if outlined else item["fill"]
+        if not proof.HEX_COLOR.match(ink) or not proof.HEX_COLOR.match(ground):
             continue
-        ratio = proof.contrast_ratio(fill, ground)
-        if ratio < TEXT_CONTRAST:
+        minimum = OUTLINE_CONTRAST if outlined else TEXT_CONTRAST
+        ratio = proof.contrast_ratio(ink, ground)
+        if ratio < minimum:
             report(
-                "text_contrast",
+                "outline_contrast" if outlined else "text_contrast",
                 f"{direction}: «{item['text'][:40]}» rende {ratio:.2f}:1 su "
-                f"{ground} (minimo {TEXT_CONTRAST}:1).",
+                f"{ground} (minimo {minimum}:1).",
+            )
+        minimum_size = width * OUTLINE_MIN_SIZE_RATIO
+        if outlined and item["font_size"] < minimum_size:
+            report(
+                "outline_too_small",
+                f"{direction}: «{item['text'][:40]}» è in contorno a "
+                f"{item['font_size']:.0f}px, sotto i {minimum_size:.0f}px "
+                "che servono perché le aste restino aperte.",
             )
     for mark in decorations:
         stroke = mark["stroke"]

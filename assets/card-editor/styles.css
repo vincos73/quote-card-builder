@@ -559,6 +559,23 @@ svg {
 .field-label svg { width: 18px; height: 18px; color: var(--lavender-light); }
 .field-label small { color: var(--lavender); font-size: 10px; letter-spacing: 0; text-transform: none; }
 
+/* An action in the slot the row's hint used to occupy: no new section, no
+   new panel, and the label row was already reserving the space. */
+.label-action {
+  padding: 2px 7px;
+  border: 1px solid var(--line-dark);
+  border-radius: 0;
+  background: transparent;
+  color: var(--lavender);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .03em;
+  text-transform: none;
+}
+
+.label-action:hover { border-color: var(--line-strong); color: var(--concrete-light); }
+.label-action:active { color: var(--chartreuse); }
+
 .directions {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -614,7 +631,7 @@ select:hover { border-color: var(--line-strong); }
 .format-toolbar {
   min-height: 38px;
   display: grid;
-  grid-template-columns: repeat(5, 34px) minmax(0, 1fr);
+  grid-template-columns: repeat(4, 34px) minmax(0, 1fr);
   align-items: center;
   border-bottom: 1px solid var(--line-dark);
 }
@@ -644,7 +661,22 @@ select:hover { border-color: var(--line-strong); }
 .format-bold { font-weight: 800; }
 .format-italic { font-style: italic; }
 .format-underline { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
-.format-accent { color: var(--chartreuse); font-weight: 800; text-decoration: underline; text-decoration-color: var(--chartreuse); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+/* Accent, highlight and outline all decide what a glyph is filled with, so
+   they are one control with four states rather than three toggles that
+   silently overrule each other. The same "A" carries every state, which
+   keeps the treatment readable at a glance without a fourth button. */
+.format-fill { font-weight: 800; }
+#fill-control[data-fill="accent"] .format-fill { color: var(--chartreuse); }
+#fill-control[data-fill="highlight"] .format-fill {
+  padding: 1px 4px;
+  background: var(--lavender-light);
+  color: var(--chrome-deep);
+}
+#fill-control[data-fill="outline"] .format-fill {
+  color: transparent;
+  -webkit-text-stroke: 1px var(--concrete-light);
+}
+#fill-control[data-fill="none"]:not(:hover) .format-fill { color: var(--lavender); }
 
 .formatting-state {
   min-width: 0;
@@ -699,6 +731,13 @@ select:hover { border-color: var(--line-strong); }
   box-decoration-break: clone;
 }
 .visual-text-editor .style-accent { color: var(--chartreuse); }
+/* Mirrors the renderer's hollow glyphs. The stroke stays hairline at the
+   editor's 14px so the proof, not this preview, remains the place where
+   outline legibility is judged. */
+.visual-text-editor .style-outline {
+  color: transparent;
+  -webkit-text-stroke: .6px #f5f0f6;
+}
 
 .color-palette-panel {
   padding: 13px 16px 14px;
