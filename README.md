@@ -11,11 +11,13 @@ Versione corrente: **1.0.0 — Verified Delivery**
 - editor locale con a capo manuali, righe vuote, grassetto, corsivo, sottolineato, evidenziato e colore accento;
 - testo, a capo manuali e formattazioni restano identici tra `4:5`, `1:1` e `9:16`: cambiare formato adatta solo la dimensione carattere, mai la composizione del testo;
 - Arial come baseline neutra su macOS e Windows, con trattamenti iniziali distinti per Contorni, Moduli × Poster e Campo;
+- profilo neutro esplicito: blu notte, azzurro chiaro, bianco caldo e antracite, con Arial;
 - pannello non editabile con i colori del profilo applicato alla card, con campioni, codici HEX e uso previsto;
 - selezioni multilinea affidabili e riallineamento degli stili dopo le modifiche al testo;
 - vero max-fit per formato, direzione e posizione, con scala utente dall'80% al 100% del massimo sicuro;
 - composizioni indipendenti `4:5`, `1:1` e `9:16`;
 - consegna di tutti i rapporti oppure di un singolo formato scelto dall’utente;
+- editor locale obbligatorio quando disponibile: la card viene prodotta soltanto dopo che l’editor è stato aperto e l’utente ha usato l’unica CTA `Genera`;
 - un’unica CTA `Genera` per salvare, validare e consegnare gli output al chatbot Codex locale;
 - PNG come output predefinito, con SVG conservato soltanto come fallback tecnico;
 - verifica automatica della card **disegnata**, non solo della stima che l'ha prodotta: testo fuori dal margine di sicurezza, segni decorativi sovrapposti alle parole o all'attribuzione e colori sotto la soglia di contrasto bloccano sia l'anteprima sia il pacchetto di produzione;

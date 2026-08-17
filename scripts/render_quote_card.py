@@ -199,6 +199,15 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
     styles = content.get("styles")
     if styles is not None:
         validate_text_styles(styles, text, errors)
+        if root.get("direction") == "statement" and isinstance(styles, list) and any(
+            isinstance(style, dict) and style.get("type") == "highlight" for style in styles
+        ):
+            add_error(
+                errors,
+                "content.styles",
+                "unsupported_direction_style",
+                "L'evidenziazione non è disponibile nello stile Poster.",
+            )
 
     attribution = require_dict(content.get("attribution"), "content.attribution", errors)
     role = attribution.get("role")

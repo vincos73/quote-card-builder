@@ -88,6 +88,14 @@ class CardReviewServerTests(unittest.TestCase):
         source["presentation"]["output_mode"] = "pdf"
         self.assertTrue(SERVER.validate_manifest(source))
 
+    def test_statement_rejects_highlight_in_review_draft(self):
+        source = manifest()
+        with self.assertRaisesRegex(ValueError, "evidenziazione non è disponibile"):
+            SERVER.validate_draft({
+                "base_revision": 1,
+                "styles": [{"start": 0, "end": 3, "type": "highlight"}],
+            }, source)
+
     def test_production_formats_follow_the_selected_output(self):
         source = manifest()
         source["formats"] = [
@@ -204,7 +212,7 @@ class CardReviewServerTests(unittest.TestCase):
         draft = SERVER.validate_draft({
             "base_revision": 1,
             "emphasis": "",
-            "styles": [{"start": 4, "end": 9, "type": "highlight"}],
+            "styles": [{"start": 4, "end": 9, "type": "underline"}],
             "formats": [{
                 "id": "4x5", "width": 1440, "height": 1800,
                 "lines": ["Una", "", "frase verificata."],
@@ -212,7 +220,7 @@ class CardReviewServerTests(unittest.TestCase):
             }],
         }, source)
         self.assertEqual(["Una", "", "frase verificata."], draft["formats"][0]["lines"])
-        self.assertEqual("highlight", draft["content"]["styles"][0]["type"])
+        self.assertEqual("underline", draft["content"]["styles"][0]["type"])
 
     def test_rejects_invalid_inline_style(self):
         item = manifest()

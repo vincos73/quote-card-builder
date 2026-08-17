@@ -4,7 +4,7 @@ Usare questo riferimento dopo `candidato_selezionato` quando la sessione può es
 
 ## Principio
 
-Trattare l'editor come superficie editoriale e visuale strutturata, non come canvas grafico libero. Rendere modificabili testo e formattazione inline, attribuzione, ruolo, virgolette e presentazione; mostrare trattamento e prova come informazioni nel ledger inferiore. Mantenere protetti fonte osservata, brand e dimensioni dei formati.
+Trattare l'editor come superficie editoriale e visuale strutturata, non come canvas grafico libero. Rendere modificabili testo e formattazione inline, attribuzione, ruolo e presentazione; mostrare trattamento e prova come informazioni nel ledger inferiore. Mantenere protetti fonte osservata, brand e dimensioni dei formati.
 
 Il browser non scrive direttamente nel manifest. `Genera` invia un batch strutturato al server locale, che verifica revisione e invarianti, lo applica atomicamente, esegue il quality gate e prepara gli output selezionati. Dopo il rendering deterministico di preflight, il server attiva il chatbot Codex locale tramite un handoff path-scoped; il chatbot ricrea e verifica i PNG finali. Lo script separato resta disponibile come recupero per sessioni precedenti rimaste con un feedback pendente.
 
@@ -19,7 +19,6 @@ Il browser non scrive direttamente nel manifest. `Genera` invia un batch struttu
     "text": "Un agente non si commuove per il tuo claim: confronta.",
     "transformation": "VERBATIM",
     "evidence_status": "VERIFIED",
-    "use_quotation_marks": true,
     "emphasis": "",
     "styles": [
       {"start": 44, "end": 54, "type": "highlight"}
@@ -39,7 +38,6 @@ Il browser non scrive direttamente nel manifest. `Genera` invia un batch struttu
   ],
   "presentation": {
     "logo_mode": "auto",
-    "show_quotation_marks": true,
     "graphic_mode": "auto",
     "output_mode": "all"
   },
@@ -56,19 +54,17 @@ Includere uno o più formati fra `4x5`, `1x1` e `9x16`. Usare rispettivamente i 
 - `text`: testo corrente ricostruito dalle righe del formato attivo;
 - `transformation` ed `evidence_status`: dichiarazioni dell'utente conservate nel batch e mostrate come informazioni nel ledger, senza pulsanti di modifica nell'editor;
 - `attribution.label` e `attribution.role`: `speaker`, `author`, `publisher` o `none`;
-- `content.use_quotation_marks`: scelta booleana dell'utente;
 - `direction`: `editorial`, `statement`, `contextual`;
-- `content.styles`: al massimo 64 intervalli `{start, end, type}` sul testo normalizzato, con `type` fra `bold`, `italic`, `underline`, `highlight`, `accent`; gli intervalli possono attraversare gli a capo;
+- `content.styles`: al massimo 64 intervalli `{start, end, type}` sul testo normalizzato, con `type` fra `bold`, `italic`, `underline`, `highlight`, `accent`; gli intervalli possono attraversare gli a capo. `highlight` non è disponibile nella direzione `statement` / Poster: il controllo resta visibile ma disabilitato e un'eventuale evidenziazione applicata in un'altra direzione viene rimossa con un messaggio esplicito quando si passa a Poster;
 - `content.emphasis`: campo legacy facoltativo; l'editor lo converte in `bold` quando apre un manifest precedente e poi lo svuota nel batch;
 - `presentation.logo_mode`: `auto` o `hidden`;
 - `presentation.graphic_mode`: `auto` applica il motivo fisso della direzione (`editorial` → linee di contorno, `statement` → moduli angolari discreti, `contextual` → campo puntinato); `hidden` lo rimuove;
-- `presentation.show_quotation_marks`: scelta booleana sincronizzata con il controllo delle virgolette;
 - `presentation.output_mode`: `all`, `4x5`, `1x1` o `9x16`; controlla soltanto la consegna finale, non la disponibilità delle tab di anteprima;
 - per ogni formato: `lines`, `text_scale` fra `0.80` e `1.00`, `vertical_position` fra `upper`, `center`, `lower`. I valori legacy fra `1.00` e `1.08` restano accettati in lettura, ma sono limitati a `1.00`.
 
 `text_scale` è una percentuale del massimo sicuro, non una variazione rispetto a una dimensione nominale. Il renderer calcola prima il vero max-fit per ciascuna combinazione di formato, direzione e posizione, includendo larghezza, guide verticali e aree riservate a logo, attribuzione, metadati ed elemento grafico. `1.00` usa quel massimo; valori inferiori lo riducono. Preview, quality gate ed export devono condividere lo stesso calcolo e lo stesso valore effettivo.
 
-Quando il testo cambia, sincronizzare le parole in tutti i formati, mantenendo autonomi gli a capo. Nel formato attivo preservare letteralmente ogni newline inserito dall'utente. Una riga vuota non aggiunge parole ma produce una riga intera di spazio verticale nel renderer. Durante la digitazione non riscrivere l'editor e non scartare newline terminali ancora privi della parola successiva. Non modificare automaticamente trattamento, prova, attribuzione o virgolette.
+Quando il testo cambia, sincronizzare le parole in tutti i formati, mantenendo autonomi gli a capo. Nel formato attivo preservare letteralmente ogni newline inserito dall'utente. Una riga vuota non aggiunge parole ma produce una riga intera di spazio verticale nel renderer. Durante la digitazione non riscrivere l'editor e non scartare newline terminali ancora privi della parola successiva. Non modificare automaticamente trattamento, prova o attribuzione.
 
 La toolbar visuale applica o rimuove grassetto, corsivo, sottolineato, evidenziato e colore accento sulla selezione corrente, anche quando attraversa più righe o righe vuote. Prima di qualsiasi selezione manuale, una card senza stili né enfasi legacy mostra una firma per direzione: riga centrale in grassetto per Contorni, riga finale in accento per Moduli × Poster e riga centrale evidenziata per Campo. La prima selezione manuale sostituisce questa firma. Se cambiano le parole, riallineare gli intervalli rispetto alla porzione modificata: conservare quelli non coinvolti, spostare quelli successivi e rimuovere soltanto gli intervalli rimasti vuoti. Se cambiano soltanto gli a capo, conservarli senza variazioni.
 
@@ -86,7 +82,6 @@ Fonte osservata, brand e dimensioni restano immutabili nell'editor. Tutti i camp
   "transformation": "VERBATIM",
   "evidence_status": "VERIFIED",
   "attribution": {"label": "vincos.it", "role": "publisher"},
-  "use_quotation_marks": true,
   "direction": "statement",
   "emphasis": "",
   "styles": [
@@ -94,7 +89,6 @@ Fonte osservata, brand e dimensioni restano immutabili nell'editor. Tutti i camp
   ],
   "presentation": {
     "logo_mode": "auto",
-    "show_quotation_marks": true,
     "graphic_mode": "auto",
     "output_mode": "all"
   },

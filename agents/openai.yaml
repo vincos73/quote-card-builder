@@ -1,6 +1,6 @@
 interface:
   display_name: "Quote Card Builder"
   short_description: "Quote card fedeli alla fonte e al brand"
-  default_prompt: "Usa $quote-card-builder per trovare la frase più forte, revisionarla nel Visual Review Studio e produrre con l’unica azione Genera tutti i PNG oppure il solo rapporto scelto, lasciando all’utente la responsabilità editoriale finale."
+  default_prompt: "Usa $quote-card-builder per trovare la frase più forte, aprire e rendere visibile il Visual Review Studio, revisionarla lì e produrre solo dopo l’unica azione Genera tutti i PNG oppure il solo rapporto scelto, lasciando all’utente la responsabilità editoriale finale."
 policy:
   allow_implicit_invocation: true
