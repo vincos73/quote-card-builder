@@ -314,6 +314,74 @@ class VisualManifestTests(unittest.TestCase):
         self.assertIn('rx="', svg)
         self.assertNotIn('paint-order="stroke fill"', svg)
 
+    def test_outline_draws_hollow_glyphs_in_the_row_ink_colour(self):
+        manifest = valid_visual_manifest()
+        manifest["direction"] = "editorial"
+        manifest["content"]["emphasis"] = ""
+        manifest["content"]["styles"] = [{"start": 44, "end": 54, "type": "outline"}]
+        self.assertEqual([], RENDERER.validate_visual_manifest(manifest, Path.cwd()))
+        svg = RENDERER.render_svg(manifest, Path.cwd(), "editorial")
+        # Outline is a change of shape, never of palette: it strokes the ink
+        # colour the span would otherwise have been filled with.
+        self.assertIn('fill="none" stroke="#072743"', svg)
+        self.assertIn("stroke-width=", svg)
+
+    def test_outline_stroke_scales_with_the_row_it_traces(self):
+        """A Poster emphasis row is drawn 1.12x larger than its neighbours.
+        A stroke fixed to the base size would read thin on that row and fat
+        on the rest, so the width has to follow each row's own size."""
+        lines = ["Riga normale", "Riga enfatizzata"]
+        styles = [
+            {"start": 0, "end": 12, "type": "outline"},
+            {"start": 13, "end": 29, "type": "outline"},
+        ]
+        rendered = RENDERER.styled_lines(
+            lines, styles, "#E3F4FF", text_color="#FEFDFB", font_size=100.0,
+            row_font_sizes=[100.0, 112.0],
+        )
+        self.assertIn(f'stroke-width="{RENDERER.OUTLINE_STROKE_EM * 100:.2f}"', rendered[0])
+        self.assertIn(f'stroke-width="{RENDERER.OUTLINE_STROKE_EM * 112:.2f}"', rendered[1])
+
+    def test_outline_and_underline_share_a_single_style_attribute(self):
+        """Both treatments need CSS declarations. Emitting one style
+        attribute each would produce a duplicate attribute and invalid SVG."""
+        text = "Una frase intera"
+        rendered = RENDERER.styled_lines(
+            [text],
+            [{"start": 0, "end": 16, "type": "outline"}, {"start": 0, "end": 16, "type": "underline"}],
+            "#E3F4FF", text_color="#FEFDFB", font_size=100.0,
+        )
+        self.assertEqual(1, rendered[0].count("style="))
+        self.assertIn("text-decoration:underline", rendered[0])
+        self.assertIn('fill="none"', rendered[0])
+        ET.fromstring(f'<text xmlns="http://www.w3.org/2000/svg">{rendered[0]}</text>')
+
+    def test_outline_alone_does_not_promote_a_poster_row_to_emphasis(self):
+        """Outline changes a glyph's shape, not its weight. Treating it as
+        emphasis would grow the row to 1.12x and re-open the fit that
+        statement_fitted_font_size just closed."""
+        lines = ["Prima riga", "Seconda riga"]
+        self.assertEqual(
+            set(),
+            RENDERER.statement_strong_rows(lines, [{"start": 0, "end": 10, "type": "outline"}], ""),
+        )
+        self.assertEqual(
+            {0},
+            RENDERER.statement_strong_rows(lines, [{"start": 0, "end": 10, "type": "accent"}], ""),
+        )
+
+    def test_highlight_wins_over_outline_on_a_span_carrying_both(self):
+        """The editor keeps fills exclusive, so this only settles a
+        hand-written manifest -- and hollow glyphs on a marker band are the
+        least legible pairing either treatment can produce."""
+        rendered = RENDERER.styled_lines(
+            ["Una frase"],
+            [{"start": 0, "end": 9, "type": "outline"}, {"start": 0, "end": 9, "type": "highlight"}],
+            "#E3F4FF", text_color="#FEFDFB", font_size=100.0, highlight_text_color="#072743",
+        )
+        self.assertIn('fill="#072743"', rendered[0])
+        self.assertNotIn('fill="none"', rendered[0])
+
     def test_statement_accepts_highlight_style(self):
         manifest = valid_visual_manifest()
         manifest["content"]["emphasis"] = ""

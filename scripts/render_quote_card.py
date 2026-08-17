@@ -26,7 +26,13 @@ DIRECTIONS = ("editorial", "statement", "contextual")
 TRANSFORMATIONS = {"VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"}
 EVIDENCE_STATUSES = {"VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"}
 ATTRIBUTION_ROLES = {"speaker", "author", "publisher", "none"}
-STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent"}
+STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent", "outline"}
+# Hollow-glyph stroke as a fraction of the row's own font size, so the same
+# span reads identically at every format's fitted size -- and in a Poster row
+# drawn 1.12x larger than its neighbours. Expressed here and resolved to
+# absolute user units at draw time: em-relative stroke-width is legal CSS but
+# not equally supported across the three rasterisers this project targets.
+OUTLINE_STROKE_EM = 0.035
 SYSTEM_CARD_FONTS = {"arial"}
 # Not a design suggestion: a defensive ceiling only, so malformed/pasted
 # input can't produce a pathological line array. The real constraint is
@@ -108,7 +114,7 @@ def validate_text_styles(
         elif not 0 <= start < end <= len(text):
             add_error(errors, item_path, "range", "L'intervallo deve ricadere nel testo corrente.")
         if kind not in STYLE_TYPES:
-            add_error(errors, f"{item_path}.type", "enum", "Usare bold, italic, underline, highlight o accent.")
+            add_error(errors, f"{item_path}.type", "enum", "Usare bold, italic, underline, highlight, accent o outline.")
 
 
 def require_dict(value: Any, path: str, errors: list[dict[str, str]]) -> dict[str, Any]:
@@ -619,6 +625,9 @@ def statement_strong_rows(
         if has_text:
             cursor += 1
         line_start, line_end = cursor, cursor + len(line)
+        # "outline" is deliberately absent: it changes a glyph's shape, not
+        # its weight, so it must not promote a Poster row to 1.12x and
+        # re-open the fit that statement_fitted_font_size just closed.
         if styles and any(
             style["type"] in {"bold", "highlight", "accent"}
             and style["end"] > line_start
@@ -758,17 +767,29 @@ def emphasized_lines(
 def styled_lines(
     lines: list[str], styles: list[dict[str, Any]], highlight_color: str,
     text_transform: Callable[[str], str] | None = None, highlight_mode: str = "marker",
-    highlight_text_color: str | None = None,
+    highlight_text_color: str | None = None, *, text_color: str | None = None,
+    font_size: float = 0.0, row_font_sizes: list[float] | None = None,
 ) -> list[str]:
-    """Render user-owned inline styles against text offsets, preserving spacer rows."""
+    """Render user-owned inline styles against text offsets, preserving spacer rows.
+
+    ``text_color`` and the row sizes are only consulted by the ``outline``
+    treatment, which draws hollow glyphs: it needs the ink colour the span
+    would otherwise have been filled with, and the size that span is drawn
+    at, to pick a stroke width proportional to the glyphs it traces.
+    """
     transform = text_transform or (lambda value: value)
     rendered: list[str] = []
     cursor = 0
     has_text = False
-    for line in lines:
+    for row_index, line in enumerate(lines):
         if not line:
             rendered.append("")
             continue
+        row_size = (
+            row_font_sizes[row_index]
+            if row_font_sizes is not None and row_index < len(row_font_sizes)
+            else font_size
+        )
         if has_text:
             cursor += 1
         line_start, line_end = cursor, cursor + len(line)
@@ -793,12 +814,17 @@ def styled_lines(
                 fragments.append(value)
                 continue
             attributes: list[str] = []
+            declarations: list[str] = []
             if "bold" in active:
                 attributes.append('font-weight="700"')
             if "italic" in active:
                 attributes.append('font-style="italic"')
             if "underline" in active:
-                attributes.append('style="text-decoration:underline;text-decoration-thickness:.07em;text-underline-offset:.12em"')
+                declarations.extend((
+                    "text-decoration:underline",
+                    "text-decoration-thickness:.07em",
+                    "text-underline-offset:.12em",
+                ))
             # At most one fill wins per span. Highlights are rendered as
             # marker bands behind the text by ``highlight_rects``; this
             # tspan draws no stroke or band of its own, but its glyph fill
@@ -806,10 +832,25 @@ def styled_lines(
             # necessarily the same color the rest of the line (off the
             # band) is using -- including an "accent"-colored glyph, which
             # would otherwise blend straight into an accent-colored band.
+            #
+            # The editor keeps these three mutually exclusive, so the order
+            # below only settles hand-written manifests. Highlight wins over
+            # outline deliberately: hollow glyphs on a marker band are the
+            # least legible combination either treatment can produce.
             if "highlight" in active and highlight_text_color:
                 attributes.append(f'fill="{highlight_text_color}"')
+            elif "outline" in active:
+                # Hollow: no fill at all, the whole glyph carried by a stroke
+                # in the ink colour the span would otherwise have used, so
+                # outline stays a change of shape and never of palette.
+                attributes.append('fill="none"')
+                attributes.append(f'stroke="{text_color or highlight_color}"')
+                attributes.append(f'stroke-width="{OUTLINE_STROKE_EM * row_size:.2f}"')
+                attributes.append('stroke-linejoin="round"')
             elif "accent" in active:
                 attributes.append(f'fill="{highlight_color}"')
+            if declarations:
+                attributes.append(f'style="{";".join(declarations)}"')
             fragments.append(f"<tspan {' '.join(attributes)}>{value}</tspan>")
         rendered.append("".join(fragments))
         cursor = line_end
@@ -915,7 +956,10 @@ def text_block(
     formatted = (
         emphasized_lines(lines, emphasis, emphasis_color, text_transform)
         if styles is None
-        else styled_lines(lines, styles, highlight_color or emphasis_color, text_transform)
+        else styled_lines(
+            lines, styles, highlight_color or emphasis_color, text_transform,
+            text_color=color, font_size=font_size,
+        )
     )
     markers = (
         highlight_rects(
@@ -951,6 +995,14 @@ def statement_text_block(
             lines, styles, highlight_color or emphasis_color,
             text_transform=str.upper, highlight_mode="slab",
             highlight_text_color=highlight_text_color,
+            text_color=color, font_size=font_size,
+            # Poster rows are not all the same size: an emphasised row is
+            # drawn 1.12x larger, and a hollow span inside it has to be
+            # traced with a stroke scaled to that row, not to the base size.
+            row_font_sizes=[
+                font_size * multiplier
+                for multiplier in statement_row_multipliers(lines, strong_rows)
+            ],
         )
     )
     rows: list[str] = []

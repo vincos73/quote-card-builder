@@ -22,7 +22,7 @@ VERTICAL_POSITIONS = {"upper", "center", "lower"}
 TRANSFORMATIONS = {"VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"}
 EVIDENCE_STATUSES = {"VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"}
 ATTRIBUTION_ROLES = {"speaker", "author", "publisher", "none"}
-STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent"}
+STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent", "outline"}
 # styles_customized belongs here even though nothing in this file reads it:
 # the editor always sends it, and the renderer needs it to tell "no styles
 # chosen yet" from "user removed every style". Leaving it out did not drop

@@ -239,6 +239,9 @@ def font_capabilities(manifest: dict[str, Any], manifest_dir: Path) -> dict[str,
             "underline": {"available": True, "exact": True},
             "highlight": {"available": True, "exact": True},
             "accent": {"available": True, "exact": True},
+            # Outline strokes the glyph outlines the regular face already
+            # provides, so it needs no extra font file of its own.
+            "outline": {"available": True, "exact": True},
         },
     }
 

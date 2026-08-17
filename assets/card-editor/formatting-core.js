@@ -5,7 +5,12 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, () => {
   'use strict';
 
-  const STYLE_TYPES = new Set(['bold', 'italic', 'underline', 'highlight', 'accent']);
+  const STYLE_TYPES = new Set(['bold', 'italic', 'underline', 'highlight', 'accent', 'outline']);
+  // Every one of these decides what a glyph is filled with, so at most one
+  // can win per span -- the renderer says as much in styled_lines(). Keeping
+  // them exclusive in the editor means the toolbar can expose a single fill
+  // control instead of three toggles that silently override each other.
+  const FILL_STYLE_TYPES = new Set(['highlight', 'accent', 'outline']);
   const pointLength = (value) => Array.from(String(value || '')).length;
   const normalizeText = (value) => String(value || '').trim().replace(/\s+/g, ' ');
 
@@ -170,15 +175,52 @@
     return { start, end };
   };
 
+  // Strip every fill treatment other than `keep` from [start, end),
+  // splitting the ranges that only partly overlap. Applying one fill must
+  // never leave another one buried underneath it, where the renderer's
+  // precedence -- not the user's last click -- would decide what shows.
+  const clearFillRanges = (styles, start, end, keep = null) => {
+    const next = [];
+    normalizeStyleRanges(styles).forEach((style) => {
+      if (!FILL_STYLE_TYPES.has(style.type) || style.type === keep
+        || style.end <= start || style.start >= end) {
+        next.push(style);
+        return;
+      }
+      if (style.start < start) next.push({ start: style.start, end: start, type: style.type });
+      if (style.end > end) next.push({ start: end, end: style.end, type: style.type });
+    });
+    return normalizeStyleRanges(next);
+  };
+
+  // The fill treatment covering [start, end) in full, or null when the
+  // range carries none. This is the state the toolbar's fill control shows.
+  const fillTypeAt = (styles, start, end) => {
+    const covering = normalizeStyleRanges(styles).filter(
+      (style) => FILL_STYLE_TYPES.has(style.type) && style.start <= start && style.end >= end,
+    );
+    return covering.length ? covering[0].type : null;
+  };
+
+  // Order the single fill control steps through, ending back at "none".
+  const FILL_CYCLE = ['accent', 'highlight', 'outline'];
+
+  const nextFillType = (current) => FILL_CYCLE[FILL_CYCLE.indexOf(current) + 1] || null;
+
   // Mirrors render_quote_card.py's initial_direction_styles() type choice.
   const DIRECTION_EMPHASIS_TYPE = { editorial: 'bold', statement: 'accent', contextual: 'highlight' };
 
   return {
     DIRECTION_EMPHASIS_TYPE,
+    FILL_CYCLE,
+    FILL_STYLE_TYPES,
     STYLE_TYPES,
     canonicalLineStart,
     clampStyleRanges,
+    clearFillRanges,
     defaultEmphasisSpan,
+    fillTypeAt,
+    nextFillType,
     normalizeStyleRanges,
     normalizeText,
     pointLength,

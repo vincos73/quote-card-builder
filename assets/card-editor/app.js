@@ -9,7 +9,8 @@
   const formatting = window.QcbFormatting;
   if (!formatting) throw new Error('Motore di formattazione non disponibile');
   const {
-    DIRECTION_EMPHASIS_TYPE, STYLE_TYPES, canonicalLineStart, clampStyleRanges, defaultEmphasisSpan,
+    DIRECTION_EMPHASIS_TYPE, FILL_CYCLE, FILL_STYLE_TYPES, STYLE_TYPES, canonicalLineStart,
+    clampStyleRanges, clearFillRanges, defaultEmphasisSpan, fillTypeAt, nextFillType,
     normalizeStyleRanges, normalizeText: normalize, pointLength, remapStyleRanges,
   } = formatting;
   const normalizeScale = (value) => {
@@ -44,7 +45,11 @@
     VERIFIED: 'Verificata', USER_SUPPLIED: 'Fornita dall’utente', UNVERIFIED: 'Non verificata', CONFLICT: 'In conflitto',
   };
   const STYLE_LABELS = {
-    bold: 'Grassetto', italic: 'Corsivo', underline: 'Sottolineato', highlight: 'Evidenziato', accent: 'Colore accento',
+    bold: 'Grassetto', italic: 'Corsivo', underline: 'Sottolineato', highlight: 'Evidenziato',
+    accent: 'Colore accento', outline: 'Contorno',
+  };
+  const FILL_LABELS = {
+    none: 'nessuno', accent: 'accento', highlight: 'evidenziato', outline: 'contorno',
   };
   const CARD_COLOR_META = {
     primary: { label: 'Primario', usage: 'campo e moduli della card' },
@@ -79,6 +84,7 @@
     transformation: $('#transformation'), evidence: $('#evidence-status'),
     revision: $('#revision'), session: $('#session-state'), dot: $('#status-dot'),
     lines: $('#visual-text-editor'), formatToolbar: $('#format-toolbar'), formattingState: $('#formatting-state'),
+    fillControl: $('#fill-control'),
     colors: $('#brand-colors'), colorPaletteSubtitle: $('#color-palette-subtitle'), colorPaletteHelp: $('#color-palette-help'),
     fontSupport: $('#font-support-note'),
     scale: $('#scale'), scaleValue: $('#scale-value'), scaleFitNote: $('#scale-fit-note'),
@@ -280,6 +286,113 @@
     return start < end ? { start, end } : null;
   };
 
+  // The inverse of selectionOffsets: find the DOM position a canonical
+  // offset sits at. Offsets on a boundary belong to two spans at once, so a
+  // range start leans into the following span and a range end into the
+  // preceding one -- otherwise a restored selection collapses at every seam.
+  const domPoint = (offset, leading) => {
+    const candidates = [...els.lines.querySelectorAll('span[data-start]')].filter(
+      (span) => Number(span.dataset.start) <= offset && offset <= Number(span.dataset.end),
+    );
+    if (!candidates.length) return null;
+    const span = leading
+      ? candidates.find((item) => offset < Number(item.dataset.end)) || candidates.at(-1)
+      : candidates.filter((item) => offset > Number(item.dataset.start)).at(-1) || candidates[0];
+    const node = span.firstChild;
+    if (!node) return { node: span, offset: 0 };
+    const text = String(node.textContent || '');
+    const local = offset - Number(span.dataset.start);
+    // Offsets count code points; a DOM offset counts UTF-16 units.
+    return { node, offset: Math.min(Array.from(text).slice(0, local).join('').length, text.length) };
+  };
+
+  // renderVisualEditor() rebuilds the editor's markup from scratch, which
+  // drops the selection with it. Re-anchoring on the canonical offsets lets a
+  // second treatment land on the same words without reselecting them.
+  const restoreSelection = (start, end) => {
+    const from = domPoint(start, true);
+    const to = domPoint(end, false);
+    const selection = window.getSelection();
+    if (!from || !to || !selection) return false;
+    try {
+      const range = document.createRange();
+      range.setStart(from.node, from.offset);
+      range.setEnd(to.node, to.offset);
+      if (document.activeElement !== els.lines) els.lines.focus({ preventScroll: true });
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+
+  // The editor owns undo for its own content. Rebuilding innerHTML on every
+  // treatment already wipes the browser's native history, so leaving Cmd+Z to
+  // the browser lost typed text and could never recover a style at all.
+  const HISTORY_LIMIT = 60;
+  const history = { entries: [], index: -1, timer: null };
+
+  const historySnapshot = () => ({
+    text: state.draft.text,
+    lines: [...(currentFormat()?.lines || [])],
+    styles: clone(state.draft.styles),
+    styles_customized: Boolean(state.draft.styles_customized),
+    selection: selectionOffsets(),
+  });
+
+  const commitHistory = () => {
+    clearTimeout(history.timer);
+    history.timer = null;
+    if (!state.draft) return;
+    updateActiveFormat();
+    const entry = historySnapshot();
+    const current = history.entries[history.index];
+    // Selection alone is not a change worth an undo step.
+    if (current
+      && current.text === entry.text
+      && JSON.stringify(current.lines) === JSON.stringify(entry.lines)
+      && JSON.stringify(current.styles) === JSON.stringify(entry.styles)) return;
+    history.entries = [...history.entries.slice(0, history.index + 1), entry].slice(-HISTORY_LIMIT);
+    history.index = history.entries.length - 1;
+  };
+
+  // Coalesce a burst of typing into one undo step, the way a text field does.
+  const scheduleHistoryCommit = () => {
+    clearTimeout(history.timer);
+    history.timer = setTimeout(commitHistory, 500);
+  };
+
+  const resetHistory = () => {
+    clearTimeout(history.timer);
+    history.timer = null;
+    history.entries = state.draft ? [historySnapshot()] : [];
+    history.index = history.entries.length - 1;
+  };
+
+  const restoreHistory = (step) => {
+    // Commit whatever is still pending first, so the step lands on the state
+    // before the current edit rather than skipping over it.
+    commitHistory();
+    const target = history.index + step;
+    if (target < 0 || target >= history.entries.length) {
+      els.formattingState.textContent = step < 0 ? 'Niente da annullare' : 'Niente da ripristinare';
+      return false;
+    }
+    history.index = target;
+    const entry = history.entries[target];
+    state.draft.text = entry.text;
+    state.draft.styles = clone(entry.styles);
+    state.draft.styles_customized = entry.styles_customized;
+    state.draft.formats.forEach((format) => { format.lines = [...entry.lines]; });
+    renderVisualEditor();
+    if (entry.selection) restoreSelection(entry.selection.start, entry.selection.end);
+    syncFillControl();
+    els.formattingState.textContent = step < 0 ? 'Annullato' : 'Ripristinato';
+    schedulePreview();
+    return true;
+  };
+
   const toggleStyleRange = (type, start, end) => {
     const normalized = normalizeStyleRanges(state.draft.styles);
     const own = normalized.filter((item) => item.type === type);
@@ -299,7 +412,13 @@
       }
     });
     if (!fullyCovered) next.push({ start, end, type });
-    state.draft.styles = normalizeStyleRanges([...others, ...next]);
+    const merged = normalizeStyleRanges([...others, ...next]);
+    // A fill applied over another fill replaces it instead of stacking:
+    // otherwise the renderer's own precedence, not the click the user just
+    // made, would decide which of the two actually shows on the card.
+    state.draft.styles = !fullyCovered && FILL_STYLE_TYPES.has(type)
+      ? clearFillRanges(merged, start, end, type)
+      : merged;
     return !fullyCovered;
   };
 
@@ -315,14 +434,47 @@
       els.formattingState.textContent = 'Seleziona una porzione di testo';
       return;
     }
+    // Commit the pending text edit before the treatment, so typing and
+    // formatting stay two separate undo steps instead of collapsing into one.
+    commitHistory();
     const applied = toggleStyleRange(type, offsets.start, offsets.end);
     // From here on an empty styles list means "user removed everything",
     // never "untouched" -- stop the renderer's own auto-signature fallback
     // from silently reapplying a default once the user has acted at all.
     state.draft.styles_customized = true;
     renderVisualEditor();
+    restoreSelection(offsets.start, offsets.end);
+    syncFillControl();
+    commitHistory();
     els.formattingState.textContent = `${STYLE_LABELS[type]} ${applied ? 'applicato' : 'rimosso'}`;
     schedulePreview();
+  };
+
+  const selectionFill = () => {
+    const offsets = selectionOffsets();
+    return offsets ? fillTypeAt(state.draft?.styles || [], offsets.start, offsets.end) : null;
+  };
+
+  const syncFillControl = () => {
+    if (!els.fillControl || !state.draft) return;
+    const fill = selectionFill() || 'none';
+    els.fillControl.dataset.fill = fill;
+    els.fillControl.setAttribute('aria-label', `Riempimento del testo: ${FILL_LABELS[fill]}`);
+    els.fillControl.title = `Riempimento del testo — ${FILL_LABELS[fill]}. `
+      + 'Clic per il trattamento successivo; ⌘⇧A accento, ⌘⇧H evidenziato, ⌘⇧O contorno.';
+  };
+
+  const cycleFill = () => {
+    const offsets = selectionOffsets();
+    if (!offsets) {
+      els.formattingState.textContent = 'Seleziona una porzione di testo';
+      return;
+    }
+    const current = fillTypeAt(state.draft.styles, offsets.start, offsets.end);
+    // Stepping off the last state removes the treatment rather than adding a
+    // fourth one: the cycle always has a way back to plain text. Re-applying
+    // the current type is exactly the toggle-off path applyTextStyle has.
+    applyTextStyle(nextFillType(current) || current || FILL_CYCLE[0]);
   };
 
   const updateActiveFormat = () => {
@@ -355,6 +507,7 @@
     const format = currentFormat();
     if (!format) return;
     renderVisualEditor();
+    syncFillControl();
     const percent = Math.round(normalizeScale(format.text_scale) * 100);
     els.scale.value = String(percent);
     els.scaleValue.value = `${percent}%`;
@@ -468,14 +621,6 @@
     els.fontSupport.hidden = false;
   };
 
-  const renderDirectionStyleSupport = () => {
-    const control = els.formatToolbar.querySelector('button[data-style="highlight"]');
-    if (!control) return;
-    control.setAttribute('aria-disabled', 'false');
-    delete control.dataset.blockedReason;
-    control.title = 'Evidenziato';
-  };
-
   const renderDeclarationState = (serverDeclaration = null) => {
     const transformation = serverDeclaration?.transformation || state.draft.transformation;
     const evidence = serverDeclaration?.evidence_status || state.draft.evidence_status;
@@ -497,7 +642,6 @@
       button.classList.toggle('is-active', active);
       button.setAttribute('aria-pressed', String(active));
     });
-    renderDirectionStyleSupport();
     syncFormatControls();
     renderDeclarationState();
     storeDraft();
@@ -522,6 +666,7 @@
     renderFontSupport();
     setFormat(state.activeFormat, false);
     renderDraftControls();
+    resetHistory();
   };
 
   const validateDraft = () => {
@@ -841,6 +986,7 @@
     clearGeneratedOutputs();
     setGenerateState('idle');
     renderDraftControls();
+    resetHistory();
     preview();
     setMessage('Bozza ripristinata dalla revisione corrente.');
   };
@@ -864,23 +1010,38 @@
     state.draft.direction = button.dataset.direction;
     sanitizeDirectionStyles(state.draft);
     activate($('.directions'), 'direction', state.draft.direction);
-    renderDirectionStyleSupport();
     schedulePreview();
   }));
+  // Keep the caret where it is: a toolbar press must not steal the selection
+  // the treatment is about to be applied to.
   els.formatToolbar.addEventListener('pointerdown', (event) => {
-    if (event.target.closest('button[data-style]')) event.preventDefault();
+    if (event.target.closest('button')) event.preventDefault();
   });
   els.formatToolbar.addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-style]');
-    if (button) applyTextStyle(button.dataset.style);
+    const button = event.target.closest('button');
+    if (!button) return;
+    if (button === els.fillControl) cycleFill();
+    else if (button.dataset.style) applyTextStyle(button.dataset.style);
   });
-  els.lines.addEventListener('input', schedulePreview);
+  els.lines.addEventListener('input', () => {
+    scheduleHistoryCommit();
+    schedulePreview();
+  });
+  document.addEventListener('selectionchange', () => {
+    if (document.activeElement === els.lines) syncFillControl();
+  });
   els.lines.addEventListener('keydown', (event) => {
     const modifier = event.metaKey || event.ctrlKey;
-    const style = modifier && !event.shiftKey && ['b', 'i', 'u'].includes(event.key.toLowerCase())
-      ? ({ b: 'bold', i: 'italic', u: 'underline' })[event.key.toLowerCase()]
-      : modifier && event.shiftKey && event.key.toLowerCase() === 'h' ? 'highlight'
-        : modifier && event.shiftKey && event.key.toLowerCase() === 'a' ? 'accent' : null;
+    if (!modifier) return;
+    const key = event.key.toLowerCase();
+    if (key === 'z' || key === 'y') {
+      event.preventDefault();
+      restoreHistory(key === 'y' || event.shiftKey ? 1 : -1);
+      return;
+    }
+    const style = event.shiftKey
+      ? ({ h: 'highlight', a: 'accent', o: 'outline' })[key]
+      : ({ b: 'bold', i: 'italic', u: 'underline' })[key];
     if (style) {
       event.preventDefault();
       applyTextStyle(style);
