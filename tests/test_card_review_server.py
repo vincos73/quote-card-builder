@@ -88,13 +88,13 @@ class CardReviewServerTests(unittest.TestCase):
         source["presentation"]["output_mode"] = "pdf"
         self.assertTrue(SERVER.validate_manifest(source))
 
-    def test_statement_rejects_highlight_in_review_draft(self):
+    def test_statement_accepts_highlight_in_review_draft(self):
         source = manifest()
-        with self.assertRaisesRegex(ValueError, "evidenziazione non è disponibile"):
-            SERVER.validate_draft({
-                "base_revision": 1,
-                "styles": [{"start": 0, "end": 3, "type": "highlight"}],
-            }, source)
+        candidate = SERVER.validate_draft({
+            "base_revision": 1,
+            "styles": [{"start": 0, "end": 3, "type": "highlight"}],
+        }, source)
+        self.assertEqual([{"start": 0, "end": 3, "type": "highlight"}], candidate["content"]["styles"])
 
     def test_production_formats_follow_the_selected_output(self):
         source = manifest()

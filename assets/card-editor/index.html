@@ -23,11 +23,6 @@
         <img src="vincos-lockup-white.svg" alt="Vincos">
       </span>
     </div>
-    <div class="format-tabs" role="group" aria-label="Formato anteprima">
-      <button class="format-tab is-active" type="button" aria-pressed="true" data-format="4x5"><span>4:5</span><small>Feed</small></button>
-      <button class="format-tab" type="button" aria-pressed="false" data-format="1x1"><span>1:1</span><small>Square</small></button>
-      <button class="format-tab" type="button" aria-pressed="false" data-format="9x16"><span>9:16</span><small>Story</small></button>
-    </div>
   </header>
 
   <main class="studio" aria-label="Studio di revisione visuale">
@@ -43,6 +38,11 @@
           <button id="zoom-in" class="compact-control icon-control" type="button" aria-label="Aumenta zoom">+</button>
         </div>
         <p id="preview-message" class="preview-message">Caricamento prova visuale…</p>
+        <div class="format-tabs" role="group" aria-label="Formato anteprima">
+          <button class="format-tab is-active" type="button" aria-pressed="true" data-format="4x5"><span>4:5</span><small>Feed</small></button>
+          <button class="format-tab" type="button" aria-pressed="false" data-format="1x1"><span>1:1</span><small>Square</small></button>
+          <button class="format-tab" type="button" aria-pressed="false" data-format="9x16"><span>9:16</span><small>Story</small></button>
+        </div>
       </div>
 
       <div id="preview-stage" class="preview-stage" aria-busy="true">
@@ -120,12 +120,6 @@
           <p id="lines-help" class="field-help">Invio crea una nuova riga; una riga vuota aggiunge spazio. Testo e a capo restano identici in tutti i formati.</p>
           <div class="editorial-meta-grid">
             <label for="attribution-label"><span>Attribuzione</span><input id="attribution-label" type="text" autocomplete="off"></label>
-            <label for="attribution-role"><span>Ruolo</span><select id="attribution-role">
-              <option value="publisher">Publisher</option>
-              <option value="author">Autore</option>
-              <option value="speaker">Speaker</option>
-              <option value="none">Nessuno</option>
-            </select></label>
           </div>
           <p id="text-integrity-hint" class="field-help integrity-hint" aria-live="polite">Tipo di formulazione e verifica restano nel riepilogo inferiore.</p>
         </div>

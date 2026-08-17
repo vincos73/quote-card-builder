@@ -281,8 +281,9 @@ class VisualManifestTests(unittest.TestCase):
         final_size = float(final_row.attrib["font-size"])
         # Poster text is uppercased, and uppercase glyphs have a taller
         # cap-height relative to font-size than mixed-case text, so the
-        # marker gets more headroom (1.02) than the mixed-case case (0.76).
-        self.assertAlmostEqual(final_y - final_size * 1.02, float(marker.attrib["y"]), delta=0.1)
+        # marker gets a bit more headroom (0.82) than the mixed-case case
+        # (0.76) -- just enough to clear Arial Bold's ~0.72em cap-height.
+        self.assertAlmostEqual(final_y - final_size * 0.82, float(marker.attrib["y"]), delta=0.1)
         self.assertGreater(float(marker.attrib["x"]), float(final_row.attrib["x"]))
         self.assertLess(float(marker.attrib["width"]), RENDERER.visual_units("verificata.") * final_size)
 
@@ -313,12 +314,47 @@ class VisualManifestTests(unittest.TestCase):
         self.assertIn('rx="', svg)
         self.assertNotIn('paint-order="stroke fill"', svg)
 
-    def test_statement_rejects_highlight_style(self):
+    def test_statement_accepts_highlight_style(self):
         manifest = valid_visual_manifest()
         manifest["content"]["emphasis"] = ""
         manifest["content"]["styles"] = [{"start": 0, "end": 9, "type": "highlight"}]
-        errors = RENDERER.validate_visual_manifest(manifest, Path.cwd())
-        self.assertTrue(any(error["code"] == "unsupported_direction_style" for error in errors))
+        self.assertEqual([], RENDERER.validate_visual_manifest(manifest, Path.cwd()))
+        svg = RENDERER.render_svg(manifest, Path.cwd(), "statement")
+        self.assertIn('class="highlight-marker"', svg)
+
+    def test_statement_highlight_band_is_measured_against_bold_glyphs(self):
+        """Poster renders its entire quote block bold; the marker band behind
+        a highlighted span must be sized against bold glyph widths, not the
+        narrower regular-weight ones, or it trails short of the text."""
+        narrow = RENDERER.visual_units("Un agente", bold=False)
+        wide = RENDERER.visual_units("Un agente", bold=True)
+        self.assertGreater(wide, narrow)
+
+    def test_statement_highlighted_text_reads_against_the_accent_band(self):
+        """Poster's plain quote text is background-colored (light) to read
+        against the dark primary surface. A highlight band is painted in
+        the accent color, so text sitting on it needs to switch to a color
+        that reads against *that* surface instead, or it goes near-invisible
+        (light text on a light-ish accent band)."""
+        manifest = valid_visual_manifest()
+        manifest["content"]["emphasis"] = ""
+        manifest["content"]["styles"] = [{"start": 44, "end": 54, "type": "highlight"}]
+        svg = RENDERER.render_svg(manifest, Path.cwd(), "statement")
+        self.assertIn('fill="#072743"', svg)
+
+    def test_statement_highlight_over_an_accented_row_emits_one_fill(self):
+        """A row can already be legacy-accented (Poster's initial signature)
+        when the user also highlights it; the two styles must not both try
+        to set ``fill`` on the same tspan, or the SVG comes out malformed."""
+        manifest = valid_visual_manifest()
+        manifest["content"]["emphasis"] = ""
+        manifest["content"]["styles"] = [
+            {"start": 44, "end": 54, "type": "accent"},
+            {"start": 44, "end": 54, "type": "highlight"},
+        ]
+        svg = RENDERER.render_svg(manifest, Path.cwd(), "statement")
+        ET.fromstring(svg)  # raises if a duplicate attribute made it invalid
+        self.assertNotIn('fill="#E3F4FF" fill=', svg)
 
     def test_accent_style_colors_selected_glyphs(self):
         manifest = valid_visual_manifest()

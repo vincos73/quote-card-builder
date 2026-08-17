@@ -76,6 +76,28 @@ def text_width(value: str, font_size: float, tracking_em: float) -> float:
     )
 
 
+def _row_segments(source: ET.Element, base_fill: str) -> list[tuple[str, str]]:
+    """Split a row's content into ``(text, fill)`` runs in draw order.
+
+    A row is usually one uniform run, but a nested tspan -- e.g. a
+    highlighted span drawn in a color that reads against its marker band
+    instead of the row's own fill -- overrides fill for just its own text.
+    Missing that override would measure the wrong color against the wrong
+    ground for exactly the text a highlight most needs checked.
+    """
+    segments: list[tuple[str, str]] = []
+    if source.text:
+        segments.append((source.text, base_fill))
+    for child in source:
+        if _tag(child) == "tspan":
+            child_text = "".join(child.itertext())
+            if child_text:
+                segments.append((child_text, child.attrib.get("fill", base_fill)))
+        if child.tail:
+            segments.append((child.tail, base_fill))
+    return segments
+
+
 def _tracking_em(element: ET.Element, inherited: float) -> float:
     style = element.attrib.get("style", "")
     marker = "letter-spacing:"
@@ -108,35 +130,48 @@ def text_boxes(root: ET.Element) -> list[dict[str, Any]]:
         tracking = _tracking_em(text_el, 0.0)
         classes = _classes(text_el)
         rows = text_el.findall(f"{SVG_NS}tspan")
-        candidates: list[tuple[ET.Element | None, str]] = (
-            [(row, "".join(row.itertext())) for row in rows]
-            if rows
-            else [(None, "".join(text_el.itertext()))]
-        )
-        for row, content in candidates:
+        row_sources: list[ET.Element] = rows if rows else [text_el]
+        for row in row_sources:
+            source = row
+            content = "".join(source.itertext())
             if not content.strip():
                 continue
-            source = row if row is not None else text_el
             size = _float(source, "font-size", base_size) or base_size
             if size <= 0:
                 continue
             x = _float(source, "x", base_x) or base_x
             y = _float(source, "y", base_y) or base_y
-            width = text_width(content, size, _tracking_em(source, tracking))
+            row_fill = source.attrib.get("fill", base_fill)
+            row_tracking = _tracking_em(source, tracking)
+            segments = _row_segments(source, row_fill) if row is not text_el else [(content, row_fill)]
+            # Tracking is a per-gap adjustment, not a per-character one:
+            # summing each segment's own text_width() independently drops
+            # the gap that sits between two segments, so splitting a row
+            # for its fill would quietly narrow (or widen, if tracking is
+            # negative) the row versus measuring it in one piece. Adding
+            # back one gap per segment boundary keeps the total identical
+            # to the un-split calculation.
+            boundary_tracking = row_tracking * size * max(0, len(segments) - 1)
+            full_width = sum(text_width(text, size, row_tracking) for text, _ in segments) + boundary_tracking
             if anchor == "end":
-                x0 = x - width
+                cursor_x = x - full_width
             elif anchor == "middle":
-                x0 = x - width / 2
+                cursor_x = x - full_width / 2
             else:
-                x0 = x
-            boxes.append({
-                "kind": "text",
-                "classes": classes | _classes(source),
-                "text": content,
-                "font_size": size,
-                "fill": source.attrib.get("fill", base_fill),
-                "box": (x0, y - size * ASCENT_RATIO, x0 + width, y + size * DESCENT_RATIO),
-            })
+                cursor_x = x
+            for index, (text, fill) in enumerate(segments):
+                width = text_width(text, size, row_tracking)
+                boxes.append({
+                    "kind": "text",
+                    "classes": classes | _classes(source),
+                    "text": text,
+                    "font_size": size,
+                    "fill": fill,
+                    "box": (cursor_x, y - size * ASCENT_RATIO, cursor_x + width, y + size * DESCENT_RATIO),
+                })
+                cursor_x += width
+                if index < len(segments) - 1:
+                    cursor_x += row_tracking * size
     return boxes
 
 
