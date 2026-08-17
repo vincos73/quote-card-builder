@@ -188,6 +188,42 @@ class MeasurementTests(unittest.TestCase):
         self.assertEqual("#000000", INSPECT.ground_for((10, 10, 20, 20), grounds))
         self.assertEqual("", INSPECT.ground_for((500, 500, 510, 510), grounds))
 
+    def test_nested_tspan_fill_override_is_measured_as_its_own_box(self):
+        """A highlighted span switches its own fill so it reads against its
+        marker band; the checker has to see that override, not the row's
+        base fill, or it grades the wrong color against the wrong ground."""
+        import xml.etree.ElementTree as ET
+
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1800">'
+            '<text class="quote" x="0" y="100" font-size="80" fill="#FEFDFB">'
+            '<tspan x="0" y="100" fill="#FEFDFB">BE <tspan fill="#072743">FREE</tspan></tspan>'
+            '</text></svg>'
+        )
+        boxes = INSPECT.text_boxes(ET.fromstring(svg))
+        fills = {box["text"]: box["fill"] for box in boxes}
+        self.assertEqual("#FEFDFB", fills["BE "])
+        self.assertEqual("#072743", fills["FREE"])
+
+    def test_splitting_a_row_for_fill_preserves_total_tracking_width(self):
+        """Tracking is a per-gap cost, not a per-character one. Measuring a
+        row's segments separately (for their different fills) must still
+        add up to what measuring the whole row in one piece would give, or
+        a fill override quietly shifts every following box out of place."""
+        import xml.etree.ElementTree as ET
+
+        whole = INSPECT.text_width("BE FREE", 80.0, -0.025)
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1800">'
+            '<text class="quote" x="0" y="100" font-size="80" fill="#FEFDFB" '
+            'style="letter-spacing:-0.025em">'
+            '<tspan x="0" y="100" fill="#FEFDFB">BE <tspan fill="#072743">FREE</tspan></tspan>'
+            '</text></svg>'
+        )
+        boxes = INSPECT.text_boxes(ET.fromstring(svg))
+        split_total = max(b["box"][2] for b in boxes) - min(b["box"][0] for b in boxes)
+        self.assertAlmostEqual(whole, split_total, places=6)
+
 
 class QualityGateTests(unittest.TestCase):
     """The gate must actually refuse a defective render, not just log it."""
@@ -218,6 +254,19 @@ class QualityGateTests(unittest.TestCase):
         previews = SERVER.render_preview(manifest, Path.cwd())
         qa = SERVER.preview_quality(manifest, previews, Path.cwd())
         self.assertIn("render", qa["checks"])
+        self.assertTrue(qa["passed"], qa["warnings"])
+
+    def test_gate_passes_a_poster_highlight_over_an_already_accented_row(self):
+        """End to end: Poster's own quote text is background-colored to read
+        on its dark surface, so a highlighted span switches to the primary
+        color to read against its accent band instead. The live gate has to
+        recognize that switched color, not the row's base one, or a
+        perfectly readable highlight gets reported as failing contrast."""
+        manifest = self._manifest()
+        manifest["content"]["emphasis"] = ""
+        manifest["content"]["styles"] = [{"start": 0, "end": 21, "type": "highlight"}]
+        previews = SERVER.render_preview(manifest, Path.cwd())
+        qa = SERVER.preview_quality(manifest, previews, Path.cwd())
         self.assertTrue(qa["passed"], qa["warnings"])
 
     def test_gate_fails_when_the_rendered_card_is_defective(self):
