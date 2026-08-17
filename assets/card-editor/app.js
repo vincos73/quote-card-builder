@@ -12,6 +12,7 @@
     DIRECTION_EMPHASIS_TYPE, FILL_CYCLE, FILL_STYLE_TYPES, STYLE_TYPES, canonicalLineStart,
     clampStyleRanges, clearFillRanges, defaultEmphasisSpan, fillTypeAt, nextFillType,
     normalizeStyleRanges, normalizeText: normalize, pointLength, remapStyleRanges,
+    suggestBalancedLines,
   } = formatting;
   const normalizeScale = (value) => {
     const numeric = Number(value);
@@ -84,7 +85,7 @@
     transformation: $('#transformation'), evidence: $('#evidence-status'),
     revision: $('#revision'), session: $('#session-state'), dot: $('#status-dot'),
     lines: $('#visual-text-editor'), formatToolbar: $('#format-toolbar'), formattingState: $('#formatting-state'),
-    fillControl: $('#fill-control'),
+    fillControl: $('#fill-control'), rebalance: $('#rebalance-lines'),
     colors: $('#brand-colors'), colorPaletteSubtitle: $('#color-palette-subtitle'), colorPaletteHelp: $('#color-palette-help'),
     fontSupport: $('#font-support-note'),
     scale: $('#scale'), scaleValue: $('#scale-value'), scaleFitNote: $('#scale-fit-note'),
@@ -475,6 +476,41 @@
     // fourth one: the cycle always has a way back to plain text. Re-applying
     // the current type is exactly the toggle-off path applyTextStyle has.
     applyTextStyle(nextFillType(current) || current || FILL_CYCLE[0]);
+  };
+
+  // Line breaks are the one editorial decision the editor can genuinely help
+  // with: balancing them by eye across a re-flow is tedious, and the measure
+  // that matters is visual word length, not character count. The suggestion
+  // is offered on demand and never applied behind the user's back -- one
+  // press, undoable, and every newline they type afterwards stays put.
+  const rebalanceLines = () => {
+    const format = currentFormat();
+    if (!format) return;
+    updateActiveFormat();
+    const text = normalize(state.draft.text);
+    if (!text) {
+      els.formattingState.textContent = 'Nessun testo da riequilibrare';
+      return;
+    }
+    // The current count is a weak preference, not a constraint: a better
+    // split with one row more or less is allowed to win.
+    const preferred = format.lines.filter((line) => normalize(line)).length;
+    const suggested = suggestBalancedLines(text, preferred || null);
+    if (!suggested.length || JSON.stringify(suggested) === JSON.stringify(format.lines)) {
+      els.formattingState.textContent = 'Gli a capo sono già equilibrati';
+      return;
+    }
+    // Same words in the same order, so every style offset stays valid: only
+    // the breaks move, and blank spacer rows are absorbed by the re-flow.
+    const selection = selectionOffsets();
+    commitHistory();
+    state.draft.formats.forEach((item) => { item.lines = [...suggested]; });
+    renderVisualEditor();
+    if (selection) restoreSelection(selection.start, selection.end);
+    syncFillControl();
+    commitHistory();
+    els.formattingState.textContent = `A capo riequilibrati su ${suggested.length} righe`;
+    schedulePreview();
   };
 
   const updateActiveFormat = () => {
@@ -1023,6 +1059,8 @@
     if (button === els.fillControl) cycleFill();
     else if (button.dataset.style) applyTextStyle(button.dataset.style);
   });
+  els.rebalance.addEventListener('pointerdown', (event) => event.preventDefault());
+  els.rebalance.addEventListener('click', rebalanceLines);
   els.lines.addEventListener('input', () => {
     scheduleHistoryCommit();
     schedulePreview();
@@ -1037,6 +1075,11 @@
     if (key === 'z' || key === 'y') {
       event.preventDefault();
       restoreHistory(key === 'y' || event.shiftKey ? 1 : -1);
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      rebalanceLines();
       return;
     }
     const style = event.shiftKey

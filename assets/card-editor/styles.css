@@ -559,6 +559,23 @@ svg {
 .field-label svg { width: 18px; height: 18px; color: var(--lavender-light); }
 .field-label small { color: var(--lavender); font-size: 10px; letter-spacing: 0; text-transform: none; }
 
+/* An action in the slot the row's hint used to occupy: no new section, no
+   new panel, and the label row was already reserving the space. */
+.label-action {
+  padding: 2px 7px;
+  border: 1px solid var(--line-dark);
+  border-radius: 0;
+  background: transparent;
+  color: var(--lavender);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .03em;
+  text-transform: none;
+}
+
+.label-action:hover { border-color: var(--line-strong); color: var(--concrete-light); }
+.label-action:active { color: var(--chartreuse); }
+
 .directions {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
