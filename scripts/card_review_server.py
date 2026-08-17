@@ -274,11 +274,6 @@ def validate_draft(payload: Any, manifest: dict[str, Any]) -> dict[str, Any]:
             elif key == "presentation":
                 candidate[key] = copy.deepcopy(payload[key])
             else: candidate[key] = payload[key]
-    if candidate.get("direction") == "statement" and any(
-        isinstance(style, dict) and style.get("type") == "highlight"
-        for style in candidate["content"].get("styles", [])
-    ):
-        raise ValueError("L'evidenziazione non è disponibile nello stile Poster")
     errors = validate_manifest(candidate)
     if errors: raise ValueError("; ".join(errors))
     return candidate
