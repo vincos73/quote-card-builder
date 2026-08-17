@@ -20,16 +20,21 @@
     ...format,
     text_scale: normalizeScale(format.text_scale),
   }));
-  const normalizePresentation = (presentation = {}) => ({
+  // With no explicit choice, deliver only the format the user is actually
+  // looking at (the first/active one) rather than all three -- "all" was a
+  // silent default nobody asked for, and most edits are aimed at a single
+  // aspect ratio.
+  const normalizePresentation = (presentation = {}, fallbackMode = 'all') => ({
     logo_mode: presentation.logo_mode || 'auto',
     graphic_mode: presentation.graphic_mode || 'auto',
-    output_mode: presentation.output_mode || 'all',
+    output_mode: presentation.output_mode || fallbackMode,
   });
+  const defaultOutputMode = (manifest) => manifest.formats?.[0]?.id || 'all';
   const baselineSignature = (manifest) => JSON.stringify({
     text: manifest.content?.text || '',
     direction: manifest.direction || '',
     attribution: manifest.content?.attribution || {},
-    presentation: normalizePresentation(manifest.presentation || {}),
+    presentation: normalizePresentation(manifest.presentation || {}, defaultOutputMode(manifest)),
     formats: manifest.formats || [],
   });
   const TRANSFORMATION_LABELS = {
@@ -78,7 +83,7 @@
     fontSupport: $('#font-support-note'),
     scale: $('#scale'), scaleValue: $('#scale-value'), scaleFitNote: $('#scale-fit-note'),
     textIntegrityHint: $('#text-integrity-hint'),
-    attributionLabel: $('#attribution-label'), attributionRole: $('#attribution-role'),
+    attributionLabel: $('#attribution-label'),
     preview: $('#preview-content'),
     shell: $('#preview-shell'), stage: $('#preview-stage'), message: $('#preview-message'),
     warningCount: $('#qa-count'), qaLabel: $('#qa-label'), draftState: $('#draft-state'),
@@ -171,7 +176,7 @@
     return [{ start: span.start, end: span.end, type }];
   };
 
-  const styleSupportedByDirection = (type, direction) => !(direction === 'statement' && type === 'highlight');
+  const styleSupportedByDirection = () => true;
 
   const sanitizeDirectionStyles = (draft) => {
     const before = normalizeStyleRanges(draft.styles || []);
@@ -366,7 +371,7 @@
       direction: manifest.direction,
       styles: initialStyles(manifest.content, manifest.direction),
       styles_customized: Boolean(manifest.content.styles_customized),
-      presentation: normalizePresentation(manifest.presentation || {}),
+      presentation: normalizePresentation(manifest.presentation || {}, defaultOutputMode(manifest)),
       formats: normalizeFormats(manifest.formats),
     };
     sanitizeDirectionStyles(draft);
@@ -386,7 +391,7 @@
           ...saved.draft,
           evidence_status: saved.draft.evidence_status || manifest.content.evidence_status,
           attribution: clone(saved.draft.attribution || manifest.content.attribution || { label: '', role: 'none' }),
-          presentation: normalizePresentation(saved.draft.presentation || initial.presentation),
+          presentation: normalizePresentation(saved.draft.presentation || initial.presentation, defaultOutputMode(manifest)),
         };
         restored.formats = normalizeFormats(saved.draft.formats);
         sanitizeDirectionStyles(restored);
@@ -466,15 +471,9 @@
   const renderDirectionStyleSupport = () => {
     const control = els.formatToolbar.querySelector('button[data-style="highlight"]');
     if (!control) return;
-    const available = styleSupportedByDirection('highlight', state.draft?.direction);
-    control.setAttribute('aria-disabled', String(!available));
-    if (available) {
-      delete control.dataset.blockedReason;
-      control.title = 'Evidenziato';
-      return;
-    }
-    control.dataset.blockedReason = 'Evidenziazione non disponibile nello stile Poster';
-    control.title = control.dataset.blockedReason;
+    control.setAttribute('aria-disabled', 'false');
+    delete control.dataset.blockedReason;
+    control.title = 'Evidenziato';
   };
 
   const renderDeclarationState = (serverDeclaration = null) => {
@@ -490,7 +489,6 @@
   const renderDraftControls = () => {
     const draft = state.draft;
     els.attributionLabel.value = draft.attribution?.label || '';
-    els.attributionRole.value = draft.attribution?.role || 'none';
     activate($('#logo-control'), 'logo', draft.presentation.logo_mode);
     activate($('#graphic-control'), 'graphic', draft.presentation.graphic_mode || 'auto');
     activate($('#output-control'), 'output', draft.presentation.output_mode || 'all');
@@ -545,13 +543,8 @@
       !STYLE_TYPES.has(style.type) || !Number.isInteger(style.start) || !Number.isInteger(style.end)
       || style.start < 0 || style.start >= style.end || style.end > textLength
     ))) errors.push('La formattazione contiene una selezione non valida.');
-    if (state.draft.direction === 'statement' && state.draft.styles.some((style) => style.type === 'highlight')) {
-      errors.push('L’evidenziazione non è disponibile nello stile Poster.');
-    }
     if (!['VERBATIM', 'EDITED', 'PARAPHRASE', 'AI_GENERATED'].includes(state.draft.transformation)) errors.push('Scegli un trattamento valido.');
     if (!['VERIFIED', 'USER_SUPPLIED', 'UNVERIFIED', 'CONFLICT'].includes(state.draft.evidence_status)) errors.push('Scegli uno stato della prova valido.');
-    if (!['speaker', 'author', 'publisher', 'none'].includes(state.draft.attribution?.role)) errors.push('Scegli un ruolo di attribuzione valido.');
-    if (state.draft.attribution?.role !== 'none' && !normalize(state.draft.attribution?.label)) errors.push('Inserisci l’attribuzione per il ruolo scelto.');
     if (!['all', '4x5', '1x1', '9x16'].includes(state.draft.presentation?.output_mode)) errors.push('Scegli i formati del pacchetto finale.');
     return errors;
   };
@@ -668,9 +661,10 @@
     clearGeneratedOutputs();
     if (!state.submitting && !state.chatbotRequestId) setGenerateState('idle');
     updateActiveFormat();
+    const attributionLabel = els.attributionLabel.value.trim();
     state.draft.attribution = {
-      label: els.attributionLabel.value.trim(),
-      role: els.attributionRole.value,
+      label: attributionLabel,
+      role: attributionLabel ? 'author' : 'none',
     };
     renderDeclarationState();
     storeDraft();
@@ -868,13 +862,9 @@
   $$('.format-tab').forEach((button) => button.addEventListener('click', () => setFormat(button.dataset.format)));
   $$('.directions button').forEach((button) => button.addEventListener('click', () => {
     state.draft.direction = button.dataset.direction;
-    const removedStyles = sanitizeDirectionStyles(state.draft);
+    sanitizeDirectionStyles(state.draft);
     activate($('.directions'), 'direction', state.draft.direction);
     renderDirectionStyleSupport();
-    if (removedStyles) {
-      renderVisualEditor();
-      els.formattingState.textContent = 'Evidenziazione rimossa: non disponibile nello stile Poster';
-    }
     schedulePreview();
   }));
   els.formatToolbar.addEventListener('pointerdown', (event) => {
@@ -911,7 +901,7 @@
     selection.addRange(range);
     els.lines.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste', data: text }));
   });
-  [els.scale, els.attributionLabel, els.attributionRole].forEach((input) => input.addEventListener('input', () => {
+  [els.scale, els.attributionLabel].forEach((input) => input.addEventListener('input', () => {
     if (input === els.scale) {
       const value = Number(input.value);
       els.scaleValue.value = `${value}%`;

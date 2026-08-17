@@ -162,7 +162,6 @@ svg {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 20px;
 }
 
 .format-tab {
@@ -171,10 +170,10 @@ svg {
   display: grid;
   grid-template-columns: 1fr;
   place-content: center;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line-light);
   border-radius: 0;
   background: transparent;
-  color: var(--lavender-light);
+  color: var(--ink);
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1;
@@ -183,18 +182,18 @@ svg {
 
 .format-tab small {
   display: none;
-  color: var(--lavender);
+  color: var(--paper-ink);
   font-size: 8px;
   letter-spacing: .05em;
   text-transform: uppercase;
 }
 
-.format-tab:hover { border-color: var(--lavender-light); }
+.format-tab:hover { border-color: var(--chartreuse-dark); }
 
 .format-tab.is-active {
-  border-color: var(--chartreuse);
-  color: var(--chartreuse);
-  background: rgba(185, 217, 54, .035);
+  border-color: var(--chartreuse-dark);
+  color: #52620d;
+  background: rgba(111, 130, 23, .08);
 }
 
 .studio {
@@ -722,7 +721,7 @@ select:hover { border-color: var(--line-strong); }
 .palette-help { margin: 10px 0 0; color: var(--lavender); font-family: var(--mono); font-size: 9px; line-height: 1.4; }
 .editorial-meta-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(92px, .75fr);
+  grid-template-columns: 1fr;
   gap: 8px;
   margin-top: 10px;
 }
@@ -985,7 +984,7 @@ select:focus { border-color: var(--chartreuse); }
   .product-heading { min-width: 0; padding: 0 16px; }
   .product-title { font-size: 16px; }
   .product-byline img { width: 88px; }
-  .format-tabs { gap: 5px; padding: 0 10px; }
+  .format-tabs { gap: 5px; }
   .format-tab { min-width: 51px; height: 34px; }
   .studio { height: auto; min-height: 0; display: flex; flex-direction: column; }
   .preview-zone { min-height: 620px; }
@@ -1008,8 +1007,8 @@ select:focus { border-color: var(--chartreuse); }
   .product-title { font-size: 12px; }
   .product-byline { gap: 5px; font-size: 8px; }
   .product-byline img { width: 68px; }
-  .format-tabs { gap: 4px; padding: 0 8px; }
-  .format-tab { min-width: 44px; height: 36px; padding: 0 5px; font-size: 10px; }
+  .format-tabs { gap: 4px; }
+  .format-tab { min-width: 44px; height: 32px; padding: 0 5px; font-size: 10px; }
   .preview-head { height: 44px; flex-basis: 44px; padding: 0 10px; }
   .safe-toggle span,
   .preview-message { display: none; }
