@@ -26,6 +26,26 @@ def manifest():
 
 
 class FeedbackContractTests(unittest.TestCase):
+    def test_applies_direction_specific_graphic_variant(self):
+        item = manifest()
+        feedback = {
+            "feedback_id": "motif-1",
+            "submitted_at": "2026-08-18T10:00:00Z",
+            "base_revision": 3,
+            "action": "feedback",
+            "editorial_responsibility": "user",
+            "content": {},
+            "presentation": {"graphic_mode": "auto", "graphic_variant": "modules"},
+            "formats": [],
+            "overall_note": "",
+        }
+        APPLIER._validate_patch(feedback, item)
+        self.assertTrue(APPLIER._apply_patch(item, feedback))
+        self.assertEqual("modules", item["presentation"]["graphic_variant"])
+
+        feedback["presentation"]["graphic_variant"] = "route_map"
+        with self.assertRaisesRegex(APPLIER.ReviewError, "non appartiene"):
+            APPLIER._validate_patch(feedback, item)
     """The editor writes the batch and this module validates it, so the two
     have to agree on the field list. They silently did not: the server sent
     styles_customized, this file's whitelist had never been told about it,
@@ -48,6 +68,16 @@ class FeedbackContractTests(unittest.TestCase):
         editor = (ROOT / "assets" / "card-editor" / "app.js").read_text(encoding="utf-8")
         self.assertIn("normalizePresentation", editor)
         self.assertNotIn("show_quotation_marks", editor)
+
+    def test_generated_state_exposes_location_and_a_real_return_action(self):
+        editor = (ROOT / "assets" / "card-editor" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "assets" / "card-editor" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("output.absolute_path || output.filename", editor)
+        self.assertIn("'Torna alla chat' : 'Chiudi editor'", editor)
+        self.assertIn("window.location.assign(state.returnUrl)", editor)
+        self.assertIn("window.close()", editor)
+        self.assertRegex(styles, r"(?s)\.motif-swatch\s*\{[^}]*overflow:\s*hidden")
+        self.assertRegex(styles, r"(?s)\.motif-control button\s*\{[^}]*overflow:\s*hidden")
 
 
 class ApplyCardReviewTests(unittest.TestCase):

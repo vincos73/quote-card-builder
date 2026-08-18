@@ -215,6 +215,31 @@ class VisualManifestTests(unittest.TestCase):
             self.assertNotIn('class="direction-graphic', svg)
             self.assertIn(f"Quote card {direction}", svg)
 
+    def test_each_direction_renders_its_selected_alternate_motif(self):
+        manifest = valid_visual_manifest()
+        cases = {
+            "editorial": ("rhythm_lines", "direction-graphic--rhythm", "direction-graphic--contours"),
+            "statement": ("modules", "direction-graphic--modules", "direction-graphic--echo"),
+            "contextual": ("route_map", "direction-graphic--routes", "direction-graphic--field"),
+        }
+        for direction, (variant, expected, legacy) in cases.items():
+            with self.subTest(direction=direction):
+                svg = RENDERER.render_svg(
+                    manifest,
+                    Path.cwd(),
+                    direction,
+                    render_options={"graphic_mode": "auto", "graphic_variant": variant},
+                )
+                self.assertIn(expected, svg)
+                self.assertNotIn(legacy, svg)
+
+    def test_visual_manifest_rejects_a_motif_from_another_direction(self):
+        manifest = valid_visual_manifest()
+        manifest["direction"] = "editorial"
+        manifest["presentation"] = {"graphic_mode": "auto", "graphic_variant": "modules"}
+        errors = RENDERER.validate_visual_manifest(manifest, Path.cwd())
+        self.assertIn("presentation.graphic_variant", {item["path"] for item in errors})
+
     def test_no_direction_draws_a_quotation_mark_of_any_kind(self):
         # Neither the glyph pair nor the corner brackets that once stood in
         # for it. The setting that used to govern them is gone from the
@@ -262,6 +287,13 @@ class VisualManifestTests(unittest.TestCase):
         editorial = RENDERER.render_svg(manifest, Path.cwd(), "editorial")
         self.assertEqual(6, editorial.count('class="contour-path contour-path--top"'))
         self.assertEqual(6, editorial.count('class="contour-path contour-path--bottom"'))
+        self.assertNotIn('editorial-contours-top-clip', editorial)
+        self.assertNotIn('editorial-contours-bottom-clip', editorial)
+        self.assertIn('M 1281.6 -126.0 C 1108.8 -36.0, 1065.6 126.0, 1180.8 252.0', editorial)
+        self.assertIn('M -64.8 1206.0 C 108.0 1278.0, 187.2 1386.0, 115.2 1512.0', editorial)
+        contours_geometry = RENDERER.presentation_geometry(manifest, "editorial", 1440, 1800)
+        self.assertAlmostEqual(1440 * 0.145, contours_geometry["text_x"])
+        self.assertAlmostEqual(1440 * 0.78, contours_geometry["text_width"])
         self.assertNotIn('class="page-spine"', editorial)
 
         statement = RENDERER.render_svg(manifest, Path.cwd(), "statement")
@@ -635,7 +667,10 @@ class LayoutGeometryTests(unittest.TestCase):
             with self.subTest(direction=direction, canvas=(width, height), position=position):
                 manifest = valid_visual_manifest()
                 manifest["canvas"] = {"width": width, "height": height}
-                geometry = RENDERER.direction_geometry(direction, width, height, position)
+                geometry = RENDERER.presentation_geometry(
+                    manifest, direction, width, height, position,
+                    {"vertical_position": position},
+                )
                 quote = self._quote_element(RENDERER.render_svg(
                     manifest, Path.cwd(), direction,
                     render_options={"vertical_position": position},
@@ -667,7 +702,10 @@ class LayoutGeometryTests(unittest.TestCase):
                 size, _, _, _, _ = PACK.resolve_font_size(
                     lines, manifest, Path.cwd(), direction, width, height, 1.0, position,
                 )
-                geometry = RENDERER.direction_geometry(direction, width, height, position)
+                geometry = RENDERER.presentation_geometry(
+                    manifest, direction, width, height, position,
+                    {"vertical_position": position},
+                )
                 quote = self._quote_element(RENDERER.render_svg(
                     manifest, Path.cwd(), direction, font_size_override=size,
                     render_options={"vertical_position": position},

@@ -17,6 +17,11 @@ from typing import Any
 DIRECTIONS = {"editorial", "statement", "contextual"}
 LOGO_MODES = {"auto", "hidden"}
 GRAPHIC_MODES = {"auto", "hidden"}
+GRAPHIC_VARIANTS = {
+    "editorial": {"default", "rhythm_lines"},
+    "statement": {"default", "modules"},
+    "contextual": {"default", "route_map"},
+}
 OUTPUT_MODES = {"all", "4x5", "1x1", "9x16"}
 VERTICAL_POSITIONS = {"upper", "center", "lower"}
 TRANSFORMATIONS = {"VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"}
@@ -220,12 +225,18 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
         raise ReviewError("overall_note deve essere una stringa.")
 
     presentation = feedback.get("presentation", {})
-    if not isinstance(presentation, dict) or set(presentation) - {"logo_mode", "graphic_mode", "output_mode"}:
+    if not isinstance(presentation, dict) or set(presentation) - {"logo_mode", "graphic_mode", "graphic_variant", "output_mode"}:
         raise ReviewError("Sono consentite solo modifiche di presentazione previste.")
     if "logo_mode" in presentation and presentation["logo_mode"] not in LOGO_MODES:
         raise ReviewError("presentation.logo_mode non ammesso.")
     if "graphic_mode" in presentation and presentation["graphic_mode"] not in GRAPHIC_MODES:
         raise ReviewError("presentation.graphic_mode non ammesso.")
+    target_direction = feedback.get("direction", manifest.get("direction"))
+    graphic_variant = presentation.get(
+        "graphic_variant", (manifest.get("presentation") or {}).get("graphic_variant", "default")
+    )
+    if graphic_variant not in GRAPHIC_VARIANTS.get(target_direction, set()):
+        raise ReviewError("presentation.graphic_variant non appartiene alla direzione selezionata.")
     if "output_mode" in presentation and presentation["output_mode"] not in OUTPUT_MODES:
         raise ReviewError("presentation.output_mode non ammesso.")
 
@@ -285,7 +296,7 @@ def _apply_patch(manifest: dict[str, Any], feedback: dict[str, Any]) -> bool:
     emphasis_patch = {"emphasis": feedback["emphasis"]} if "emphasis" in feedback else {}
     for section, patch, keys in (
         ("content", emphasis_patch, ("emphasis",)),
-        ("presentation", feedback.get("presentation", {}), ("logo_mode", "graphic_mode", "output_mode")),
+        ("presentation", feedback.get("presentation", {}), ("logo_mode", "graphic_mode", "graphic_variant", "output_mode")),
     ):
         if patch:
             target = manifest.setdefault(section, {})

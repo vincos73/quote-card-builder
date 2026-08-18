@@ -22,13 +22,43 @@
     ...format,
     text_scale: normalizeScale(format.text_scale),
   }));
+  const GRAPHIC_VARIANTS = {
+    editorial: {
+      style: 'Editorial',
+      default: { value: 'default', label: 'Contours', icon: 'contours' },
+      alternate: { value: 'rhythm_lines', label: 'Rhythm Lines', icon: 'rhythm' },
+    },
+    statement: {
+      style: 'Poster',
+      default: { value: 'default', label: 'Echo Rings', icon: 'rings' },
+      alternate: { value: 'modules', label: 'Modules', icon: 'modules' },
+    },
+    contextual: {
+      style: 'Frame',
+      default: { value: 'default', label: 'Dot Grid', icon: 'dots' },
+      alternate: { value: 'route_map', label: 'Route Map', icon: 'routes' },
+    },
+  };
+  const MOTIF_ICONS = {
+    contours: '<path d="M12 1c-4 3-4 6 0 8s4 5 1 8M18 1c-4 3-4 6 0 8s4 5 1 8M24 1c-4 3-4 6 0 8s4 5 1 8"/>',
+    rhythm: '<path d="M8 3h18M6 7h20M4 11h22M2 15h24"/>',
+    rings: '<circle cx="24" cy="4" r="4"/><circle cx="24" cy="4" r="8"/><circle cx="24" cy="4" r="12"/>',
+    modules: '<g class="motif-fill"><rect x="18" y="1" width="4" height="5"/><rect x="24" y="1" width="5" height="5"/><rect x="18" y="8" width="4" height="4"/><rect x="24" y="8" width="5" height="8"/></g>',
+    dots: '<g class="motif-fill"><circle cx="17" cy="4" r="1.2"/><circle cx="22" cy="4" r="1.2"/><circle cx="27" cy="4" r="1.2"/><circle cx="17" cy="9" r="1.2"/><circle cx="22" cy="9" r="1.2"/><circle cx="27" cy="9" r="1.2"/><circle cx="17" cy="14" r="1.2"/><circle cx="22" cy="14" r="1.2"/><circle cx="27" cy="14" r="1.2"/></g>',
+    routes: '<path d="M2 13h8V5h7v7h9M10 13v4M17 5V1"/><g class="motif-fill"><circle cx="10" cy="13" r="1.5"/><circle cx="10" cy="5" r="1.5"/><circle cx="17" cy="5" r="1.5"/><circle cx="17" cy="12" r="1.5"/></g>',
+  };
+  const normalizeGraphicVariant = (direction, value) => {
+    const config = GRAPHIC_VARIANTS[direction] || GRAPHIC_VARIANTS.editorial;
+    return [config.default.value, config.alternate.value].includes(value) ? value : config.default.value;
+  };
   // With no explicit choice, deliver only the format the user is actually
   // looking at (the first/active one) rather than all three -- "all" was a
   // silent default nobody asked for, and most edits are aimed at a single
   // aspect ratio.
-  const normalizePresentation = (presentation = {}, fallbackMode = 'all') => ({
+  const normalizePresentation = (presentation = {}, fallbackMode = 'all', direction = 'editorial') => ({
     logo_mode: presentation.logo_mode || 'auto',
     graphic_mode: presentation.graphic_mode || 'auto',
+    graphic_variant: normalizeGraphicVariant(direction, presentation.graphic_variant || 'default'),
     output_mode: presentation.output_mode || fallbackMode,
   });
   const defaultOutputMode = (manifest) => manifest.formats?.[0]?.id || 'all';
@@ -36,7 +66,7 @@
     text: manifest.content?.text || '',
     direction: manifest.direction || '',
     attribution: manifest.content?.attribution || {},
-    presentation: normalizePresentation(manifest.presentation || {}, defaultOutputMode(manifest)),
+    presentation: normalizePresentation(manifest.presentation || {}, defaultOutputMode(manifest), manifest.direction),
     formats: manifest.formats || [],
   });
   const TRANSFORMATION_LABELS = {
@@ -79,6 +109,10 @@
     controlsLocked: false,
     chatbotRequestId: null,
     chatbotPollTimer: null,
+    graphicVariants: {},
+    generatePhase: 'idle',
+    dismissedGenerationRevision: null,
+    returnUrl: '',
   };
 
   const els = {
@@ -128,18 +162,21 @@
 
   const setGenerateState = (phase = 'idle') => {
     const processing = phase === 'preparing' || phase === 'running';
+    const completedLabel = state.returnUrl ? 'Torna alla chat' : 'Chiudi editor';
     const labels = {
       idle: 'Genera',
       preparing: 'Preparo…',
       running: 'Creo PNG…',
-      completed: 'Generato ✓',
+      completed: completedLabel,
       failed: 'Riprova',
     };
+    state.generatePhase = phase;
     els.generateLabel.textContent = labels[phase] || labels.idle;
     els.generate.classList.toggle('is-processing', processing);
     els.generate.classList.toggle('is-complete', phase === 'completed');
     els.generate.classList.toggle('is-failed', phase === 'failed');
     els.generate.setAttribute('aria-busy', String(processing));
+    els.generate.setAttribute('aria-label', labels[phase] || labels.idle);
   };
 
   const currentFormat = () => state.draft?.formats.find((item) => item.id === state.activeFormat);
@@ -563,7 +600,7 @@
       direction: manifest.direction,
       styles: initialStyles(manifest.content, manifest.direction),
       styles_customized: Boolean(manifest.content.styles_customized),
-      presentation: normalizePresentation(manifest.presentation || {}, defaultOutputMode(manifest)),
+      presentation: normalizePresentation(manifest.presentation || {}, defaultOutputMode(manifest), manifest.direction),
       formats: normalizeFormats(manifest.formats),
     };
     sanitizeDirectionStyles(draft);
@@ -583,7 +620,11 @@
           ...saved.draft,
           evidence_status: saved.draft.evidence_status || manifest.content.evidence_status,
           attribution: clone(saved.draft.attribution || manifest.content.attribution || { label: '', role: 'none' }),
-          presentation: normalizePresentation(saved.draft.presentation || initial.presentation, defaultOutputMode(manifest)),
+          presentation: normalizePresentation(
+            saved.draft.presentation || initial.presentation,
+            defaultOutputMode(manifest),
+            saved.draft.direction || initial.direction,
+          ),
         };
         restored.formats = normalizeFormats(saved.draft.formats);
         sanitizeDirectionStyles(restored);
@@ -685,12 +726,35 @@
       .join(' · ');
   };
 
+  const renderGraphicControl = () => {
+    const control = $('#graphic-control');
+    const help = $('#graphic-help');
+    const direction = state.draft.direction;
+    const config = GRAPHIC_VARIANTS[direction] || GRAPHIC_VARIANTS.editorial;
+    const variant = normalizeGraphicVariant(direction, state.draft.presentation.graphic_variant);
+    state.draft.presentation.graphic_variant = variant;
+    state.graphicVariants[direction] = variant;
+    ['default', 'alternate'].forEach((choice) => {
+      const button = control.querySelector(`[data-graphic-choice="${choice}"]`);
+      const option = config[choice];
+      button.querySelector('.motif-label').textContent = option.label;
+      button.querySelector('.motif-swatch').innerHTML = MOTIF_ICONS[option.icon];
+      button.setAttribute('aria-label', `${config.style}: ${option.label}`);
+    });
+    const activeChoice = state.draft.presentation.graphic_mode === 'hidden'
+      ? 'hidden'
+      : variant === config.alternate.value ? 'alternate' : 'default';
+    activate(control, 'graphicChoice', activeChoice);
+    control.setAttribute('aria-label', `Motivo per ${config.style}`);
+    help.textContent = `${config.style}: scegli il motivo oppure nascondilo.`;
+  };
+
   const renderDraftControls = () => {
     const draft = state.draft;
     els.attributionLabel.value = draft.attribution?.label || '';
     els.altTextLabel.value = draft.alt_text || '';
     activate($('#logo-control'), 'logo', draft.presentation.logo_mode);
-    activate($('#graphic-control'), 'graphic', draft.presentation.graphic_mode || 'auto');
+    renderGraphicControl();
     activate($('#output-control'), 'output', draft.presentation.output_mode || 'all');
     $$('.directions button').forEach((button) => {
       const active = button.dataset.direction === draft.direction;
@@ -705,10 +769,14 @@
   const initializeSession = (manifest, preserveFormat = true) => {
     const previousFormat = state.activeFormat;
     state.manifest = manifest;
+    state.returnUrl = /^codex:\/\/threads\/[0-9a-f-]+$/i.test(manifest.return_url || '')
+      ? manifest.return_url
+      : '';
     renderCardColors();
     state.baseline = initialDraft(manifest);
     state.baseRevision = manifest.revision;
     state.draft = loadSavedDraft(manifest);
+    state.graphicVariants[state.draft.direction] = state.draft.presentation.graphic_variant;
     state.activeFormat = preserveFormat && manifest.formats.some((item) => item.id === previousFormat)
       ? previousFormat
       : manifest.formats[0].id;
@@ -746,6 +814,9 @@
     if (!['VERBATIM', 'EDITED', 'PARAPHRASE', 'AI_GENERATED'].includes(state.draft.transformation)) errors.push('Scegli un trattamento valido.');
     if (!['VERIFIED', 'USER_SUPPLIED', 'UNVERIFIED', 'CONFLICT'].includes(state.draft.evidence_status)) errors.push('Scegli uno stato della prova valido.');
     if (!['all', '4x5', '1x1', '9x16'].includes(state.draft.presentation?.output_mode)) errors.push('Scegli i formati del pacchetto finale.');
+    if (normalizeGraphicVariant(state.draft.direction, state.draft.presentation?.graphic_variant) !== state.draft.presentation?.graphic_variant) {
+      errors.push('Scegli un motivo disponibile per lo stile corrente.');
+    }
     return errors;
   };
 
@@ -762,7 +833,7 @@
       styles_customized: Boolean(state.draft.styles_customized),
       direction: state.draft.direction,
       emphasis: '',
-      presentation: normalizePresentation(state.draft.presentation),
+      presentation: normalizePresentation(state.draft.presentation, defaultOutputMode(state.manifest), state.draft.direction),
       formats: clone(state.draft.formats),
     };
   };
@@ -775,14 +846,30 @@
   const renderGeneratedOutputs = (outputs = []) => {
     clearGeneratedOutputs();
     outputs.forEach((output) => {
+      const item = document.createElement('div');
+      item.className = 'generated-output-item';
+      const status = document.createElement('strong');
+      status.className = 'generated-status';
+      status.textContent = output.kind === 'zip' ? 'Pacchetto generato ✓' : 'PNG generato ✓';
+
+      const location = document.createElement('span');
+      location.className = 'generated-location';
+      const locationLabel = document.createElement('span');
+      locationLabel.textContent = 'Salvato in';
+      const path = document.createElement('code');
+      path.textContent = output.absolute_path || output.filename;
+      path.title = output.absolute_path || output.filename;
+      location.append(locationLabel, path);
+
       const link = document.createElement('a');
       link.className = 'generated-link';
       link.href = output.url;
       link.download = output.filename;
-      link.textContent = output.kind === 'zip' ? 'zip' : output.format;
+      link.textContent = output.kind === 'zip' ? 'Apri ZIP' : `Apri ${output.format}`;
       link.title = `Scarica ${output.filename}`;
       link.setAttribute('aria-label', output.kind === 'zip' ? `Scarica il pacchetto ${output.filename}` : `Scarica il formato ${output.format}`);
-      els.generatedOutput.append(link);
+      item.append(status, location, link);
+      els.generatedOutput.append(item);
     });
     els.generatedOutput.hidden = !els.generatedOutput.childElementCount;
   };
@@ -860,6 +947,7 @@
 
   const schedulePreview = () => {
     clearTimeout(state.timer);
+    if (state.generatePhase === 'completed') state.dismissedGenerationRevision = String(state.baseRevision);
     clearGeneratedOutputs();
     if (!state.submitting && !state.chatbotRequestId) setGenerateState('idle');
     updateActiveFormat();
@@ -935,6 +1023,21 @@
     poll();
   };
 
+  const returnToChat = () => {
+    if (state.returnUrl) {
+      setMessage('Output salvato. Torno alla chat…');
+      window.location.assign(state.returnUrl);
+      return;
+    }
+    setMessage('Output salvato. Provo a chiudere l’editor…');
+    window.close();
+    window.setTimeout(() => {
+      if (document.visibilityState !== 'hidden') {
+        setMessage('Output salvato. Chiudi questa scheda per tornare alla chat. Il percorso resta visibile qui sopra.');
+      }
+    }, 250);
+  };
+
   const generate = async () => {
     if (state.submitting || state.awaitingApply) return;
     const errors = validateDraft();
@@ -960,6 +1063,7 @@
       const submitted = await api('/generate', { method: 'POST', body: JSON.stringify(payload()) });
       if (submitted.applied) {
         state.awaitingApply = false;
+        state.dismissedGenerationRevision = null;
         localStorage.removeItem(storageKey);
         initializeSession(await api('/session'));
         const outputs = submitted.generation?.outputs || [];
@@ -999,13 +1103,16 @@
     try {
       const status = await api('/status');
       const persistedOutputs = status.last_generation?.outputs || [];
-      if (persistedOutputs.length) renderGeneratedOutputs(persistedOutputs);
+      const persistedRevision = String(status.last_generation?.revision ?? '');
+      const showPersistedGeneration = persistedOutputs.length
+        && state.dismissedGenerationRevision !== persistedRevision;
+      if (showPersistedGeneration) renderGeneratedOutputs(persistedOutputs);
       if (status.chatbot_generation?.status === 'running' || status.chatbot_generation?.status === 'queued') {
         state.chatbotRequestId = status.chatbot_generation.request_id;
         setButtonsDisabled(true);
         setGenerateState('running');
         watchChatbot(status.chatbot_generation);
-      } else if (status.chatbot_generation?.status === 'completed') {
+      } else if (status.chatbot_generation?.status === 'completed' && showPersistedGeneration) {
         setButtonsDisabled(false);
         setGenerateState('completed');
         setMessage(status.chatbot_generation.message || 'Chatbot completato: PNG pronti.');
@@ -1070,9 +1177,18 @@
 
   $$('.format-tab').forEach((button) => button.addEventListener('click', () => setFormat(button.dataset.format)));
   $$('.directions button').forEach((button) => button.addEventListener('click', () => {
+    state.graphicVariants[state.draft.direction] = normalizeGraphicVariant(
+      state.draft.direction,
+      state.draft.presentation.graphic_variant,
+    );
     state.draft.direction = button.dataset.direction;
+    state.draft.presentation.graphic_variant = normalizeGraphicVariant(
+      state.draft.direction,
+      state.graphicVariants[state.draft.direction] || 'default',
+    );
     sanitizeDirectionStyles(state.draft);
     activate($('.directions'), 'direction', state.draft.direction);
+    renderGraphicControl();
     schedulePreview();
   }));
   // Keep the caret where it is: a toolbar press must not steal the selection
@@ -1148,8 +1264,16 @@
       activate(group, 'logo', button.dataset.logo);
       state.draft.presentation.logo_mode = button.dataset.logo;
     } else if (group.id === 'graphic-control') {
-      activate(group, 'graphic', button.dataset.graphic);
-      state.draft.presentation.graphic_mode = button.dataset.graphic;
+      const config = GRAPHIC_VARIANTS[state.draft.direction] || GRAPHIC_VARIANTS.editorial;
+      const choice = button.dataset.graphicChoice;
+      if (choice === 'hidden') {
+        state.draft.presentation.graphic_mode = 'hidden';
+      } else {
+        state.draft.presentation.graphic_mode = 'auto';
+        state.draft.presentation.graphic_variant = config[choice].value;
+        state.graphicVariants[state.draft.direction] = config[choice].value;
+      }
+      renderGraphicControl();
     } else {
       activate(group, 'output', button.dataset.output);
       state.draft.presentation.output_mode = button.dataset.output;
@@ -1167,7 +1291,10 @@
     els.shell.classList.toggle('hide-safe-area', !state.safeArea);
     showActivePreview();
   });
-  els.generate.addEventListener('click', generate);
+  els.generate.addEventListener('click', () => {
+    if (state.generatePhase === 'completed') returnToChat();
+    else generate();
+  });
   $('#reset').addEventListener('click', resetDraft);
   els.backLink.addEventListener('click', (event) => {
     event.preventDefault();

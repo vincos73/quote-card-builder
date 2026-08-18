@@ -280,6 +280,21 @@ class ProductionManifestTests(unittest.TestCase):
             for svg_path in output_dir.glob("*.svg"):
                 self.assertNotIn('class="direction-graphic', svg_path.read_text(encoding="utf-8"))
 
+    def test_pack_preserves_and_renders_the_approved_graphic_variant(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            proof_path = temp_path / "proof.png"
+            proof_path.write_bytes(b"proof")
+            manifest = production_manifest(proof_path)
+            manifest["presentation"]["graphic_variant"] = "modules"
+            manifest_path = temp_path / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            output_dir = temp_path / "output"
+            result = PACK.render_pack(manifest, manifest_path, output_dir, "never", None, None, "keep")
+            self.assertTrue(all(item["graphic_variant"] == "modules" for item in result["formats"]))
+            for svg_path in output_dir.glob("*.svg"):
+                self.assertIn("direction-graphic--modules", svg_path.read_text(encoding="utf-8"))
+
     def test_cli_renders_and_finalizes_pack(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

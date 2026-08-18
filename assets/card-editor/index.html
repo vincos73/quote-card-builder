@@ -100,6 +100,28 @@
           </div>
         </fieldset>
 
+        <fieldset class="tool-section graphic-section">
+          <legend>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17c3-6 6-10 16-10M4 20c5-6 9-9 16-9M13 20c2-3 4-5 7-6"/></svg>
+            <span>Motivo</span>
+          </legend>
+          <div class="segmented motif-control" id="graphic-control" role="group" aria-label="Motivo per lo stile selezionato">
+            <button type="button" data-graphic-choice="default" aria-pressed="false">
+              <svg class="motif-swatch" viewBox="0 0 28 18" aria-hidden="true"></svg>
+              <span class="motif-label">Originale</span>
+            </button>
+            <button type="button" data-graphic-choice="alternate" aria-pressed="false">
+              <svg class="motif-swatch" viewBox="0 0 28 18" aria-hidden="true"></svg>
+              <span class="motif-label">Alternativo</span>
+            </button>
+            <button type="button" data-graphic-choice="hidden" aria-pressed="false">
+              <svg class="motif-swatch" viewBox="0 0 28 18" aria-hidden="true"><path d="M6 3l16 12M22 3L6 15"/></svg>
+              <span class="motif-label">Nessuno</span>
+            </button>
+          </div>
+          <p id="graphic-help" class="field-help">Il motivo segue lo stile selezionato.</p>
+        </fieldset>
+
         <div id="editorial-fields" class="tool-section lines-section content-section">
           <div class="field-label">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h12M4 11h12M4 16h8M18 8v8l-3-3M18 16l3-3"/></svg>
@@ -169,17 +191,6 @@
           </div>
         </fieldset>
 
-        <fieldset class="tool-section graphic-section">
-          <legend>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17c3-6 6-10 16-10M4 20c5-6 9-9 16-9M13 20c2-3 4-5 7-6"/></svg>
-            <span>Elemento grafico</span>
-          </legend>
-          <div class="segmented" id="graphic-control" role="group" aria-label="Visibilità elemento grafico">
-            <button type="button" data-graphic="auto">Auto</button>
-            <button type="button" data-graphic="hidden">Nessuno</button>
-          </div>
-        </fieldset>
-
         <fieldset class="tool-section output-section">
           <legend>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>
@@ -216,7 +227,7 @@
     <div class="actions">
       <a id="back-link" class="button button-quiet" href="#">Testo</a>
       <button id="reset" class="button button-quiet" type="button" aria-label="Ripristina la bozza" title="Ripristina la bozza">Ripristina</button>
-      <div id="generated-output" class="generated-output" aria-label="Output generati" hidden></div>
+      <div id="generated-output" class="generated-output" role="region" aria-label="Output generati" aria-live="polite" hidden></div>
       <button id="generate" class="button button-primary" type="button"><span id="generate-label">Genera</span><span aria-hidden="true">→</span></button>
     </div>
   </footer>

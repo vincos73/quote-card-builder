@@ -40,6 +40,7 @@ Il browser non scrive direttamente nel manifest. `Genera` invia un batch struttu
   "presentation": {
     "logo_mode": "auto",
     "graphic_mode": "auto",
+    "graphic_variant": "modules",
     "output_mode": "4x5"
   },
   "brand": {},
@@ -60,7 +61,8 @@ Includere uno o più formati fra `4x5`, `1x1` e `9x16`. Usare rispettivamente i 
 - `content.styles`: al massimo 64 intervalli `{start, end, type}` sul testo normalizzato, con `type` fra `bold`, `italic`, `underline`, `highlight`, `accent`, `outline`; gli intervalli possono attraversare gli a capo. `highlight` è disponibile in tutte le direzioni, inclusa `statement` / Poster: la fascia va misurata con le metriche del font in grassetto (il Poster renderizza sempre in grassetto), reali quando disponibili o con un fattore di compensazione altrimenti, per non produrre una fascia più corta delle parole coperte. `highlight`, `accent` e `outline` decidono tutti e tre di cosa è riempito un glifo e restano quindi mutuamente esclusivi sullo stesso intervallo: applicarne uno rimuove l'altro. `outline` disegna glifi cavi (`fill="none"` più `stroke`) nel colore d'inchiostro che il testo avrebbe comunque avuto, con spessore proporzionale alla dimensione della riga che traccia: è un cambio di forma, mai di palette, e non promuove una riga Poster a enfasi;
 - `content.emphasis`: campo legacy facoltativo; l'editor lo converte in `bold` quando apre un manifest precedente e poi lo svuota nel batch;
 - `presentation.logo_mode`: `auto` o `hidden`;
-- `presentation.graphic_mode`: `auto` applica il motivo fisso della direzione (`editorial` → linee di contorno, `statement` → moduli angolari discreti, `contextual` → campo puntinato); `hidden` lo rimuove;
+- `presentation.graphic_mode`: `auto` mostra il motivo selezionato; `hidden` lo rimuove senza cambiare stile;
+- `presentation.graphic_variant`: motivo contestuale alla direzione. `editorial` accetta `default` (Contours) o `rhythm_lines` (Rhythm Lines); `statement` accetta `default` (Echo Rings) o `modules` (Modules); `contextual` accetta `default` (Dot Grid) o `route_map` (Route Map). Se assente vale `default`; una variante appartenente a un'altra direzione è rifiutata;
 - `presentation.output_mode`: `all`, `4x5`, `1x1` o `9x16`; controlla soltanto la consegna finale, non la disponibilità delle tab di anteprima. Senza una scelta esplicita, il default è il formato attivo (il primo elenco in `formats`), non `all`: l'utente lavora tipicamente su un solo rapporto e non va costretto a scartare gli altri due. `all` non consegna più file separati: `Genera` bundla i formati prodotti in un unico `.zip` con la scheda di contatto; un formato singolo resta un file singolo;
 - per ogni formato: `lines`, `text_scale` fra `0.80` e `1.00`, `vertical_position` fra `upper`, `center`, `lower`. I valori legacy fra `1.00` e `1.08` restano accettati in lettura, ma sono limitati a `1.00`.
 
@@ -99,6 +101,7 @@ Fonte osservata, brand e dimensioni restano immutabili nell'editor. Tutti i camp
   "presentation": {
     "logo_mode": "auto",
     "graphic_mode": "auto",
+    "graphic_variant": "modules",
     "output_mode": "4x5"
   },
   "formats": [
@@ -121,13 +124,15 @@ L'interfaccia espone soltanto `Genera`. `POST /api/generate` applica nello stess
 
 `POST /api/preview` include nella risposta `declaration.alt_text_suggestion` (la descrizione automatica corrente, per il segnaposto del campo) e `score`: un riepilogo `{overall, categories: {contrast, fit, structure}}` da 0 a 100 derivato dagli stessi controlli del quality gate — non un giudizio ulteriore — pensato per il ledger inferiore.
 
+Dopo una generazione riuscita, l'editor deve separare esito e azione: mostra `PNG generato` o `Pacchetto generato`, nome file, percorso locale assoluto e link autenticato all'artefatto. Se il server è stato avviato con `--return-thread-id`, il pulsante primario diventa `Torna alla chat` e apre il deep link `codex://threads/<thread-id>` costruito soltanto da un identificatore validato; non accetta un URL arbitrario dal manifest o dal client. Senza task nota, il pulsante diventa `Chiudi editor`, tenta di chiudere la scheda locale e, se il browser impedisce la chiusura automatica, comunica di chiuderla manualmente mantenendo visibile il percorso. Una modifica successiva alla composizione rimuove lo stato di consegna precedente e ripristina `Genera`, senza far riapparire l'output obsoleto al polling successivo.
+
 ## Percorso locale
 
 1. Creare una cartella di sessione esterna alla skill.
 2. Avviare:
 
 ```text
-python3 scripts/card_review_server.py <manifest.json> --session-dir <session-dir>
+python3 scripts/card_review_server.py <manifest.json> --session-dir <session-dir> [--return-thread-id <thread-id>]
 ```
 
 3. Aprire l'URL `127.0.0.1` restituito dalla prima riga JSON.

@@ -9,6 +9,7 @@ import inspect
 import json
 import math
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -217,6 +218,9 @@ def validate_manifest(data: Any) -> list[str]:
         not isinstance(presentation, dict)
         or presentation.get("logo_mode") not in LOGO_MODES
         or presentation.get("graphic_mode", "auto") not in GRAPHIC_MODES
+        or not proof.graphic_variant_allowed(
+            data.get("direction"), presentation.get("graphic_variant", "default")
+        )
         or presentation.get("output_mode", "all") not in OUTPUT_MODES
     ): error(errors, "presentation non valida")
     formats = data.get("formats")
@@ -273,10 +277,30 @@ def font_capabilities(manifest: dict[str, Any], manifest_dir: Path) -> dict[str,
     }
 
 
-def session_model(manifest: dict[str, Any], manifest_dir: Path | None = None) -> dict[str, Any]:
+THREAD_ID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def return_url_for_thread(thread_id: str | None) -> str | None:
+    """Build a native Codex task link without accepting arbitrary URLs."""
+    if thread_id is None:
+        return None
+    normalized = thread_id.strip()
+    if not THREAD_ID_PATTERN.fullmatch(normalized):
+        raise ValueError("return-thread-id non valido")
+    return f"codex://threads/{normalized}"
+
+
+def session_model(
+    manifest: dict[str, Any], manifest_dir: Path | None = None,
+    return_url: str | None = None,
+) -> dict[str, Any]:
     """Return the selected candidate plus the values reviewable in the editor."""
     model = {key: copy.deepcopy(manifest[key]) for key in ("schema_version", "state", "revision", "content", "direction", "presentation", "formats", "brand", "source", "output")}
     model["font_capabilities"] = font_capabilities(manifest, manifest_dir or Path.cwd())
+    model["return_url"] = return_url
     return model
 
 
@@ -555,6 +579,7 @@ def generate_production_pack(
             "kind": "zip",
             "filename": zip_path.name,
             "relative_path": zip_path.relative_to(production_dir.resolve()).as_posix(),
+            "absolute_path": str(zip_path),
         })
     else:
         for item in result["formats"]:
@@ -568,6 +593,7 @@ def generate_production_pack(
                 "kind": "png" if item.get("png") else "svg",
                 "filename": path.name,
                 "relative_path": relative,
+                "absolute_path": str(path),
             })
     return {
         **result,
@@ -577,7 +603,7 @@ def generate_production_pack(
     }
 
 
-def output_payload(outputs: Any, token: str) -> list[dict[str, Any]]:
+def output_payload(outputs: Any, token: str, production_root: Path | None = None) -> list[dict[str, Any]]:
     """Attach authenticated download URLs to persisted generation outputs."""
     result: list[dict[str, Any]] = []
     if not isinstance(outputs, list):
@@ -586,18 +612,29 @@ def output_payload(outputs: Any, token: str) -> list[dict[str, Any]]:
         if not isinstance(item, dict) or not isinstance(item.get("relative_path"), str):
             continue
         encoded = quote(item["relative_path"], safe="/")
-        result.append({**item, "url": f"/api/output/{encoded}?token={quote(token, safe='')}"})
+        enriched = {**item, "url": f"/api/output/{encoded}?token={quote(token, safe='')}"}
+        if production_root is not None and not isinstance(enriched.get("absolute_path"), str):
+            candidate = (production_root / item["relative_path"]).resolve()
+            try:
+                candidate.relative_to(production_root.resolve())
+            except ValueError:
+                pass
+            else:
+                enriched["absolute_path"] = str(candidate)
+        result.append(enriched)
     return result
 
 
 def create_server(
     manifest_path: Path, session_dir: Path, port: int = 0,
     node: Path | None = None, node_modules: Path | None = None,
+    return_thread_id: str | None = None,
 ) -> tuple[ThreadingHTTPServer, str]:
     manifest_path, session_dir = manifest_path.resolve(), session_dir.resolve()
     manifest = read_json(manifest_path)
     errors = validate_manifest(manifest)
     if errors: raise ValueError("; ".join(errors))
+    return_url = return_url_for_thread(return_thread_id)
     session_dir.mkdir(parents=True, exist_ok=True)
     state_path, feedback_path = session_dir / "session-state.json", session_dir / "feedback.json"
     state = read_json(state_path) if state_path.exists() else {}
@@ -742,12 +779,12 @@ def create_server(
                 index = assets / "index.html"
                 if index.is_file(): self.send_value(HTTPStatus.OK, index.read_bytes(), MIME_TYPES[".html"]); return
                 self.send_json(HTTPStatus.NOT_FOUND, {"error": "Interfaccia card-editor mancante"}); return
-            if parsed.path == "/api/session": self.send_json(HTTPStatus.OK, session_model(read_json(manifest_path), manifest_path.parent)); return
+            if parsed.path == "/api/session": self.send_json(HTTPStatus.OK, session_model(read_json(manifest_path), manifest_path.parent, return_url)); return
             if parsed.path == "/api/status":
                 current = read_json(state_path); latest = read_json(manifest_path)
                 last_generation = copy.deepcopy(current.get("last_generation"))
                 if isinstance(last_generation, dict):
-                    last_generation["outputs"] = output_payload(last_generation.get("outputs"), token)
+                    last_generation["outputs"] = output_payload(last_generation.get("outputs"), token, production_dir)
                 self.send_json(HTTPStatus.OK, {"revision": latest["revision"], "last_feedback_id": current.get("last_feedback_id"), "applied_feedback_id": current.get("applied_feedback_id"), "feedback_pending": bool(current.get("last_feedback_id") and current.get("last_feedback_id") != current.get("applied_feedback_id")), "chatbot_generation": current.get("chatbot_generation"), "last_generation": last_generation}); return
             if parsed.path == "/api/agent-status":
                 current = read_json(state_path).get("chatbot_generation")
@@ -783,7 +820,7 @@ def create_server(
                     }
                     atomic_write_json(state_path, current_state)
                     chatbot = launch_chatbot_generation(generation)
-                generated_outputs = output_payload(generation["outputs"], token)
+                generated_outputs = output_payload(generation["outputs"], token, production_dir)
                 event = {"event": "generation", "feedback_id": feedback["feedback_id"], "action": "generate", "path": str(feedback_path), "applied": True, "revision": application["revision"], "outputs": generated_outputs}
                 print(json.dumps(event, ensure_ascii=False), flush=True)
                 self.send_json(HTTPStatus.OK, {"applied": True, "application": application, "generation": {**generation, "outputs": generated_outputs}, "chatbot": chatbot})
@@ -800,8 +837,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--node", type=Path)
     parser.add_argument("--node-modules", type=Path)
+    parser.add_argument("--return-thread-id", help="Task Codex a cui tornare dopo la generazione")
     args = parser.parse_args(argv)
-    try: server, token = create_server(args.manifest, args.session_dir, args.port, args.node, args.node_modules)
+    try: server, token = create_server(args.manifest, args.session_dir, args.port, args.node, args.node_modules, args.return_thread_id)
     except (OSError, ValueError, json.JSONDecodeError) as exc: print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr); return 2
     url = f"http://127.0.0.1:{server.server_address[1]}/?token={token}"
     print(json.dumps({"status": "ready", "url": url, "session_dir": str(args.session_dir.resolve()), "manifest": str(args.manifest.resolve())}, ensure_ascii=False), flush=True)

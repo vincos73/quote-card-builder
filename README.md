@@ -2,12 +2,13 @@
 
 Skill per Codex che trasforma frasi, testi, URL, documenti e idee in quote card verificabili e coerenti con un brand approvato.
 
-Versione corrente: **1.2.0 — Outline & Undo**
+Versione corrente: **1.4.0 — Motifs & Delivery**
 
 ## Caratteristiche
 
 - provenienza, trasformazione e stato della prova mantenuti separati;
 - tre direzioni visuali autonome: Contorni, Manifesto Moduli × Poster e Campo;
+- un selettore Motivo contestuale: Contours/Rhythm Lines per Editorial, Echo Rings/Modules per Poster, Dot Grid/Route Map per Frame, più Nessuno;
 - editor locale con a capo manuali, righe vuote, grassetto, corsivo, sottolineato e un controllo di riempimento a stati fra accento, evidenziato e contorno;
 - la selezione sopravvive a ogni trattamento e l'editor ha una propria cronologia di annullamento su righe e stili;
 - riequilibrio degli a capo su richiesta, calcolato sulla lunghezza visiva delle parole;
