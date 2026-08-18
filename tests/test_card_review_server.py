@@ -3,6 +3,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 from pathlib import Path
 
@@ -336,6 +337,106 @@ class CardReviewServerTests(unittest.TestCase):
                 qa = SERVER.preview_quality(item, previews, Path(directory))
             self.assertTrue(qa["passed"], (direction, qa["warnings"]))
             self.assertNotIn("text_fit", {warning["code"] for warning in qa["warnings"]})
+
+
+class AltTextDraftTests(unittest.TestCase):
+    def test_validate_manifest_accepts_optional_alt_text(self):
+        item = manifest()
+        item["content"]["alt_text"] = "Descrizione scelta a mano."
+        self.assertEqual([], SERVER.validate_manifest(item))
+
+    def test_validate_manifest_rejects_alt_text_over_the_ceiling(self):
+        item = manifest()
+        item["content"]["alt_text"] = "x" * (SERVER.ALT_TEXT_MAX_LENGTH + 1)
+        self.assertTrue(SERVER.validate_manifest(item))
+
+    def test_draft_carries_alt_text_override_and_trims_it(self):
+        source = manifest()
+        draft = SERVER.validate_draft({
+            "base_revision": 1, "alt_text": "  Descrizione con spazi.  ",
+        }, source)
+        self.assertEqual("Descrizione con spazi.", draft["content"]["alt_text"])
+
+    def test_draft_defaults_alt_text_to_empty(self):
+        source = manifest()
+        draft = SERVER.validate_draft({"base_revision": 1}, source)
+        self.assertEqual("", draft["content"]["alt_text"])
+
+
+class PreviewScoreTests(unittest.TestCase):
+    def test_clean_card_scores_full_marks_in_every_category(self):
+        item = manifest()
+        with tempfile.TemporaryDirectory() as directory:
+            previews = SERVER.render_preview(item, Path(directory))
+            qa = SERVER.preview_quality(item, previews, Path(directory))
+            score = SERVER.preview_score(item, previews, qa)
+        self.assertTrue(qa["passed"])
+        self.assertEqual(100, score["categories"]["contrast"])
+        self.assertEqual(100, score["categories"]["fit"])
+        self.assertEqual(100, score["categories"]["structure"])
+        self.assertEqual(100, score["overall"])
+
+    def test_low_contrast_and_auto_fit_pull_the_score_down(self):
+        item = manifest()
+        item["brand"]["colors"]["background"] = item["brand"]["colors"]["primary"]
+        item["content"].update({"text": "Supercalifragilistichespiralidoso.", "emphasis": ""})
+        item["formats"][0]["lines"] = ["Supercalifragilistichespiralidoso."]
+        item["formats"][0]["text_scale"] = 1.08
+        with tempfile.TemporaryDirectory() as directory:
+            previews = SERVER.render_preview(item, Path(directory))
+            qa = SERVER.preview_quality(item, previews, Path(directory))
+            score = SERVER.preview_score(item, previews, qa)
+        # A ratio of exactly 1:1 (identical colours) is the worst contrast
+        # possible, but the score is a percentage of the AAA ceiling (7:1),
+        # so even the floor lands at 1/7 rather than literal zero.
+        self.assertLess(score["categories"]["contrast"], 20)
+        self.assertLess(score["categories"]["fit"], 100)
+        self.assertLess(score["categories"]["structure"], 100)
+        self.assertLess(score["overall"], 100)
+
+
+class MultiFormatZipTests(unittest.TestCase):
+    def multi_format_manifest(self):
+        source = manifest()
+        source["formats"] = [
+            source["formats"][0],
+            {"id": "1x1", "width": 1080, "height": 1080, "lines": ["Una frase verificata."], "text_scale": 1.0, "vertical_position": "center"},
+            {"id": "9x16", "width": 1080, "height": 1920, "lines": ["Una frase verificata."], "text_scale": 1.0, "vertical_position": "center"},
+        ]
+        source["presentation"]["output_mode"] = "all"
+        return source
+
+    def test_all_formats_are_bundled_into_one_zip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = root / "manifest.json"
+            source = self.multi_format_manifest()
+            manifest_path.write_text(json.dumps(source), encoding="utf-8")
+            with mock.patch.object(SERVER.pack.raster, "BACKENDS", ()):
+                generation = SERVER.generate_production_pack(source, manifest_path, root / "session", None, None)
+            self.assertEqual(1, len(generation["outputs"]))
+            output = generation["outputs"][0]
+            self.assertEqual("zip", output["kind"])
+            zip_path = Path(generation["production_root"]) / output["relative_path"]
+            self.assertTrue(zip_path.is_file())
+            with zipfile.ZipFile(zip_path) as archive:
+                names = archive.namelist()
+            self.assertTrue(any(name.endswith("4x5.svg") for name in names))
+            self.assertTrue(any(name.endswith("1x1.svg") for name in names))
+            self.assertTrue(any(name.endswith("9x16.svg") for name in names))
+
+    def test_single_format_selection_still_yields_one_plain_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = root / "manifest.json"
+            source = self.multi_format_manifest()
+            source["presentation"]["output_mode"] = "4x5"
+            manifest_path.write_text(json.dumps(source), encoding="utf-8")
+            with mock.patch.object(SERVER.pack.raster, "BACKENDS", ()):
+                generation = SERVER.generate_production_pack(source, manifest_path, root / "session", None, None)
+            self.assertEqual(1, len(generation["outputs"]))
+            self.assertEqual("svg", generation["outputs"][0]["kind"])
+            self.assertEqual("4x5", generation["outputs"][0]["format"])
 
 
 if __name__ == "__main__": unittest.main()

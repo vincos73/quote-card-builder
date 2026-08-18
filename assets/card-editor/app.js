@@ -90,11 +90,13 @@
     fontSupport: $('#font-support-note'),
     scale: $('#scale'), scaleValue: $('#scale-value'), scaleFitNote: $('#scale-fit-note'),
     textIntegrityHint: $('#text-integrity-hint'),
-    attributionLabel: $('#attribution-label'),
+    attributionLabel: $('#attribution-label'), altTextLabel: $('#alt-text-label'),
     preview: $('#preview-content'),
     shell: $('#preview-shell'), stage: $('#preview-stage'), message: $('#preview-message'),
     warningCount: $('#qa-count'), qaLabel: $('#qa-label'), draftState: $('#draft-state'),
+    scoreTotal: $('#score-total'), scoreBreakdown: $('#score-breakdown'),
     actionMessage: $('#action-message'), zoom: $('#zoom-output'), safeToggle: $('#safe-toggle'),
+    cvdMode: $('#cvd-mode'),
     backLink: $('#back-link'), generate: $('#generate'),
     generateLabel: $('#generate-label'), generatedOutput: $('#generated-output'),
   };
@@ -557,6 +559,7 @@
       transformation: manifest.content.transformation,
       evidence_status: manifest.content.evidence_status,
       attribution: clone(manifest.content.attribution || { label: '', role: 'none' }),
+      alt_text: manifest.content.alt_text || '',
       direction: manifest.direction,
       styles: initialStyles(manifest.content, manifest.direction),
       styles_customized: Boolean(manifest.content.styles_customized),
@@ -664,12 +667,28 @@
     els.evidence.textContent = EVIDENCE_LABELS[evidence] || evidence;
     els.session.textContent = 'Responsabilità utente';
     els.textIntegrityHint.textContent = 'Tipo di formulazione e verifica restano nel riepilogo inferiore.';
+    if (serverDeclaration?.alt_text_suggestion) els.altTextLabel.placeholder = serverDeclaration.alt_text_suggestion;
     syncActionButtons();
+  };
+
+  const SCORE_CATEGORY_LABELS = { contrast: 'Contrasto', fit: 'Adattamento', structure: 'Struttura' };
+
+  const renderScore = (score = null) => {
+    if (!score) {
+      els.scoreTotal.textContent = '—';
+      els.scoreBreakdown.textContent = '—';
+      return;
+    }
+    els.scoreTotal.textContent = score.overall;
+    els.scoreBreakdown.textContent = Object.entries(score.categories)
+      .map(([key, value]) => `${SCORE_CATEGORY_LABELS[key] || key} ${value}`)
+      .join(' · ');
   };
 
   const renderDraftControls = () => {
     const draft = state.draft;
     els.attributionLabel.value = draft.attribution?.label || '';
+    els.altTextLabel.value = draft.alt_text || '';
     activate($('#logo-control'), 'logo', draft.presentation.logo_mode);
     activate($('#graphic-control'), 'graphic', draft.presentation.graphic_mode || 'auto');
     activate($('#output-control'), 'output', draft.presentation.output_mode || 'all');
@@ -738,6 +757,7 @@
       transformation: state.draft.transformation,
       evidence_status: state.draft.evidence_status,
       attribution: clone(state.draft.attribution),
+      alt_text: state.draft.alt_text || '',
       styles: clone(state.draft.styles),
       styles_customized: Boolean(state.draft.styles_customized),
       direction: state.draft.direction,
@@ -759,9 +779,9 @@
       link.className = 'generated-link';
       link.href = output.url;
       link.download = output.filename;
-      link.textContent = output.format;
+      link.textContent = output.kind === 'zip' ? 'zip' : output.format;
       link.title = `Scarica ${output.filename}`;
-      link.setAttribute('aria-label', `Scarica il formato ${output.format}`);
+      link.setAttribute('aria-label', output.kind === 'zip' ? `Scarica il pacchetto ${output.filename}` : `Scarica il formato ${output.format}`);
       els.generatedOutput.append(link);
     });
     els.generatedOutput.hidden = !els.generatedOutput.childElementCount;
@@ -804,6 +824,7 @@
     showActivePreview();
     renderWarnings(result.warnings || [], result.qa || null);
     renderDeclarationState(result.declaration || null);
+    renderScore(result.score || null);
   };
 
   const preview = async () => {
@@ -847,6 +868,7 @@
       label: attributionLabel,
       role: attributionLabel ? 'author' : 'none',
     };
+    state.draft.alt_text = els.altTextLabel.value.trim();
     renderDeclarationState();
     storeDraft();
     state.timer = setTimeout(preview, 360);
@@ -968,7 +990,12 @@
   };
 
   const refreshStatus = async () => {
-    if (!state.manifest) return;
+    // A generate request already in flight is itself about to move
+    // revision/feedback state forward; polling status in the middle of
+    // that window previously read revision as changed out from under
+    // baseRevision "unexpectedly" and locked the controls, racing the
+    // request's own resync at its completion.
+    if (!state.manifest || state.submitting) return;
     try {
       const status = await api('/status');
       const persistedOutputs = status.last_generation?.outputs || [];
@@ -1105,7 +1132,7 @@
     selection.addRange(range);
     els.lines.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste', data: text }));
   });
-  [els.scale, els.attributionLabel].forEach((input) => input.addEventListener('input', () => {
+  [els.scale, els.attributionLabel, els.altTextLabel].forEach((input) => input.addEventListener('input', () => {
     if (input === els.scale) {
       const value = Number(input.value);
       els.scaleValue.value = `${value}%`;
@@ -1131,6 +1158,9 @@
   }));
   $('#zoom-in').addEventListener('click', () => setZoom(state.zoom + 10));
   $('#zoom-out').addEventListener('click', () => setZoom(state.zoom - 10));
+  els.cvdMode.addEventListener('change', () => {
+    els.preview.style.filter = els.cvdMode.value === 'normal' ? '' : `url(#cvd-${els.cvdMode.value})`;
+  });
   els.safeToggle.addEventListener('click', () => {
     state.safeArea = !state.safeArea;
     els.safeToggle.setAttribute('aria-pressed', String(state.safeArea));

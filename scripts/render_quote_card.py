@@ -38,6 +38,9 @@ SYSTEM_CARD_FONTS = {"arial"}
 # input can't produce a pathological line array. The real constraint is
 # vertical/horizontal fit, already enforced by the safe-area QA checks.
 MAX_LINES = 40
+# Generous enough for a short descriptive sentence plus a source citation,
+# tight enough to keep an accidental essay out of an accessibility field.
+ALT_TEXT_MAX_LENGTH = 400
 HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 UNSAFE_SVG = re.compile(r"<(?:script|foreignObject)\b|\bon\w+\s*=", re.IGNORECASE)
 
@@ -201,6 +204,13 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
         emphasis = ""
     if emphasis and emphasis not in text:
         add_error(errors, "content.emphasis", "not_found", "L'enfasi deve coincidere con il testo approvato.")
+
+    if "alt_text" in content:
+        alt_text = content.get("alt_text")
+        if not isinstance(alt_text, str):
+            add_error(errors, "content.alt_text", "type", "Deve essere una stringa.")
+        elif len(alt_text) > ALT_TEXT_MAX_LENGTH:
+            add_error(errors, "content.alt_text", "length", f"Non può superare {ALT_TEXT_MAX_LENGTH} caratteri.")
 
     styles = content.get("styles")
     if styles is not None:
@@ -1176,6 +1186,19 @@ def logo_image(
     )
 
 
+def default_alt_text(text: str, attribution: str, source: dict[str, Any] | None = None) -> str:
+    """The same accessible description render_svg has always embedded in
+    <desc>, factored out so the editor and the production pack can propose
+    it as a suggestion instead of only ever seeing it baked into an SVG.
+    """
+    description = f"{text} — {attribution}" if attribution else text
+    source = source or {}
+    source_description = source.get("title") or source.get("label") or source.get("locator")
+    if source_description:
+        description = f"{description}. Fonte: {source_description}"
+    return description
+
+
 def measured_text_width(text: str, font_size: float, *, letter_spacing_em: float = 0.0) -> float:
     """Rendered pixel width of ``text`` at ``font_size``, tracking included --
     the same estimate ``fitted_font_size`` and ``highlight_rects`` use, so a
@@ -1351,10 +1374,8 @@ def render_svg(
         )
 
     title = f"Quote card {direction} — {brand['name']}"
-    description = f"{content['text']} — {attribution}" if attribution else content["text"]
-    source_description = source.get("title") or source.get("label") or source.get("locator")
-    if source_description:
-        description = f"{description}. Fonte: {source_description}"
+    alt_override = str(content.get("alt_text", "")).strip()
+    description = alt_override or default_alt_text(content["text"], attribution, source)
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc">'
@@ -1363,9 +1384,9 @@ def render_svg(
     )
 
 
-def write_contact_sheet(paths: list[Path], output_path: Path, title: str) -> None:
+def write_contact_sheet(paths: list[Path], output_path: Path, title: str, alt_text: str = "") -> None:
     cards = "".join(
-        f'<figure><img src="{html.escape(path.name, quote=True)}" alt="{html.escape(path.stem)}"><figcaption>{html.escape(path.stem)}</figcaption></figure>'
+        f'<figure><img src="{html.escape(path.name, quote=True)}" alt="{html.escape(alt_text or path.stem)}"><figcaption>{html.escape(path.stem)}</figcaption></figure>'
         for path in paths
     )
     document = f"""<!doctype html>

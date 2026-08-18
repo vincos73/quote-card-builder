@@ -23,7 +23,8 @@ Il browser non scrive direttamente nel manifest. `Genera` invia un batch struttu
     "styles": [
       {"start": 44, "end": 54, "type": "highlight"}
     ],
-    "attribution": {"label": "vincos.it", "role": "publisher"}
+    "attribution": {"label": "vincos.it", "role": "publisher"},
+    "alt_text": ""
   },
   "direction": "statement",
   "formats": [
@@ -54,12 +55,13 @@ Includere uno o più formati fra `4x5`, `1x1` e `9x16`. Usare rispettivamente i 
 - `text`: testo corrente ricostruito dalle righe del formato attivo;
 - `transformation` ed `evidence_status`: dichiarazioni dell'utente conservate nel batch e mostrate come informazioni nel ledger, senza pulsanti di modifica nell'editor;
 - `attribution.label`: unico campo editabile per l'attribuzione. `attribution.role` non ha un controllo in UI (non produce alcun trattamento visivo diverso sulla card): il batch lo deriva automaticamente come `author` quando `label` non è vuota, `none` quando è vuota;
+- `content.alt_text`: descrizione accessibile, al più 400 caratteri. Vuoto per default: l'editor mostra come segnaposto la stessa descrizione automatica (testo, attribuzione e fonte quando presente) che finisce nel `<desc>` dell'SVG e nella scheda di contatto. Un valore digitato dall'utente la sostituisce integralmente ed è quello che il production pack registra in `accessibility.alt_text` con `declared_by: user`; vuoto resta `declared_by: auto`;
 - `direction`: `editorial`, `statement`, `contextual`;
 - `content.styles`: al massimo 64 intervalli `{start, end, type}` sul testo normalizzato, con `type` fra `bold`, `italic`, `underline`, `highlight`, `accent`, `outline`; gli intervalli possono attraversare gli a capo. `highlight` è disponibile in tutte le direzioni, inclusa `statement` / Poster: la fascia va misurata con le metriche del font in grassetto (il Poster renderizza sempre in grassetto), reali quando disponibili o con un fattore di compensazione altrimenti, per non produrre una fascia più corta delle parole coperte. `highlight`, `accent` e `outline` decidono tutti e tre di cosa è riempito un glifo e restano quindi mutuamente esclusivi sullo stesso intervallo: applicarne uno rimuove l'altro. `outline` disegna glifi cavi (`fill="none"` più `stroke`) nel colore d'inchiostro che il testo avrebbe comunque avuto, con spessore proporzionale alla dimensione della riga che traccia: è un cambio di forma, mai di palette, e non promuove una riga Poster a enfasi;
 - `content.emphasis`: campo legacy facoltativo; l'editor lo converte in `bold` quando apre un manifest precedente e poi lo svuota nel batch;
 - `presentation.logo_mode`: `auto` o `hidden`;
 - `presentation.graphic_mode`: `auto` applica il motivo fisso della direzione (`editorial` → linee di contorno, `statement` → moduli angolari discreti, `contextual` → campo puntinato); `hidden` lo rimuove;
-- `presentation.output_mode`: `all`, `4x5`, `1x1` o `9x16`; controlla soltanto la consegna finale, non la disponibilità delle tab di anteprima. Senza una scelta esplicita, il default è il formato attivo (il primo elenco in `formats`), non `all`: l'utente lavora tipicamente su un solo rapporto e non va costretto a scartare gli altri due;
+- `presentation.output_mode`: `all`, `4x5`, `1x1` o `9x16`; controlla soltanto la consegna finale, non la disponibilità delle tab di anteprima. Senza una scelta esplicita, il default è il formato attivo (il primo elenco in `formats`), non `all`: l'utente lavora tipicamente su un solo rapporto e non va costretto a scartare gli altri due. `all` non consegna più file separati: `Genera` bundla i formati prodotti in un unico `.zip` con la scheda di contatto; un formato singolo resta un file singolo;
 - per ogni formato: `lines`, `text_scale` fra `0.80` e `1.00`, `vertical_position` fra `upper`, `center`, `lower`. I valori legacy fra `1.00` e `1.08` restano accettati in lettura, ma sono limitati a `1.00`.
 
 `text_scale` è una percentuale del massimo sicuro, non una variazione rispetto a una dimensione nominale. Il renderer calcola prima il vero max-fit per ciascuna combinazione di formato, direzione e posizione, includendo larghezza, guide verticali e aree riservate a logo, attribuzione, metadati ed elemento grafico. `1.00` usa quel massimo; valori inferiori lo riducono. Preview, quality gate ed export devono condividere lo stesso calcolo e lo stesso valore effettivo.
@@ -88,6 +90,7 @@ Fonte osservata, brand e dimensioni restano immutabili nell'editor. Tutti i camp
   "transformation": "VERBATIM",
   "evidence_status": "VERIFIED",
   "attribution": {"label": "vincos.it", "role": "publisher"},
+  "alt_text": "",
   "direction": "statement",
   "emphasis": "",
   "styles": [
@@ -114,7 +117,9 @@ Fonte osservata, brand e dimensioni restano immutabili nell'editor. Tutti i camp
 
 Il draft inviato a `/api/preview` e `/api/generate` conserva `width` e `height` perché il server possa verificare che l'identità del formato non sia cambiata. Nel `feedback.json` persistito, il server elimina questi due campi immutabili e registra `editorial_responsibility: user` e `content.declared_by: user`.
 
-L'interfaccia espone soltanto `Genera`. `POST /api/generate` applica nello stesso batch le modifiche correnti, può portare il manifest da `candidato_selezionato` a `contenuto_approvato`, rigenera le prove, esegue il QA tecnico, registra `prova_visuale_approvata` nel production manifest, produce un preflight locale e avvia il chatbot Codex. La risposta contiene i link autenticati ai formati prodotti e lo `request_id` del chatbot; `GET /api/agent-status` espone `queued`, `running`, `completed` o `failed` per il polling dell'interfaccia.
+L'interfaccia espone soltanto `Genera`. `POST /api/generate` applica nello stesso batch le modifiche correnti, può portare il manifest da `candidato_selezionato` a `contenuto_approvato`, rigenera le prove, esegue il QA tecnico, registra `prova_visuale_approvata` nel production manifest, produce un preflight locale e avvia il chatbot Codex. La risposta contiene i link autenticati agli output prodotti (un unico `.zip` quando `output_mode` produce più di un formato, un singolo PNG/SVG altrimenti) e lo `request_id` del chatbot; `GET /api/agent-status` espone `queued`, `running`, `completed` o `failed` per il polling dell'interfaccia.
+
+`POST /api/preview` include nella risposta `declaration.alt_text_suggestion` (la descrizione automatica corrente, per il segnaposto del campo) e `score`: un riepilogo `{overall, categories: {contrast, fit, structure}}` da 0 a 100 derivato dagli stessi controlli del quality gate — non un giudizio ulteriore — pensato per il ledger inferiore.
 
 ## Percorso locale
 

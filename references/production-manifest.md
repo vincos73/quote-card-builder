@@ -30,7 +30,8 @@ Il production manifest congela contenuto, direzione e brand approvati, poi descr
     "attribution": {
       "label": "vincos.it",
       "role": "publisher"
-    }
+    },
+    "alt_text": ""
   },
   "formats": [
     {
@@ -65,7 +66,7 @@ Il production manifest congela contenuto, direzione e brand approvati, poi descr
 }
 ```
 
-`brand`, `source` e i campi editoriali di `content` hanno lo stesso significato del visual manifest 0.2. Gli stili possono includere `accent`, che colora i glifi con `brand.colors.accent`, `highlight`, che resta una banda di evidenziazione, e `outline`, che disegna glifi cavi nel colore d'inchiostro della riga. Il profilo font può includere `regular_path`, `medium_path`, `bold_path` e `italic_path`; gli stili approvati devono conservare la stessa disponibilità tipografica della prova.
+`brand`, `source` e i campi editoriali di `content` hanno lo stesso significato del visual manifest 0.2. Gli stili possono includere `accent`, che colora i glifi con `brand.colors.accent`, `highlight`, che resta una banda di evidenziazione, e `outline`, che disegna glifi cavi nel colore d'inchiostro della riga. Il profilo font può includere `regular_path`, `medium_path`, `bold_path` e `italic_path`; gli stili approvati devono conservare la stessa disponibilità tipografica della prova. `content.alt_text` vuoto lascia il renderer generare la descrizione accessibile da testo, attribuzione e fonte; un valore presente la sostituisce integralmente ed è quello che finisce nel `<desc>` dell'SVG, nell'`alt` della scheda di contatto e in `accessibility.alt_text` del report QA.
 
 ## Invarianti
 
@@ -91,6 +92,8 @@ Il renderer genera per ogni formato richiesto:
 - PNG come artefatto di consegna predefinito;
 - SVG soltanto come intermedio tecnico, eliminato dopo una conversione PNG riuscita, oppure come fallback quando il convertitore non è disponibile;
 - contact sheet HTML;
-- report `*-production-qa.json` con dimensione effettiva, dimensione massima, fitting, contrasto e hash.
+- report `*-production-qa.json` con dimensione effettiva, dimensione massima, fitting, contrasto, hash e `accessibility: {alt_text, declared_by}`.
+
+Quando i formati richiesti sono più di uno (`output_mode: all`), il server bundla i PNG (o SVG di fallback) prodotti insieme alla scheda di contatto in un unico `.zip`; con un solo formato la consegna resta il file singolo.
 
 Dopo l'ispezione visuale, usare `scripts/finalize_quote_card_pack.py <qa.json> --all-formats --reviewer <nome>`. Il finalizzatore ricontrolla gli hash e porta il report a `status: passed`, `state: consegnato`.

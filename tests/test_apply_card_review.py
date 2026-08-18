@@ -119,6 +119,47 @@ class ApplyCardReviewTests(unittest.TestCase):
             self.assertEqual("CONFLICT", saved["content"]["evidence_status"])
             self.assertEqual({"label": "Ada", "role": "speaker"}, saved["content"]["attribution"])
 
+    def test_approve_persists_alt_text_override(self):
+        text = "Un agente non si commuove per il tuo claim: confronta."
+        feedback = {
+            "feedback_id": "f-1", "base_revision": 3, "action": "approve",
+            "editorial_responsibility": "user",
+            "content": {
+                "text": text, "transformation": "VERBATIM", "evidence_status": "VERIFIED",
+                "attribution": {"label": "vincos.it", "role": "publisher"},
+                "alt_text": "Descrizione scelta a mano.",
+                "declared_by": "user",
+            },
+            "emphasis": "",
+            "presentation": {"logo_mode": "auto"},
+            "formats": [{"id": "4x5", "lines": [text], "text_scale": 1.0, "vertical_position": "center"}],
+        }
+        temp, root, manifest_path, feedback_path = self.make_files(feedback)
+        with temp:
+            APPLIER.apply_review(manifest_path, feedback_path, root)
+            saved = json.loads(manifest_path.read_text())
+            self.assertEqual("Descrizione scelta a mano.", saved["content"]["alt_text"])
+
+    def test_rejects_alt_text_over_the_length_ceiling(self):
+        text = "Un agente non si commuove per il tuo claim: confronta."
+        feedback = {
+            "feedback_id": "f-1", "base_revision": 3, "action": "approve",
+            "editorial_responsibility": "user",
+            "content": {
+                "text": text, "transformation": "VERBATIM", "evidence_status": "VERIFIED",
+                "attribution": {"label": "vincos.it", "role": "publisher"},
+                "alt_text": "x" * (APPLIER.ALT_TEXT_MAX_LENGTH + 1),
+                "declared_by": "user",
+            },
+            "emphasis": "",
+            "presentation": {"logo_mode": "auto"},
+            "formats": [{"id": "4x5", "lines": [text], "text_scale": 1.0, "vertical_position": "center"}],
+        }
+        temp, root, manifest_path, feedback_path = self.make_files(feedback)
+        with temp:
+            with self.assertRaises(APPLIER.ReviewError):
+                APPLIER.apply_review(manifest_path, feedback_path, root)
+
     def test_rejects_lines_that_do_not_rebuild_the_approved_text(self):
         feedback = {"feedback_id": "f-1", "base_revision": 3, "action": "feedback",
                     "formats": [{"id": "4x5", "lines": ["Parafrasi"]}]}

@@ -448,8 +448,14 @@ def render_pack(
             }
         )
 
+    alt_override = str(data["content"].get("alt_text", "")).strip()
+    alt_text = alt_override or proof.default_alt_text(
+        data["content"]["text"], data["content"]["attribution"].get("label", ""), data.get("source"),
+    )
     contact_sheet = output_dir / f"{basename}-{direction}-production.html"
-    proof.write_contact_sheet(contact_assets, contact_sheet, f"Production pack — {data['brand']['name']}")
+    proof.write_contact_sheet(
+        contact_assets, contact_sheet, f"Production pack — {data['brand']['name']}", alt_text=alt_text,
+    )
     colors = data["brand"]["colors"]
     approved_proof = proof.resolve_asset(data["approval"]["proof_path"], manifest_path.parent)
     qa_path = output_dir / f"{basename}-{direction}-production-qa.json"
@@ -484,6 +490,7 @@ def render_pack(
             "png_failures": png_failures,
             "visual_inspection_required": True,
         },
+        "accessibility": {"alt_text": alt_text, "declared_by": "user" if alt_override else "auto"},
         "formats": rendered,
         "contact_sheet": {"path": contact_sheet.name, "sha256": sha256_file(contact_sheet)},
     }

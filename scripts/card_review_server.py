@@ -14,6 +14,7 @@ import subprocess
 import sys
 import threading
 import xml.etree.ElementTree as ET
+import zipfile
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,6 +32,7 @@ import apply_card_review as review_applier
 
 MAX_BODY_BYTES = 250_000
 MAX_TEXT_LENGTH = 600
+ALT_TEXT_MAX_LENGTH = proof.ALT_TEXT_MAX_LENGTH
 MAX_LINES = 40  # defensive ceiling only; real limit is available space, see render_quote_card.MAX_LINES
 MAX_FORMATS = 3
 FORMAT_IDS = {"4x5", "1x1", "9x16"}
@@ -54,6 +56,7 @@ GENERATED_MIME_TYPES = {
     ".svg": "image/svg+xml",
     ".html": "text/html; charset=utf-8",
     ".json": "application/json; charset=utf-8",
+    ".zip": "application/zip",
 }
 
 
@@ -120,6 +123,26 @@ def chatbot_prompt(
     )
 
 
+def approval_feedback(draft: dict[str, Any], base_revision: int, overall_note: str = "") -> dict[str, Any]:
+    """The commit every generate request performs: freeze the current draft
+    as an approved batch, built in one place so the feedback shape and
+    apply_card_review's CONTENT_KEYS whitelist cannot silently drift apart.
+    """
+    return {
+        "feedback_id": f"feedback-{secrets.token_hex(8)}", "submitted_at": now_iso(), "action": "approve",
+        "base_revision": base_revision, "editorial_responsibility": "user",
+        "content": {
+            "text": draft["content"]["text"], "transformation": draft["content"]["transformation"],
+            "evidence_status": draft["content"]["evidence_status"], "attribution": draft["content"]["attribution"],
+            "alt_text": draft["content"].get("alt_text", ""), "styles": draft["content"].get("styles", []),
+            "styles_customized": draft["content"].get("styles_customized", False), "declared_by": "user",
+        },
+        "direction": draft["direction"], "emphasis": draft["content"]["emphasis"], "presentation": draft["presentation"],
+        "formats": [{"id": item["id"], "lines": item["lines"], "text_scale": item["text_scale"], "vertical_position": item["vertical_position"]} for item in draft["formats"]],
+        "overall_note": overall_note,
+    }
+
+
 def record_and_apply_feedback(
     manifest_path: Path, session_dir: Path, feedback: dict[str, Any]
 ) -> dict[str, Any]:
@@ -177,6 +200,10 @@ def validate_manifest(data: Any) -> list[str]:
     if content.get("evidence_status") not in proof.EVIDENCE_STATUSES: error(errors, "content.evidence_status non valido")
     emphasis = content.get("emphasis", "")
     if not isinstance(emphasis, str) or (emphasis and emphasis not in content.get("text", "")): error(errors, "content.emphasis deve essere vuota o comparire nel testo")
+    if "alt_text" in content:
+        alt_text = content.get("alt_text")
+        if not isinstance(alt_text, str): error(errors, "content.alt_text deve essere una stringa")
+        elif len(alt_text) > ALT_TEXT_MAX_LENGTH: error(errors, f"content.alt_text non può superare {ALT_TEXT_MAX_LENGTH} caratteri")
     if "styles" in content:
         style_errors: list[dict[str, str]] = []
         proof.validate_text_styles(content["styles"], content.get("text", ""), style_errors)
@@ -255,18 +282,22 @@ def session_model(manifest: dict[str, Any], manifest_dir: Path | None = None) ->
 
 def validate_draft(payload: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict): raise ValueError("Il draft deve essere un oggetto JSON")
-    allowed = {"base_revision", "text", "transformation", "evidence_status", "attribution", "direction", "emphasis", "styles", "styles_customized", "presentation", "formats", "action", "overall_note"}
+    allowed = {"base_revision", "text", "transformation", "evidence_status", "attribution", "direction", "emphasis", "styles", "styles_customized", "presentation", "formats", "action", "overall_note", "alt_text"}
     if set(payload) - allowed: raise ValueError("Il draft contiene campi non modificabili")
     if payload.get("base_revision") != manifest["revision"]: raise RuntimeError("La revisione di base non coincide con il manifest")
     candidate = copy.deepcopy(manifest)
     requested_text = normalized_text(payload.get("text", candidate["content"].get("text")))
     if not requested_text or len(requested_text) > MAX_TEXT_LENGTH:
         raise ValueError(f"text deve contenere da 1 a {MAX_TEXT_LENGTH} caratteri")
+    alt_text = payload.get("alt_text", candidate["content"].get("alt_text", ""))
+    if not isinstance(alt_text, str) or len(alt_text) > ALT_TEXT_MAX_LENGTH:
+        raise ValueError(f"alt_text deve essere una stringa di al più {ALT_TEXT_MAX_LENGTH} caratteri")
     candidate["content"].update({
         "text": requested_text,
         "transformation": payload.get("transformation", candidate["content"].get("transformation")),
         "evidence_status": payload.get("evidence_status", candidate["content"].get("evidence_status")),
         "attribution": copy.deepcopy(payload.get("attribution", candidate["content"].get("attribution"))),
+        "alt_text": alt_text.strip(),
         "declared_by": "user",
     })
     for key in ("direction", "emphasis", "styles", "styles_customized", "presentation", "formats"):
@@ -385,6 +416,41 @@ def preview_quality(manifest: dict[str, Any], previews: list[dict[str, Any]], ma
     return {"passed": not warnings, "checks": checks, "warnings": warnings}
 
 
+# Ceiling for the contrast score: WCAG AAA (7:1) is already the codebase's
+# own strictest bar (render_quote_card_pack's outline check uses it), so
+# reaching it earns full marks rather than inventing a new reference point.
+CONTRAST_SCORE_CEILING = 7.0
+
+
+def preview_score(manifest: dict[str, Any], previews: list[dict[str, Any]], qa: dict[str, Any]) -> dict[str, Any]:
+    """A read-out for the ledger, not a new gate: every input here already
+    feeds an existing pass/fail check. Scoring only turns those checks into
+    a number the user can see move, rather than inventing new criteria.
+    """
+    colors = manifest["brand"]["colors"]
+    ratios = [
+        proof.contrast_ratio(colors["primary"], colors["background"]),
+        proof.contrast_ratio(colors["background"], colors["primary"]),
+        proof.contrast_ratio(colors["accent"], colors["primary"]),
+    ]
+    contrast_score = round(min(100.0, min(ratios) / CONTRAST_SCORE_CEILING * 100))
+
+    # auto_fitted means the format's chosen scale/position asked for more
+    # room than the safe area has and was silently capped -- the one signal
+    # here that is unambiguously a defect, not a legitimate design choice.
+    capped_formats = sum(1 for item in previews if item.get("auto_fitted"))
+    fit_score = max(0, 100 - 25 * capped_formats)
+
+    structure_penalty = 20 * len({(item["code"], item["format"]) for item in qa.get("warnings", [])})
+    structure_score = max(0, 100 - structure_penalty)
+
+    overall = round((contrast_score + fit_score + structure_score) / 3)
+    return {
+        "overall": overall,
+        "categories": {"contrast": contrast_score, "fit": fit_score, "structure": structure_score},
+    }
+
+
 def ensure_approvable(manifest: dict[str, Any], manifest_dir: Path) -> dict[str, Any]:
     qa = preview_quality(manifest, render_preview(manifest, manifest_dir), manifest_dir)
     if not qa["passed"]:
@@ -472,18 +538,37 @@ def generate_production_pack(
         "required" if png_required else "auto", node, node_modules, "auto",
     )
     outputs: list[dict[str, str]] = []
-    for item in result["formats"]:
-        artifact = item.get("png") or item.get("svg")
-        if not artifact:
-            continue
-        path = (output_dir / artifact["path"]).resolve()
-        relative = path.relative_to(production_dir.resolve()).as_posix()
+    if len(result["formats"]) > 1:
+        # "Tutti" means every produced format bundled as one thing to save,
+        # not three separate PNGs the user has to click through and rename
+        # by hand -- the single-format case below is unaffected.
+        zip_path = (production_dir / f"{basename}-{manifest['direction']}.zip").resolve()
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            for item in result["formats"]:
+                artifact = item.get("png") or item.get("svg")
+                if artifact:
+                    archive.write(output_dir / artifact["path"], arcname=artifact["path"])
+            contact_sheet = Path(result["contact_sheet"])
+            archive.write(contact_sheet, arcname=contact_sheet.name)
         outputs.append({
-            "format": item["format"],
-            "kind": "png" if item.get("png") else "svg",
-            "filename": path.name,
-            "relative_path": relative,
+            "format": "zip",
+            "kind": "zip",
+            "filename": zip_path.name,
+            "relative_path": zip_path.relative_to(production_dir.resolve()).as_posix(),
         })
+    else:
+        for item in result["formats"]:
+            artifact = item.get("png") or item.get("svg")
+            if not artifact:
+                continue
+            path = (output_dir / artifact["path"]).resolve()
+            relative = path.relative_to(production_dir.resolve()).as_posix()
+            outputs.append({
+                "format": item["format"],
+                "kind": "png" if item.get("png") else "svg",
+                "filename": path.name,
+                "relative_path": relative,
+            })
     return {
         **result,
         "outputs": outputs,
@@ -604,8 +689,11 @@ def create_server(
                 return_code = -15
             finally:
                 log_handle.close()
+            # A "Tutti" generation delivers one zip, not a PNG per format --
+            # the chatbot re-renders the individual PNGs it was pointed at
+            # regardless, so existence is what settles readiness here.
             files_ready = all(
-                (production_root / item["relative_path"]).is_file() and item.get("kind") == "png"
+                (production_root / item["relative_path"]).is_file()
                 for item in generation.get("outputs", [])
             )
             completed = return_code == 0 and files_ready
@@ -677,11 +765,12 @@ def create_server(
                     draft = validate_draft(payload, current)
                     previews = render_preview(draft, manifest_path.parent)
                     qa = preview_quality(draft, previews, manifest_path.parent)
-                    self.send_json(HTTPStatus.OK, {"revision": current["revision"], "previews": previews, "qa": qa, "warnings": qa["warnings"], "editorial_responsibility": "user", "declaration": {"transformation": draft["content"]["transformation"], "evidence_status": draft["content"]["evidence_status"], "attribution": draft["content"]["attribution"]}}); return
+                    alt_suggestion = proof.default_alt_text(draft["content"]["text"], draft["content"]["attribution"].get("label", ""), draft.get("source"))
+                    self.send_json(HTTPStatus.OK, {"revision": current["revision"], "previews": previews, "qa": qa, "warnings": qa["warnings"], "score": preview_score(draft, previews, qa), "editorial_responsibility": "user", "declaration": {"transformation": draft["content"]["transformation"], "evidence_status": draft["content"]["evidence_status"], "attribution": draft["content"]["attribution"], "alt_text_suggestion": alt_suggestion}}); return
                 with lock:
                     draft = validate_draft(payload, current)
                     ensure_approvable(draft, manifest_path.parent)
-                    feedback = {"feedback_id": f"feedback-{secrets.token_hex(8)}", "submitted_at": now_iso(), "action": "approve", "base_revision": current["revision"], "editorial_responsibility": "user", "content": {"text": draft["content"]["text"], "transformation": draft["content"]["transformation"], "evidence_status": draft["content"]["evidence_status"], "attribution": draft["content"]["attribution"], "styles": draft["content"].get("styles", []), "styles_customized": draft["content"].get("styles_customized", False), "declared_by": "user"}, "direction": draft["direction"], "emphasis": draft["content"]["emphasis"], "presentation": draft["presentation"], "formats": [{"id": item["id"], "lines": item["lines"], "text_scale": item["text_scale"], "vertical_position": item["vertical_position"]} for item in draft["formats"]], "overall_note": payload.get("overall_note", "")}
+                    feedback = approval_feedback(draft, current["revision"], payload.get("overall_note", ""))
                     application = record_and_apply_feedback(manifest_path, session_dir, feedback)
                     latest = read_json(manifest_path)
                     generation = generate_production_pack(latest, manifest_path, session_dir, node, node_modules)

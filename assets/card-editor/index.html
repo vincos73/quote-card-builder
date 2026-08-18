@@ -36,6 +36,16 @@
           <button id="zoom-out" class="compact-control icon-control" type="button" aria-label="Riduci zoom">−</button>
           <output id="zoom-output" for="zoom-out zoom-in">100%</output>
           <button id="zoom-in" class="compact-control icon-control" type="button" aria-label="Aumenta zoom">+</button>
+          <label class="cvd-control">
+            <span>Visione</span>
+            <select id="cvd-mode" aria-label="Simula tipo di visione dei colori">
+              <option value="normal">Normale</option>
+              <option value="deuteranopia">Deuteranopia</option>
+              <option value="protanopia">Protanopia</option>
+              <option value="tritanopia">Tritanopia</option>
+              <option value="achromatopsia">Acromatopsia</option>
+            </select>
+          </label>
         </div>
         <p id="preview-message" class="preview-message">Caricamento prova visuale…</p>
         <div class="format-tabs" role="group" aria-label="Formato anteprima">
@@ -118,7 +128,9 @@
           <p id="lines-help" class="field-help">Invio crea una nuova riga; una riga vuota aggiunge spazio. Testo e a capo restano identici in tutti i formati.</p>
           <div class="editorial-meta-grid">
             <label for="attribution-label"><span>Attribuzione</span><input id="attribution-label" type="text" autocomplete="off"></label>
+            <label for="alt-text-label"><span>Alt text</span><input id="alt-text-label" type="text" autocomplete="off"></label>
           </div>
+          <p class="field-help">Suggerita da testo e attribuzione; lascia vuoto per usarla, scrivi per sostituirla.</p>
           <p id="text-integrity-hint" class="field-help integrity-hint" aria-live="polite">Tipo di formulazione e verifica restano nel riepilogo inferiore.</p>
         </div>
 
@@ -179,7 +191,7 @@
             <button type="button" data-output="1x1">1:1</button>
             <button type="button" data-output="9x16">9:16</button>
           </div>
-          <p class="field-help">Il pacchetto contiene PNG; l’SVG resta soltanto un passaggio tecnico.</p>
+          <p class="field-help">Il pacchetto contiene PNG; l’SVG resta soltanto un passaggio tecnico. Con Tutti, Genera consegna un unico .zip con i tre formati.</p>
         </fieldset>
 
       </form>
@@ -198,6 +210,7 @@
     <dl class="audit-ledger" aria-label="Stato editoriale e sessione">
       <div><dt>Stato editoriale</dt><dd><span id="transformation">—</span><span class="ledger-separator">·</span><span id="evidence-status">—</span></dd></div>
       <div><dt>Sessione</dt><dd><span id="session-state">Caricamento</span><span class="ledger-separator">·</span><span>rev. <strong id="revision">—</strong></span></dd></div>
+      <div><dt>Punteggio</dt><dd><strong id="score-total">—</strong><span class="ledger-separator">/100 ·</span><span id="score-breakdown">—</span></dd></div>
     </dl>
 
     <div class="actions">
@@ -207,6 +220,26 @@
       <button id="generate" class="button button-primary" type="button"><span id="generate-label">Genera</span><span aria-hidden="true">→</span></button>
     </div>
   </footer>
+
+  <svg class="cvd-filters" aria-hidden="true" focusable="false">
+    <defs>
+      <!-- Standard Brettel/Viénot-derived approximation matrices used across
+           colour-blindness simulators; a preview-only filter, never applied
+           to exported artefacts. -->
+      <filter id="cvd-deuteranopia" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0.625 0.375 0 0 0  0.7 0.3 0 0 0  0 0.3 0.7 0 0  0 0 0 1 0"/>
+      </filter>
+      <filter id="cvd-protanopia" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0.567 0.433 0 0 0  0.558 0.442 0 0 0  0 0.242 0.758 0 0  0 0 0 1 0"/>
+      </filter>
+      <filter id="cvd-tritanopia" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0.95 0.05 0 0 0  0 0.433 0.567 0 0  0 0.475 0.525 0 0  0 0 0 1 0"/>
+      </filter>
+      <filter id="cvd-achromatopsia" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0.299 0.587 0.114 0 0  0.299 0.587 0.114 0 0  0.299 0.587 0.114 0 0  0 0 0 1 0"/>
+      </filter>
+    </defs>
+  </svg>
 
   <script src="formatting-core.js"></script>
   <script src="app.js"></script>

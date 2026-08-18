@@ -233,6 +233,30 @@ svg {
   text-transform: uppercase;
 }
 
+.cvd-filters { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+.cvd-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line-light);
+  color: var(--paper-ink);
+  font-size: 10px;
+}
+
+.cvd-control select {
+  width: auto;
+  height: 30px;
+  padding: 0 6px;
+  border-color: var(--line-light);
+  background: transparent;
+  color: var(--ink);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
 .compact-control {
   height: 30px;
   min-width: 30px;
@@ -912,7 +936,7 @@ input[type="range"] {
 .audit-ledger {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(145px, 1fr));
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
   margin: 0;
   border-right: 1px solid var(--line-dark);
 }
@@ -1037,7 +1061,8 @@ select:focus { border-color: var(--chartreuse); }
   .actionbar { position: sticky; grid-template-columns: 1fr auto; min-height: 86px; }
   .audit-summary { border-right: 0; }
   .audit-ledger { grid-template-columns: minmax(150px, 1fr); }
-  .audit-ledger div:nth-child(2) { display: none; }
+  .audit-ledger div:nth-child(2),
+  .audit-ledger div:nth-child(3) { display: none; }
 }
 
 @media (max-width: 560px) {

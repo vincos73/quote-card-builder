@@ -45,10 +45,68 @@ def valid_visual_manifest():
     }
 
 
+class AltTextTests(unittest.TestCase):
+    def test_plain_text_without_attribution_or_source(self):
+        self.assertEqual("Solo testo.", RENDERER.default_alt_text("Solo testo.", "", None))
+
+    def test_includes_attribution_when_present(self):
+        self.assertEqual(
+            "Il testo — Ada Lovelace",
+            RENDERER.default_alt_text("Il testo", "Ada Lovelace", None),
+        )
+
+    def test_appends_source_description_when_present(self):
+        result = RENDERER.default_alt_text("Il testo", "", {"title": "Articolo di prova"})
+        self.assertEqual("Il testo. Fonte: Articolo di prova", result)
+
+    def test_source_falls_back_to_label_then_locator(self):
+        self.assertEqual(
+            "T. Fonte: example.test",
+            RENDERER.default_alt_text("T", "", {"label": "example.test", "locator": "https://x"}),
+        )
+        self.assertEqual(
+            "T. Fonte: https://x",
+            RENDERER.default_alt_text("T", "", {"locator": "https://x"}),
+        )
+
+    def test_render_svg_falls_back_to_default_alt_text(self):
+        manifest = valid_visual_manifest()
+        svg = RENDERER.render_svg(manifest, Path.cwd(), manifest["direction"])
+        root = ET.fromstring(svg)
+        desc = root.find("{http://www.w3.org/2000/svg}desc")
+        self.assertIn(manifest["content"]["text"], desc.text)
+        self.assertIn("example.test", desc.text)
+
+    def test_render_svg_prefers_user_alt_text_override(self):
+        manifest = valid_visual_manifest()
+        manifest["content"]["alt_text"] = "Descrizione scelta dall'utente."
+        svg = RENDERER.render_svg(manifest, Path.cwd(), manifest["direction"])
+        root = ET.fromstring(svg)
+        desc = root.find("{http://www.w3.org/2000/svg}desc")
+        self.assertEqual("Descrizione scelta dall'utente.", desc.text)
+
+
 class VisualManifestTests(unittest.TestCase):
     def test_accepts_valid_manifest(self):
         manifest = valid_visual_manifest()
         self.assertEqual([], RENDERER.validate_visual_manifest(manifest, Path.cwd()))
+
+    def test_accepts_optional_alt_text_override(self):
+        manifest = valid_visual_manifest()
+        manifest["content"]["alt_text"] = "Una descrizione accessibile scelta a mano."
+        self.assertEqual([], RENDERER.validate_visual_manifest(manifest, Path.cwd()))
+
+    def test_rejects_non_string_alt_text(self):
+        manifest = valid_visual_manifest()
+        manifest["content"]["alt_text"] = 42
+        codes = {error["code"] for error in RENDERER.validate_visual_manifest(manifest, Path.cwd())}
+        self.assertIn("type", codes)
+
+    def test_rejects_alt_text_over_the_length_ceiling(self):
+        manifest = valid_visual_manifest()
+        manifest["content"]["alt_text"] = "x" * (RENDERER.ALT_TEXT_MAX_LENGTH + 1)
+        codes = {error["code"] for error in RENDERER.validate_visual_manifest(manifest, Path.cwd())}
+        self.assertIn("length", codes)
 
     def test_rejects_changed_line_breaks(self):
         manifest = valid_visual_manifest()

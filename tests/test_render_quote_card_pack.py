@@ -206,6 +206,39 @@ class ProductionManifestTests(unittest.TestCase):
             codes = {error["code"] for error in PACK.validate_production_manifest(manifest, Path(temp_dir))}
             self.assertIn("selection", codes)
 
+    def test_render_pack_records_default_alt_text_in_qa_and_contact_sheet(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            proof_path = temp_path / "proof.png"
+            proof_path.write_bytes(b"proof")
+            manifest = production_manifest(proof_path)
+            manifest_path = temp_path / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            output_dir = temp_path / "output"
+            result = PACK.render_pack(manifest, manifest_path, output_dir, "never", None, None, "keep")
+            qa_path = Path(result["qa_report"])
+            qa = json.loads(qa_path.read_text(encoding="utf-8"))
+            self.assertIn(manifest["content"]["text"], qa["accessibility"]["alt_text"])
+            self.assertIn("example.test", qa["accessibility"]["alt_text"])
+            self.assertEqual("auto", qa["accessibility"]["declared_by"])
+            contact_sheet = Path(result["contact_sheet"]).read_text(encoding="utf-8")
+            self.assertIn(qa["accessibility"]["alt_text"], contact_sheet)
+
+    def test_render_pack_prefers_user_alt_text_override(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            proof_path = temp_path / "proof.png"
+            proof_path.write_bytes(b"proof")
+            manifest = production_manifest(proof_path)
+            manifest["content"]["alt_text"] = "Descrizione scelta a mano."
+            manifest_path = temp_path / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            output_dir = temp_path / "output"
+            result = PACK.render_pack(manifest, manifest_path, output_dir, "never", None, None, "keep")
+            qa = json.loads(Path(result["qa_report"]).read_text(encoding="utf-8"))
+            self.assertEqual("Descrizione scelta a mano.", qa["accessibility"]["alt_text"])
+            self.assertEqual("user", qa["accessibility"]["declared_by"])
+
     def test_png_pack_discards_intermediate_svgs_by_default(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

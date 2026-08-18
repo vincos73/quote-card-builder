@@ -28,7 +28,8 @@ STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent", "outline"}
 # chosen yet" from "user removed every style". Leaving it out did not drop
 # the field, it rejected the whole batch -- which is why Genera failed on
 # every card rather than on some.
-CONTENT_KEYS = {"text", "transformation", "evidence_status", "attribution", "styles", "styles_customized", "declared_by"}
+CONTENT_KEYS = {"text", "transformation", "evidence_status", "attribution", "styles", "styles_customized", "declared_by", "alt_text"}
+ALT_TEXT_MAX_LENGTH = 400
 
 
 class ReviewError(ValueError):
@@ -187,6 +188,11 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
         raise ReviewError("content.attribution.label è obbligatorio per il ruolo scelto.")
     if target_content.get("declared_by", "user") != "user":
         raise ReviewError("content.declared_by deve essere user.")
+    alt_text = target_content.get("alt_text", "")
+    if alt_text and not isinstance(alt_text, str):
+        raise ReviewError("content.alt_text deve essere una stringa.")
+    if isinstance(alt_text, str) and len(alt_text) > ALT_TEXT_MAX_LENGTH:
+        raise ReviewError(f"content.alt_text non può superare {ALT_TEXT_MAX_LENGTH} caratteri.")
     styles = target_content.get("styles")
     if styles is not None:
         if not isinstance(styles, list) or len(styles) > 64:
