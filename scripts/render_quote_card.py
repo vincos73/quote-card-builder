@@ -23,6 +23,11 @@ if str(SCRIPT_DIR) not in sys.path:
 import rasterize
 
 DIRECTIONS = ("editorial", "statement", "contextual")
+GRAPHIC_VARIANTS = {
+    "editorial": {"default", "rhythm_lines"},
+    "statement": {"default", "modules"},
+    "contextual": {"default", "route_map"},
+}
 TRANSFORMATIONS = {"VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"}
 EVIDENCE_STATUSES = {"VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"}
 ATTRIBUTION_ROLES = {"speaker", "author", "publisher", "none"}
@@ -90,6 +95,31 @@ def direction_geometry(
         "line_ratio": spec["line_ratio"],
         "tracking_em": QUOTE_TRACKING_EM,
     }
+
+
+def presentation_geometry(
+    data: dict[str, Any], direction: str, width: int, height: int,
+    vertical_position: str = "center", render_options: dict[str, Any] | None = None,
+) -> dict[str, float]:
+    """Apply motif-specific reservations without altering the motif itself."""
+    geometry = direction_geometry(direction, width, height, vertical_position)
+    options = {**(data.get("presentation") or {}), **(render_options or {})}
+    if (
+        direction == "editorial"
+        and options.get("graphic_mode", "auto") != "hidden"
+        and options.get("graphic_variant", "default") == "default"
+    ):
+        left_inset = width * 0.145
+        right_inset = width * DIRECTION_GEOMETRY["editorial"]["inset"]
+        geometry["text_x"] = left_inset
+        geometry["text_width"] = width - left_inset - right_inset
+    return geometry
+
+
+def graphic_variant_allowed(direction: str, variant: str) -> bool:
+    """Return whether a motif belongs to the selected visual direction."""
+
+    return variant in GRAPHIC_VARIANTS.get(direction, set())
 
 
 def normalize_spaces(value: str) -> str:
@@ -237,6 +267,22 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
     direction = root.get("direction")
     if direction not in DIRECTIONS:
         add_error(errors, "direction", "enum", "Direzione non ammessa.")
+
+    presentation = root.get("presentation", {})
+    if not isinstance(presentation, dict):
+        add_error(errors, "presentation", "type", "La presentazione deve essere un oggetto.")
+    else:
+        graphic_mode = presentation.get("graphic_mode", "auto")
+        if graphic_mode not in {"auto", "hidden"}:
+            add_error(errors, "presentation.graphic_mode", "enum", "Usare auto o hidden.")
+        graphic_variant = presentation.get("graphic_variant", "default")
+        if not isinstance(graphic_variant, str) or not graphic_variant_allowed(direction, graphic_variant):
+            add_error(
+                errors,
+                "presentation.graphic_variant",
+                "enum",
+                "Il motivo non appartiene alla direzione selezionata.",
+            )
 
     brand = require_dict(root.get("brand"), "brand", errors)
     require_string(brand, "name", "brand", errors)
@@ -1082,7 +1128,8 @@ def legible_color(preferred: str, fallback: str, surface: str, *, minimum: float
 
 
 def direction_graphic(
-    direction: str, *, width: int, height: int, colors: dict[str, str], enabled: bool
+    direction: str, *, width: int, height: int, colors: dict[str, str], enabled: bool,
+    variant: str = "default",
 ) -> str:
     """Render one product-specific visual grammar for each direction.
 
@@ -1099,8 +1146,28 @@ def direction_graphic(
         # The page itself is `colors["background"]`; pick whichever brand
         # color actually reads against it instead of assuming accent does.
         stroke_color = legible_color(colors["accent"], colors["primary"], colors["background"])
+        if variant == "rhythm_lines":
+            stroke_width = max(2.0, width * 0.0022)
+            rules: list[str] = []
+            for index in range(5):
+                top_y = height * (-0.006 + index * 0.018)
+                top_x = width * (0.70 + index * 0.026)
+                bottom_y = height * (0.925 + index * 0.018)
+                bottom_end = width * (0.24 - index * 0.026)
+                rules.append(
+                    f'<path class="rhythm-rule rhythm-rule--top" d="M {top_x:.1f} {top_y:.1f} H {width * 1.02:.1f}"/>'
+                )
+                rules.append(
+                    f'<path class="rhythm-rule rhythm-rule--bottom" d="M {-width * 0.02:.1f} {bottom_y:.1f} H {bottom_end:.1f}"/>'
+                )
+            return (
+                '<g class="direction-graphic direction-graphic--rhythm" fill="none" '
+                f'stroke="{stroke_color}" stroke-width="{stroke_width:.1f}">{"".join(rules)}</g>'
+            )
         paths: list[str] = []
         for index in range(6):
+            # These are the exact pre-1.3 Contours coordinates. Their natural
+            # canvas crop is part of the original visual, not a mask.
             top_x = width * (0.89 + index * 0.026)
             top_y = -height * 0.07 + index * height * 0.018
             paths.append(
@@ -1125,6 +1192,30 @@ def direction_graphic(
             f'stroke="{stroke_color}" stroke-width="{max(2.0, width * 0.0022):.1f}">{"".join(paths)}</g>'
         )
     if direction == "statement":
+        if variant == "modules":
+            accent = colors["accent"]
+            modules = (
+                f'<rect class="poster-module poster-module--top" x="{width * 0.82:.1f}" y="{-height * 0.015:.1f}" '
+                f'width="{width * 0.055:.1f}" height="{height * 0.075:.1f}"/>'
+                f'<rect class="poster-module poster-module--top" x="{width * 0.90:.1f}" y="{height * 0.055:.1f}" '
+                f'width="{width * 0.055:.1f}" height="{height * 0.055:.1f}"/>'
+                f'<rect class="poster-module poster-module--top" x="{width * 0.97:.1f}" y="{-height * 0.01:.1f}" '
+                f'width="{width * 0.065:.1f}" height="{height * 0.075:.1f}"/>'
+                f'<rect class="poster-module poster-module--top" x="{width * 0.90:.1f}" y="{height * 0.125:.1f}" '
+                f'width="{width * 0.055:.1f}" height="{height * 0.055:.1f}"/>'
+                f'<rect class="poster-module poster-module--bottom" x="{-width * 0.015:.1f}" y="{height * 0.86:.1f}" '
+                f'width="{width * 0.075:.1f}" height="{height * 0.055:.1f}"/>'
+                f'<rect class="poster-module poster-module--bottom" x="{width * 0.075:.1f}" y="{height * 0.80:.1f}" '
+                f'width="{width * 0.055:.1f}" height="{height * 0.065:.1f}"/>'
+                f'<rect class="poster-module poster-module--bottom" x="{width * 0.075:.1f}" y="{height * 0.875:.1f}" '
+                f'width="{width * 0.055:.1f}" height="{height * 0.055:.1f}"/>'
+                f'<rect class="poster-module poster-module--bottom" x="{width * 0.145:.1f}" y="{height * 0.94:.1f}" '
+                f'width="{width * 0.06:.1f}" height="{height * 0.075:.1f}"/>'
+            )
+            return (
+                '<g class="direction-graphic direction-graphic--modules" '
+                f'fill="{accent}">{modules}</g>'
+            )
         # Concentric rings radiating from two opposite corners, like an
         # echo/ripple. Stroke width tapers outward (never opacity) to read
         # as a fade while every ring stays a full-opacity brand color.
@@ -1149,6 +1240,31 @@ def direction_graphic(
     # Contextual/Frame: dots sit over the accent field; "statement_emphasis"
     # already guarantees primary reads at >=4.5:1 against accent, so draw
     # them at full opacity rather than blending a third hue.
+    if variant == "route_map":
+        stroke_color = colors["primary"]
+        stroke_width = max(2.0, width * 0.0022)
+        radius = max(3.0, width * 0.0045)
+        paths = (
+            f'<path class="route-line route-line--top" d="M {width * 0.79:.1f} {height * 0.03:.1f} '
+            f'H {width * 0.94:.1f} V {height * 0.12:.1f} H {width * 1.02:.1f}"/>'
+            f'<path class="route-line route-line--top" d="M {width * 0.87:.1f} {-height * 0.01:.1f} '
+            f'V {height * 0.075:.1f} Q {width * 0.87:.1f} {height * 0.105:.1f} '
+            f'{width * 0.90:.1f} {height * 0.105:.1f} H {width * 1.02:.1f}"/>'
+            f'<path class="route-line route-line--bottom" d="M {-width * 0.02:.1f} {height * 0.885:.1f} '
+            f'H {width * 0.06:.1f} V {height * 0.975:.1f} H {width * 0.18:.1f}"/>'
+            f'<path class="route-line route-line--bottom" d="M {width * 0.04:.1f} {height * 0.84:.1f} '
+            f'V {height * 0.94:.1f} Q {width * 0.04:.1f} {height * 0.975:.1f} '
+            f'{width * 0.075:.1f} {height * 0.975:.1f} V {height * 1.02:.1f}"/>'
+        )
+        nodes = "".join(
+            f'<circle class="route-node" cx="{x * width:.1f}" cy="{y * height:.1f}" r="{radius:.1f}"/>'
+            for x, y in ((0.94, 0.03), (0.94, 0.12), (0.87, 0.075), (0.06, 0.885), (0.06, 0.975), (0.04, 0.94), (0.075, 0.975))
+        )
+        return (
+            '<g class="direction-graphic direction-graphic--routes" fill="none" '
+            f'stroke="{stroke_color}" stroke-width="{stroke_width:.1f}" stroke-linecap="round" '
+            f'stroke-linejoin="round">{paths}<g fill="{stroke_color}" stroke="none">{nodes}</g></g>'
+        )
     dots: list[str] = []
     gap = width * 0.027
     for row in range(4):
@@ -1241,11 +1357,13 @@ def render_svg(
     options = {**(data.get("presentation") or {}), **(render_options or {})}
     logo_mode = options.get("logo_mode", "auto")
     graphic_mode = options.get("graphic_mode", "auto")
+    graphic_variant = options.get("graphic_variant", "default")
     graphic = direction_graphic(
-        direction, width=width, height=height, colors=colors, enabled=graphic_mode != "hidden"
+        direction, width=width, height=height, colors=colors, enabled=graphic_mode != "hidden",
+        variant=graphic_variant if graphic_variant_allowed(direction, graphic_variant) else "default",
     )
     vertical_position = options.get("vertical_position", "center")
-    geometry = direction_geometry(direction, width, height, vertical_position)
+    geometry = presentation_geometry(data, direction, width, height, vertical_position, render_options)
     safe = width * 0.085
     css = (
         font_css(brand["font"], manifest_dir)

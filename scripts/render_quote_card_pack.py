@@ -153,6 +153,16 @@ def validate_production_manifest(data: Any, manifest_dir: Path) -> list[dict[str
         graphic_mode = presentation.get("graphic_mode", "auto")
         if graphic_mode not in GRAPHIC_MODES:
             add_error(errors, "presentation.graphic_mode", "enum", "Usare auto o hidden.")
+        graphic_variant = presentation.get("graphic_variant", "default")
+        if not isinstance(graphic_variant, str) or not proof.graphic_variant_allowed(
+            approval.get("direction"), graphic_variant
+        ):
+            add_error(
+                errors,
+                "presentation.graphic_variant",
+                "enum",
+                "Il motivo non appartiene alla direzione approvata.",
+            )
         output_mode = presentation.get("output_mode")
         if output_mode is not None and output_mode not in OUTPUT_MODES:
             add_error(errors, "presentation.output_mode", "enum", "Usare all, 4x5, 1x1 o 9x16.")
@@ -166,7 +176,7 @@ def validate_production_manifest(data: Any, manifest_dir: Path) -> list[dict[str
 def available_text_width(data: dict[str, Any], direction: str, width: int, height: int) -> float:
     # proof.DIRECTION_GEOMETRY is the single source of truth shared with the
     # renderer; this module must never keep its own copy of a margin.
-    return proof.direction_geometry(direction, width, height)["text_width"]
+    return proof.presentation_geometry(data, direction, width, height)["text_width"]
 
 
 def vertical_limits(
@@ -380,6 +390,7 @@ def render_pack(
             "vertical_position": item.get("vertical_position", "center"),
             "logo_mode": presentation.get("logo_mode", "auto"),
             "graphic_mode": presentation.get("graphic_mode", "auto"),
+            "graphic_variant": presentation.get("graphic_variant", "default"),
         }
         stem = f"{basename}-{direction}-{item['id']}"
         svg_path = output_dir / f"{stem}.svg"
@@ -442,6 +453,7 @@ def render_pack(
                 "auto_fitted": auto_fitted,
                 "vertical_position": render_options["vertical_position"],
                 "graphic_mode": render_options["graphic_mode"],
+                "graphic_variant": render_options["graphic_variant"],
                 "png_backend": png_backend,
                 "svg": svg_record,
                 "png": {"path": png_path.name, "sha256": sha256_file(png_path)} if png_path else None,

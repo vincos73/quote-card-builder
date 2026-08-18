@@ -79,6 +79,17 @@ class CardReviewServerTests(unittest.TestCase):
         self.assertEqual("hidden", draft["presentation"]["graphic_mode"])
         source["presentation"]["graphic_mode"] = "custom"
         self.assertTrue(SERVER.validate_manifest(source))
+
+    def test_graphic_variant_is_direction_bound_and_defaults_for_legacy_manifests(self):
+        source = manifest()
+        self.assertEqual([], SERVER.validate_manifest(source))
+        draft = SERVER.validate_draft({
+            "base_revision": 1,
+            "presentation": {**source["presentation"], "graphic_variant": "modules"},
+        }, source)
+        self.assertEqual("modules", draft["presentation"]["graphic_variant"])
+        source["presentation"]["graphic_variant"] = "route_map"
+        self.assertTrue(SERVER.validate_manifest(source))
     def test_output_mode_is_editable_but_constrained(self):
         source = manifest()
         draft = SERVER.validate_draft({
@@ -124,6 +135,7 @@ class CardReviewServerTests(unittest.TestCase):
         outputs = [{
             "format": "1x1", "kind": "png", "filename": "quote card.png",
             "relative_path": "output/quote card.png",
+            "absolute_path": "/tmp/output/quote card.png",
         }]
         result = SERVER.output_payload(outputs, "token+/=")
         self.assertEqual("1x1", result[0]["format"])
@@ -131,6 +143,16 @@ class CardReviewServerTests(unittest.TestCase):
             "/api/output/output/quote%20card.png?token=token%2B%2F%3D",
             result[0]["url"],
         )
+        self.assertEqual("/tmp/output/quote card.png", result[0]["absolute_path"])
+
+    def test_legacy_persisted_output_recovers_its_absolute_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = SERVER.output_payload([{
+                "format": "1x1", "kind": "png", "filename": "quote.png",
+                "relative_path": "output/quote.png",
+            }], "token", root)
+            self.assertEqual(str((root / "output" / "quote.png").resolve()), result[0]["absolute_path"])
 
     def test_generate_production_pack_writes_a_fallback_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -147,6 +169,10 @@ class CardReviewServerTests(unittest.TestCase):
             self.assertEqual(["4x5"], [item["format"] for item in result["outputs"]])
             self.assertEqual("svg", result["outputs"][0]["kind"])
             self.assertTrue((root / "session" / "production" / result["outputs"][0]["relative_path"]).is_file())
+            self.assertEqual(
+                str((root / "session" / "production" / result["outputs"][0]["relative_path"]).resolve()),
+                result["outputs"][0]["absolute_path"],
+            )
             self.assertTrue(Path(result["qa_report"]).is_file())
     def test_rejects_mutable_or_invalid_visual_contract(self):
         item = manifest(); item["revision"] = 0; item["formats"][0]["text_scale"] = 1.2
@@ -239,6 +265,14 @@ class CardReviewServerTests(unittest.TestCase):
         self.assertTrue(model["font_capabilities"]["styles"]["bold"]["available"])
         self.assertFalse(model["font_capabilities"]["styles"]["bold"]["exact"])
         self.assertTrue(model["font_capabilities"]["styles"]["italic"]["exact"])
+
+    def test_session_exposes_only_a_valid_native_return_link(self):
+        thread_id = "01a0150e-8a7c-7f73-a731-22f77de51643"
+        return_url = SERVER.return_url_for_thread(thread_id)
+        model = SERVER.session_model(manifest(), Path.cwd(), return_url)
+        self.assertEqual(f"codex://threads/{thread_id}", model["return_url"])
+        with self.assertRaises(ValueError):
+            SERVER.return_url_for_thread("https://example.test/escape")
 
     def test_live_quality_gate_reports_checks(self):
         item = manifest()
@@ -418,6 +452,7 @@ class MultiFormatZipTests(unittest.TestCase):
             output = generation["outputs"][0]
             self.assertEqual("zip", output["kind"])
             zip_path = Path(generation["production_root"]) / output["relative_path"]
+            self.assertEqual(str(zip_path.resolve()), output["absolute_path"])
             self.assertTrue(zip_path.is_file())
             with zipfile.ZipFile(zip_path) as archive:
                 names = archive.namelist()

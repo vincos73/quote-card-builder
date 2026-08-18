@@ -56,6 +56,7 @@ Il production manifest congela contenuto, direzione e brand approvati, poi descr
   "presentation": {
     "logo_mode": "auto",
     "graphic_mode": "auto",
+    "graphic_variant": "modules",
     "output_mode": "all"
   },
   "brand": {},
@@ -82,7 +83,7 @@ Il production manifest congela contenuto, direzione e brand approvati, poi descr
 10. Generare ogni formato dalla composizione approvata, non ridimensionando o ritagliando un PNG precedente.
 11. Incorporare font e logo negli SVG e produrre hash SHA-256 per tutti gli artefatti.
 12. Mantenere lo stato `qa` finché tutte le immagini non sono state ispezionate visivamente.
-13. Conservare `presentation.graphic_mode` dalla prova approvata: `auto` usa il motivo fisso della direzione e `hidden` lo rimuove in tutti i formati.
+13. Conservare `presentation.graphic_mode` e `presentation.graphic_variant` dalla prova approvata: `auto` usa la variante selezionata e `hidden` la rimuove in tutti i formati. Se `graphic_variant` manca, usare `default`; rifiutare varianti appartenenti a un'altra direzione.
 14. Con `presentation.output_mode: all`, includere esattamente `4x5`, `1x1` e `9x16`; con un rapporto specifico, includere soltanto quel formato.
 
 ## Output

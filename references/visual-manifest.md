@@ -37,7 +37,8 @@ Il visual manifest registra il contenuto dichiarato e approvato dall'utente, poi
   },
   "direction": "statement",
   "presentation": {
-    "graphic_mode": "auto"
+    "graphic_mode": "auto",
+    "graphic_variant": "modules"
   },
   "brand": {
     "name": "Nome del brand",
@@ -87,12 +88,12 @@ Il visual manifest registra il contenuto dichiarato e approvato dall'utente, poi
 ## Direzioni
 
 - `editorial` / Contorni: pagina aperta, testo di grande scala e linee di livello limitate agli angoli. Nessuna etichetta tecnica compete con la citazione.
-- `statement` / Manifesto: fondo primario, maiuscolo visuale dominante, unità semantiche forti in accento e due moduli angolari discreti. Il testo archiviato resta invariato e il campo fonte resta sempre allineato a destra.
+- `statement` / Manifesto: fondo primario, maiuscolo visuale dominante, unità semantiche forti in accento e fonte sempre allineata a destra. Il motivo può usare anelli concentrici o moduli discreti.
 - `contextual` / Campo: foglio editoriale chiaro incastonato nel campo d'accento, punti di orientamento agli angoli e una sola regola verticale accanto alla citazione.
 
 Le direzioni cambiano struttura, non soltanto palette. Il testo, l'attribuzione e gli a capo restano identici.
 
-Ogni direzione include un motivo evergreen fisso: linee di contorno per `editorial`, moduli angolari per `statement`, campo puntinato per `contextual`. `presentation.graphic_mode` può essere `auto` (predefinito) oppure `hidden`; non sono previste sostituzioni, posizione, scala, colore o opacità manuali.
+Ogni direzione include un motivo originale e una variante controllata: `editorial` usa `default` (Contours) o `rhythm_lines`; `statement` usa `default` (Echo Rings) o `modules`; `contextual` usa `default` (Dot Grid) o `route_map`. `presentation.graphic_mode` può essere `auto` (predefinito) oppure `hidden`; `presentation.graphic_variant` vale `default` quando manca. Non sono previste posizione, scala, colore o opacità manuali.
 
 ## Output
 
