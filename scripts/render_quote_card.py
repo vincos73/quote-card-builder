@@ -1311,7 +1311,8 @@ def default_alt_text(text: str, attribution: str, source: dict[str, Any] | None 
     source = source or {}
     source_description = source.get("title") or source.get("label") or source.get("locator")
     if source_description:
-        description = f"{description}. Fonte: {source_description}"
+        separator = " " if re.search(r"[.!?…][\"'»”’)]*$", description.rstrip()) else ". "
+        description = f"{description}{separator}Fonte: {source_description}"
     return description
 
 

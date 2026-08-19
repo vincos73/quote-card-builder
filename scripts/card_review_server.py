@@ -757,11 +757,22 @@ def create_server(
             return host in {"127.0.0.1", "localhost", "::1"}
         def authorized(self, query: dict[str, list[str]]) -> bool:
             return secrets.compare_digest(query.get("token", [""])[0], token)
-        def send_value(self, status: int, body: bytes, content_type: str) -> None:
+        def send_value(
+            self, status: int, body: bytes, content_type: str,
+            extra_headers: dict[str, str] | None = None,
+        ) -> None:
             # Preview SVGs are generated locally from a validated manifest and
             # carry embedded @font-face rules. Inline scripts remain forbidden.
-            self.send_response(status); self.send_header("Content-Type", content_type); self.send_header("Content-Length", str(len(body))); self.send_header("Cache-Control", "no-store"); self.send_header("X-Content-Type-Options", "nosniff"); self.send_header("X-Frame-Options", "DENY"); self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"); self.end_headers(); self.wfile.write(body)
+            self.send_response(status); self.send_header("Content-Type", content_type); self.send_header("Content-Length", str(len(body))); self.send_header("Cache-Control", "no-store"); self.send_header("X-Content-Type-Options", "nosniff"); self.send_header("X-Frame-Options", "DENY"); self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+            for key, value in (extra_headers or {}).items(): self.send_header(key, value)
+            self.end_headers(); self.wfile.write(body)
         def send_json(self, status: int, value: dict[str, Any]) -> None: self.send_value(status, json.dumps(value, ensure_ascii=False).encode(), "application/json; charset=utf-8")
+        def send_json_download(self, value: dict[str, Any], filename: str) -> None:
+            body = (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+            self.send_value(
+                HTTPStatus.OK, body, "application/json; charset=utf-8",
+                {"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
         def request_json(self) -> Any:
             if self.headers.get("Content-Type", "").split(";", 1)[0] != "application/json": raise ValueError("Content-Type deve essere application/json")
             length = int(self.headers.get("Content-Length", "0"))
@@ -790,6 +801,18 @@ def create_server(
                     profiles = brand_profiles.list_profiles(profile_store)
                     active = next((item["id"] for item in profiles if item["fingerprint"] == fingerprint), None)
                     self.send_json(HTTPStatus.OK, {"profiles": profiles, "active_profile_id": active})
+                except (OSError, ValueError) as exc:
+                    self.send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(exc)})
+                return
+            if parsed.path == "/api/profiles/export":
+                try:
+                    profile_id = query.get("profile_id", [""])[0]
+                    if not profile_id: raise ValueError("Profilo da esportare non indicato")
+                    profile = brand_profiles.get_profile(profile_id, profile_store)
+                    self.send_json_download(
+                        brand_profiles.portable_profile(profile),
+                        brand_profiles.portable_profile_filename(profile),
+                    )
                 except (OSError, ValueError) as exc:
                     self.send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(exc)})
                 return

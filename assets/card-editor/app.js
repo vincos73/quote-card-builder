@@ -128,6 +128,7 @@
     colors: $('#brand-colors'), colorPaletteSubtitle: $('#color-palette-subtitle'), colorPaletteHelp: $('#color-palette-help'),
     palettePreview: $('#palette-preview'),
     profileSaveState: $('#profile-save-state'), profileSaveToggle: $('#profile-save-toggle'),
+    profileExport: $('#profile-export'),
     profileSaveForm: $('#profile-save-form'), profileName: $('#profile-name'),
     profileSaveCancel: $('#profile-save-cancel'), profileSaveConfirm: $('#profile-save-confirm'),
     profileSaveFeedback: $('#profile-save-feedback'),
@@ -696,12 +697,16 @@
       els.profileSaveState.textContent = saved.name;
       els.profileSaveToggle.textContent = 'Aggiorna';
       els.profileName.value = saved.name;
+      els.profileExport.hidden = false;
+      els.profileExport.disabled = false;
       return;
     }
     els.profileSaveState.textContent = state.profiles.length
       ? `${brandName} · ${state.profiles.length} ${state.profiles.length === 1 ? 'profilo salvato' : 'profili salvati'}`
       : `${brandName} · non salvato`;
     els.profileSaveToggle.textContent = 'Salva';
+    els.profileExport.hidden = true;
+    els.profileExport.disabled = true;
     if (!els.profileName.value) els.profileName.value = brandName;
   };
 
@@ -715,6 +720,8 @@
     } catch (error) {
       els.profileSaveState.textContent = 'Archivio non disponibile';
       els.profileSaveToggle.disabled = true;
+      els.profileExport.hidden = true;
+      els.profileExport.disabled = true;
       setProfileFeedback(error.message, true);
     }
   };
@@ -751,6 +758,40 @@
     } finally {
       els.profileSaveConfirm.disabled = false;
       els.profileSaveConfirm.textContent = 'Salva';
+    }
+  };
+
+  const exportActiveProfile = async () => {
+    const profile = activeProfile();
+    if (!profile) {
+      setProfileFeedback('Salva prima il profilo da esportare.', true);
+      return;
+    }
+    els.profileExport.disabled = true;
+    els.profileExport.textContent = 'Esporto…';
+    try {
+      const token = encodeURIComponent(params.get('token') || '');
+      const profileId = encodeURIComponent(profile.id);
+      const response = await fetch(`/api/profiles/export?profile_id=${profileId}&token=${token}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.message || body.error || `Errore ${response.status}`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = profile.export_filename || 'quote-card-brand.json';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setProfileFeedback(`Profilo “${profile.name}” esportato in JSON.`);
+    } catch (error) {
+      setProfileFeedback(error.message, true);
+    } finally {
+      els.profileExport.disabled = false;
+      els.profileExport.textContent = 'Esporta JSON';
     }
   };
 
@@ -1604,6 +1645,7 @@
     }
   });
   els.profileSaveToggle.addEventListener('click', () => toggleProfileForm(els.profileSaveForm.hidden));
+  els.profileExport.addEventListener('click', exportActiveProfile);
   els.profileSaveCancel.addEventListener('click', () => toggleProfileForm(false));
   els.profileSaveForm.addEventListener('submit', (event) => {
     event.preventDefault();

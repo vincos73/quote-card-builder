@@ -95,7 +95,10 @@
           <p id="color-palette-help" class="palette-help">Profilo protetto.</p>
           <div class="profile-save-row">
             <span><small>Profilo riutilizzabile</small><strong id="profile-save-state">Verifica in corso</strong></span>
-            <button id="profile-save-toggle" class="profile-save-toggle" type="button" aria-expanded="false" aria-controls="profile-save-form">Salva</button>
+            <div class="profile-row-actions">
+              <button id="profile-save-toggle" class="profile-save-toggle" type="button" aria-expanded="false" aria-controls="profile-save-form">Salva</button>
+              <button id="profile-export" class="profile-export" type="button" hidden>Esporta JSON</button>
+            </div>
           </div>
           <form id="profile-save-form" class="profile-save-form" hidden>
             <label for="profile-name"><span>Nome profilo</span><input id="profile-name" type="text" maxlength="80" autocomplete="off"></label>

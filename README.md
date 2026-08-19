@@ -4,7 +4,7 @@ Quote Card Builder è una skill per ChatGPT e Claude che trasforma una frase, un
 
 È pensata per creator, marketer e professionisti che vogliono ottenere rapidamente una grafica coerente, senza aprire un editor professionale. Il testo, l’attribuzione e le scelte editoriali restano sempre sotto il controllo dell’utente.
 
-Versione corrente: **1.5.0**
+Versione corrente: **1.5.1**
 
 <img width="1956" height="1130" alt="quote-card-builder-screen" src="https://github.com/user-attachments/assets/550fbf0b-21b3-4b01-b8f1-48cbd04574d5" />
 
@@ -64,14 +64,14 @@ Quando premi **Genera**, l’interfaccia mostra il nome del file, una cartella a
 
 ## Profili riutilizzabili
 
-Apri **Palette della card** e scegli **Salva profilo** per conservare il brand corrente. Il profilo include soltanto:
+Apri **Palette della card** e scegli **Salva profilo** per conservare il brand corrente. Dopo il salvataggio, **Esporta JSON** scarica un file `<nome-brand>-quote-card-brand.json`. Il profilo include soltanto:
 
 - nome del brand;
 - quattro colori della card;
 - famiglia e file del font;
 - file del logo.
 
-Citazioni, fonti, attribuzioni e alt text non vengono salvati nel profilo. Nei lavori successivi la skill elenca i profili locali disponibili e ne usa uno solo dopo la tua scelta esplicita.
+Citazioni, fonti, attribuzioni e alt text non vengono salvati nel profilo. Nei lavori successivi la skill elenca i profili locali disponibili e ne usa uno solo dopo la tua scelta esplicita. Puoi anche allegare il JSON esportato all'inizio di una nuova conversazione: la skill lo valida, mostra palette, font, logo ed eventuali asset mancanti e attende la tua approvazione prima di applicarlo.
 
 I profili restano sul computer in:
 
@@ -80,6 +80,12 @@ I profili restano sul computer in:
 ```
 
 Questa cartella è separata dall’installazione della skill: aggiornare Quote Card Builder non elimina i profili. Se sposti o cancelli font e loghi collegati, la skill segnala gli asset mancanti prima di usarli.
+
+Il JSON non incorpora i file binari di font e logo: conserva i loro riferimenti. Per controllare manualmente un profilo allegato puoi usare:
+
+```text
+python3 scripts/brand_profiles.py validate <profilo.json>
+```
 
 ## Installazione semplice
 

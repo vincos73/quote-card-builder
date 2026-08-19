@@ -59,6 +59,20 @@ class AltTextTests(unittest.TestCase):
         result = RENDERER.default_alt_text("Il testo", "", {"title": "Articolo di prova"})
         self.assertEqual("Il testo. Fonte: Articolo di prova", result)
 
+    def test_does_not_duplicate_terminal_punctuation_before_source(self):
+        self.assertEqual(
+            "Le idee diventano utili. Fonte: Articolo di prova",
+            RENDERER.default_alt_text(
+                "Le idee diventano utili.", "", {"title": "Articolo di prova"},
+            ),
+        )
+        self.assertEqual(
+            "«Funziona davvero!» Fonte: Articolo di prova",
+            RENDERER.default_alt_text(
+                "«Funziona davvero!»", "", {"title": "Articolo di prova"},
+            ),
+        )
+
     def test_source_falls_back_to_label_then_locator(self):
         self.assertEqual(
             "T. Fonte: example.test",

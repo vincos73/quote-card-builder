@@ -89,6 +89,55 @@ class BrandProfileTests(unittest.TestCase):
             resolved = PROFILES.resolve_brand_assets(relative, root)
         self.assertEqual(str((root / "assets" / "Barlow-Regular.ttf").resolve()), resolved["font"]["regular_path"])
 
+    def test_portable_profile_excludes_store_metadata_and_editorial_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "profiles.json"
+            saved = PROFILES.save_profile("Vincos Social", brand(), store)
+            exported = PROFILES.portable_profile(saved)
+        self.assertEqual("quote-card-brand", exported["profile_type"])
+        self.assertEqual("1.0", exported["schema_version"])
+        self.assertEqual("Vincos Social", exported["name"])
+        self.assertEqual(brand(), exported["brand"])
+        self.assertEqual(
+            {"profile_type", "schema_version", "name", "brand"},
+            set(exported),
+        )
+        self.assertNotIn("fingerprint", json.dumps(exported))
+        self.assertEqual("vincos-social-quote-card-brand.json", PROFILES.portable_profile_filename(saved))
+
+    def test_validates_an_attached_portable_profile_and_resolves_relative_assets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = {
+                "profile_type": "quote-card-brand",
+                "schema_version": "1.0",
+                "name": "Vincos",
+                "brand": brand(),
+            }
+            profile["brand"]["font"]["regular_path"] = "assets/Barlow-Regular.ttf"
+            profile_path = root / "vincos-quote-card-brand.json"
+            profile_path.write_text(json.dumps(profile), encoding="utf-8")
+            validated = PROFILES.load_portable_profile(profile_path)
+        self.assertEqual(
+            str((root / "assets" / "Barlow-Regular.ttf").resolve()),
+            validated["brand"]["font"]["regular_path"],
+        )
+
+    def test_rejects_portable_profiles_with_unknown_fields_or_schema(self):
+        value = {
+            "profile_type": "quote-card-brand",
+            "schema_version": "1.0",
+            "name": "Vincos",
+            "brand": brand(),
+            "content": {"text": "Non deve entrare"},
+        }
+        with self.assertRaises(ValueError):
+            PROFILES.validate_portable_profile(value)
+        value.pop("content")
+        value["schema_version"] = "99"
+        with self.assertRaises(ValueError):
+            PROFILES.validate_portable_profile(value)
+
 
 if __name__ == "__main__":
     unittest.main()

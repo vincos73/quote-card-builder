@@ -838,7 +838,7 @@ select:hover { border-color: var(--line-strong); }
 .profile-save-row {
   min-height: 44px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   margin-top: 10px;
@@ -846,6 +846,7 @@ select:hover { border-color: var(--line-strong); }
   border-top: 1px solid var(--line-dark);
 }
 .profile-save-row > span { min-width: 0; display: grid; gap: 2px; }
+.profile-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .profile-save-row small,
 .profile-save-form label > span {
   color: var(--lavender);
@@ -864,6 +865,7 @@ select:hover { border-color: var(--line-strong); }
   white-space: nowrap;
 }
 .profile-save-toggle,
+.profile-export,
 .profile-save-actions button {
   min-height: 34px;
   padding: 0 9px;
@@ -876,7 +878,11 @@ select:hover { border-color: var(--line-strong); }
   text-transform: uppercase;
 }
 .profile-save-toggle:hover,
+.profile-export:hover,
 .profile-save-actions button:hover { border-color: var(--lavender-light); color: #fff; }
+.profile-save-toggle:disabled,
+.profile-export:disabled,
+.profile-save-actions button:disabled { cursor: wait; opacity: .62; }
 .profile-save-actions button[type="submit"] { border-color: var(--chartreuse); color: var(--chartreuse); }
 .profile-save-form { display: grid; gap: 8px; margin-top: 8px; }
 .profile-save-form[hidden] { display: none; }
@@ -1384,6 +1390,7 @@ select:focus { border-color: var(--chartreuse); }
   .segmented button,
   .format-toolbar button { min-height: 44px; }
   .profile-save-toggle,
+  .profile-export,
   .profile-save-actions button,
   .accessibility-panel summary { min-height: 44px; }
   .format-toolbar { grid-template-columns: repeat(4, 44px) minmax(0, 1fr); }
