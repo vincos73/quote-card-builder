@@ -2,10 +2,12 @@ import copy
 import importlib.util
 import json
 import tempfile
+import threading
 import unittest
 import zipfile
 from unittest import mock
 from pathlib import Path
+from urllib.request import urlopen
 
 MODULE_PATH = Path(__file__).parents[1] / "scripts" / "card_review_server.py"
 SPEC = importlib.util.spec_from_file_location("card_review_server", MODULE_PATH)
@@ -188,6 +190,39 @@ class CardReviewServerTests(unittest.TestCase):
             session = root / "session"; session.mkdir()
             (session / "session-state.json").write_text(json.dumps({"manifest": str(first.resolve())}), encoding="utf-8")
             with self.assertRaises(ValueError): SERVER.create_server(second, root / "session")
+
+    def test_profile_export_endpoint_downloads_a_portable_json(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = root / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest()), encoding="utf-8")
+            store = root / "profiles.json"
+            saved = SERVER.brand_profiles.save_profile("Test Social", manifest()["brand"], store)
+            server, token = SERVER.create_server(
+                manifest_path, root / "session", profile_store=store,
+            )
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                port = server.server_address[1]
+                url = (
+                    f"http://127.0.0.1:{port}/api/profiles/export"
+                    f"?profile_id={saved['id']}&token={token}"
+                )
+                with urlopen(url) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    disposition = response.headers["Content-Disposition"]
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+        self.assertEqual("quote-card-brand", payload["profile_type"])
+        self.assertEqual("Test Social", payload["name"])
+        self.assertNotIn("fingerprint", payload)
+        self.assertEqual(
+            'attachment; filename="test-social-quote-card-brand.json"',
+            disposition,
+        )
 
     def test_recorded_feedback_is_applied_before_returning(self):
         with tempfile.TemporaryDirectory() as directory:

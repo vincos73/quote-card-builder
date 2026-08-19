@@ -224,6 +224,24 @@ class ProductionManifestTests(unittest.TestCase):
             contact_sheet = Path(result["contact_sheet"]).read_text(encoding="utf-8")
             self.assertIn(qa["accessibility"]["alt_text"], contact_sheet)
 
+    def test_render_pack_avoids_double_period_before_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            proof_path = temp_path / "proof.png"
+            proof_path.write_bytes(b"proof")
+            manifest = production_manifest(proof_path)
+            manifest["content"]["text"] = "Le idee diventano utili."
+            manifest["formats"] = [manifest["formats"][0]]
+            manifest["formats"][0]["lines"] = ["Le idee diventano utili."]
+            manifest_path = temp_path / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            result = PACK.render_pack(
+                manifest, manifest_path, temp_path / "output", "never", None, None, "keep",
+            )
+            qa = json.loads(Path(result["qa_report"]).read_text(encoding="utf-8"))
+            self.assertNotIn(".. Fonte:", qa["accessibility"]["alt_text"])
+            self.assertIn(". Fonte:", qa["accessibility"]["alt_text"])
+
     def test_render_pack_prefers_user_alt_text_override(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

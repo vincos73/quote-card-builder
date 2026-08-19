@@ -30,7 +30,7 @@ La skill viene invocata in una task Codex e apre un editor web locale su `127.0.
 
 - editor vincolato, non canvas grafico libero;
 - brand, fonte e dimensioni protetti durante la revisione;
-- profili di brand locali riutilizzabili, scelti sempre esplicitamente;
+- profili di brand locali riutilizzabili, esportabili come JSON e scelti sempre esplicitamente;
 - profili limitati a nome, colori, font e logo, senza contenuti editoriali;
 - alt text automatico con sostituzione facoltativa nel pannello avanzato `Accessibilità`;
 - master e adattamenti compositivi distinti per `4:5`, `1:1` e `9:16`;
@@ -388,6 +388,7 @@ Il core condiviso deve esporre contratti stabili, non decisioni di layout. Quote
 | QCB-016 | Revisionare direzione e composizione in un editor locale vincolato | P1 |
 | QCB-017 | Rendere modificabili tutti i campi editoriali e proteggere fonte, brand e dimensioni | P0 |
 | QCB-018 | Usare lo stesso renderer per anteprima ed export | P0 |
+| QCB-019 | Esportare un profilo brand portabile e validare gli allegati prima del manifest | P1 |
 
 ## 12. Requisiti non funzionali
 

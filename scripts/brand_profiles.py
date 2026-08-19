@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA_VERSION = 1
+PORTABLE_PROFILE_TYPE = "quote-card-brand"
+PORTABLE_SCHEMA_VERSION = "1.0"
 MAX_PROFILES = 30
 MAX_NAME_LENGTH = 80
 MAX_BRAND_BYTES = 100_000
@@ -113,7 +115,50 @@ def profile_summary(profile: dict[str, Any]) -> dict[str, Any]:
         "assets": asset_status(brand),
         "updated_at": profile["updated_at"],
         "fingerprint": profile["fingerprint"],
+        "export_filename": portable_profile_filename(profile),
     }
+
+
+def portable_profile_filename(profile: dict[str, Any]) -> str:
+    return f"{slug(normalize_name(profile.get('name')))}-quote-card-brand.json"
+
+
+def portable_profile(profile: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(profile, dict):
+        raise ValueError("Profilo non valido")
+    return {
+        "profile_type": PORTABLE_PROFILE_TYPE,
+        "schema_version": PORTABLE_SCHEMA_VERSION,
+        "name": normalize_name(profile.get("name")),
+        "brand": normalize_brand(profile.get("brand")),
+    }
+
+
+def validate_portable_profile(value: Any, base_dir: Path | None = None) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != {"profile_type", "schema_version", "name", "brand"}:
+        raise ValueError("Il file deve contenere soltanto profile_type, schema_version, name e brand")
+    if value.get("profile_type") != PORTABLE_PROFILE_TYPE:
+        raise ValueError(f"profile_type deve essere {PORTABLE_PROFILE_TYPE}")
+    if value.get("schema_version") != PORTABLE_SCHEMA_VERSION:
+        raise ValueError(f"schema_version deve essere {PORTABLE_SCHEMA_VERSION}")
+    normalized = {
+        "profile_type": PORTABLE_PROFILE_TYPE,
+        "schema_version": PORTABLE_SCHEMA_VERSION,
+        "name": normalize_name(value.get("name")),
+        "brand": normalize_brand(value.get("brand")),
+    }
+    if base_dir is not None:
+        normalized["brand"] = resolve_brand_assets(normalized["brand"], base_dir)
+    return normalized
+
+
+def load_portable_profile(path: Path) -> dict[str, Any]:
+    profile_path = path.expanduser().resolve()
+    try:
+        value = json.loads(profile_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Profilo JSON non leggibile: {exc}") from exc
+    return validate_portable_profile(value, profile_path.parent)
 
 
 def read_store(path: Path | None = None) -> dict[str, Any]:
@@ -216,12 +261,17 @@ def main(argv: list[str] | None = None) -> int:
     save_parser = subparsers.add_parser("save", help="Salva il brand contenuto in un manifest")
     save_parser.add_argument("--name", required=True)
     save_parser.add_argument("--manifest", type=Path, required=True)
+    validate_parser = subparsers.add_parser("validate", help="Valida un profilo JSON allegato")
+    validate_parser.add_argument("profile_json", type=Path)
     args = parser.parse_args(argv)
     try:
         if args.command == "list":
             value: Any = {"store": str((args.store or default_store_path()).expanduser().resolve()), "profiles": list_profiles(args.store)}
         elif args.command == "show":
             value = get_profile(args.profile_id, args.store)
+        elif args.command == "validate":
+            profile = load_portable_profile(args.profile_json)
+            value = {"valid": True, "profile": profile, "assets": asset_status(profile["brand"])}
         else:
             manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
             if not isinstance(manifest, dict) or not isinstance(manifest.get("brand"), dict):
