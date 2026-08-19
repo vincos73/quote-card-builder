@@ -30,6 +30,7 @@ import render_quote_card as proof
 import render_quote_card_pack as pack
 import inspect_render as inspector
 import apply_card_review as review_applier
+import brand_profiles
 
 MAX_BODY_BYTES = 250_000
 MAX_TEXT_LENGTH = 600
@@ -629,6 +630,7 @@ def create_server(
     manifest_path: Path, session_dir: Path, port: int = 0,
     node: Path | None = None, node_modules: Path | None = None,
     return_thread_id: str | None = None,
+    profile_store: Path | None = None,
 ) -> tuple[ThreadingHTTPServer, str]:
     manifest_path, session_dir = manifest_path.resolve(), session_dir.resolve()
     manifest = read_json(manifest_path)
@@ -644,6 +646,7 @@ def create_server(
     atomic_write_json(state_path, state)
     assets = SCRIPT_DIR.parent / "assets" / "card-editor"
     production_dir = session_dir / "production"
+    profile_store = (profile_store or brand_profiles.default_store_path()).expanduser().resolve()
     node = node.resolve() if node else None
     node_modules = node_modules.resolve() if node_modules else None
     lock = threading.Lock()
@@ -780,6 +783,16 @@ def create_server(
                 if index.is_file(): self.send_value(HTTPStatus.OK, index.read_bytes(), MIME_TYPES[".html"]); return
                 self.send_json(HTTPStatus.NOT_FOUND, {"error": "Interfaccia card-editor mancante"}); return
             if parsed.path == "/api/session": self.send_json(HTTPStatus.OK, session_model(read_json(manifest_path), manifest_path.parent, return_url)); return
+            if parsed.path == "/api/profiles":
+                try:
+                    current_brand = brand_profiles.resolve_brand_assets(read_json(manifest_path)["brand"], manifest_path.parent)
+                    fingerprint = brand_profiles.brand_fingerprint(current_brand)
+                    profiles = brand_profiles.list_profiles(profile_store)
+                    active = next((item["id"] for item in profiles if item["fingerprint"] == fingerprint), None)
+                    self.send_json(HTTPStatus.OK, {"profiles": profiles, "active_profile_id": active})
+                except (OSError, ValueError) as exc:
+                    self.send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(exc)})
+                return
             if parsed.path == "/api/status":
                 current = read_json(state_path); latest = read_json(manifest_path)
                 last_generation = copy.deepcopy(current.get("last_generation"))
@@ -795,9 +808,21 @@ def create_server(
         def do_POST(self) -> None:  # noqa: N802
             parsed, query = urlparse(self.path), parse_qs(urlparse(self.path).query)
             if not self.local_host() or not self.authorized(query): self.send_json(HTTPStatus.FORBIDDEN, {"error": "Sessione non autorizzata"}); return
-            if parsed.path not in {"/api/preview", "/api/generate"}: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Risorsa non trovata"}); return
+            if parsed.path not in {"/api/preview", "/api/generate", "/api/profiles"}: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Risorsa non trovata"}); return
             try:
                 payload, current = self.request_json(), read_json(manifest_path)
+                if parsed.path == "/api/profiles":
+                    if not isinstance(payload, dict) or set(payload) != {"name"}:
+                        raise ValueError("Indica soltanto il nome del profilo")
+                    saved = brand_profiles.save_profile(
+                        payload["name"],
+                        brand_profiles.resolve_brand_assets(current["brand"], manifest_path.parent),
+                        profile_store,
+                    )
+                    self.send_json(HTTPStatus.CREATED, {
+                        "profile": brand_profiles.profile_summary(saved),
+                        "profiles": brand_profiles.list_profiles(profile_store),
+                    }); return
                 if parsed.path == "/api/preview":
                     draft = validate_draft(payload, current)
                     previews = render_preview(draft, manifest_path.parent)
@@ -838,8 +863,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--node", type=Path)
     parser.add_argument("--node-modules", type=Path)
     parser.add_argument("--return-thread-id", help="Task Codex a cui tornare dopo la generazione")
+    parser.add_argument("--profile-store", type=Path, help="Archivio locale alternativo dei profili di brand")
     args = parser.parse_args(argv)
-    try: server, token = create_server(args.manifest, args.session_dir, args.port, args.node, args.node_modules, args.return_thread_id)
+    try: server, token = create_server(args.manifest, args.session_dir, args.port, args.node, args.node_modules, args.return_thread_id, args.profile_store)
     except (OSError, ValueError, json.JSONDecodeError) as exc: print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr); return 2
     url = f"http://127.0.0.1:{server.server_address[1]}/?token={token}"
     print(json.dumps({"status": "ready", "url": url, "session_dir": str(args.session_dir.resolve()), "manifest": str(args.manifest.resolve())}, ensure_ascii=False), flush=True)

@@ -112,7 +112,12 @@
     graphicVariants: {},
     generatePhase: 'idle',
     dismissedGenerationRevision: null,
+    renderedGenerationSignature: null,
+    profiles: [],
+    activeProfileId: null,
     returnUrl: '',
+    resetRecovery: null,
+    resetRecoveryTimer: null,
   };
 
   const els = {
@@ -121,10 +126,15 @@
     lines: $('#visual-text-editor'), formatToolbar: $('#format-toolbar'), formattingState: $('#formatting-state'),
     fillControl: $('#fill-control'), rebalance: $('#rebalance-lines'),
     colors: $('#brand-colors'), colorPaletteSubtitle: $('#color-palette-subtitle'), colorPaletteHelp: $('#color-palette-help'),
+    palettePreview: $('#palette-preview'),
+    profileSaveState: $('#profile-save-state'), profileSaveToggle: $('#profile-save-toggle'),
+    profileSaveForm: $('#profile-save-form'), profileName: $('#profile-name'),
+    profileSaveCancel: $('#profile-save-cancel'), profileSaveConfirm: $('#profile-save-confirm'),
+    profileSaveFeedback: $('#profile-save-feedback'),
     fontSupport: $('#font-support-note'),
     scale: $('#scale'), scaleValue: $('#scale-value'), scaleFitNote: $('#scale-fit-note'),
     textIntegrityHint: $('#text-integrity-hint'),
-    attributionLabel: $('#attribution-label'), altTextLabel: $('#alt-text-label'),
+    attributionLabel: $('#attribution-label'), altTextLabel: $('#alt-text-label'), altTextState: $('#alt-text-state'),
     preview: $('#preview-content'),
     shell: $('#preview-shell'), stage: $('#preview-stage'), message: $('#preview-message'),
     warningCount: $('#qa-count'), qaLabel: $('#qa-label'), draftState: $('#draft-state'),
@@ -133,6 +143,8 @@
     cvdMode: $('#cvd-mode'),
     backLink: $('#back-link'), generate: $('#generate'),
     generateLabel: $('#generate-label'), generatedOutput: $('#generated-output'),
+    qaDetails: $('#qa-details'), warningList: $('#warning-list'), warningState: $('#qa-mini-state'),
+    reset: $('#reset'),
   };
 
   const api = async (path, options = {}) => {
@@ -654,8 +666,11 @@
       .map((key) => ({ key, value: colors[key], ...CARD_COLOR_META[key] }));
     const brandName = normalize(brand.name) || 'Profilo della card';
     els.colorPaletteSubtitle.textContent = `${brandName} · colori applicati alla card`;
-    els.colorPaletteHelp.textContent = 'Profilo protetto: i colori cambiano solo scegliendo un altro profilo per la card.';
+    els.colorPaletteHelp.textContent = 'Colori e asset protetti.';
     els.colors.setAttribute('aria-label', `Colori applicati alla card: ${brandName}`);
+    els.palettePreview.innerHTML = entries.map(({ label, value }) => (
+      `<span class="palette-preview-swatch" style="--swatch-color:${value}" title="${label}: ${value}"></span>`
+    )).join('');
     els.colors.innerHTML = entries.map(({ label, value, usage }) => {
       const swatchStyle = ` style="--swatch-color:${value}"`;
       return `<div class="brand-color" role="listitem">
@@ -664,6 +679,84 @@
         <code>${value}</code>
       </div>`;
     }).join('') || '<p class="palette-empty">Nessun colore disponibile nel profilo della card.</p>';
+  };
+
+  const setProfileFeedback = (message = '', isError = false) => {
+    els.profileSaveFeedback.textContent = message;
+    els.profileSaveFeedback.classList.toggle('is-error', isError);
+    els.profileSaveFeedback.hidden = !message;
+  };
+
+  const activeProfile = () => state.profiles.find((profile) => profile.id === state.activeProfileId) || null;
+
+  const renderProfileState = () => {
+    const brandName = normalize(state.manifest?.brand?.name) || 'Profilo corrente';
+    const saved = activeProfile();
+    if (saved) {
+      els.profileSaveState.textContent = saved.name;
+      els.profileSaveToggle.textContent = 'Aggiorna';
+      els.profileName.value = saved.name;
+      return;
+    }
+    els.profileSaveState.textContent = state.profiles.length
+      ? `${brandName} · ${state.profiles.length} ${state.profiles.length === 1 ? 'profilo salvato' : 'profili salvati'}`
+      : `${brandName} · non salvato`;
+    els.profileSaveToggle.textContent = 'Salva';
+    if (!els.profileName.value) els.profileName.value = brandName;
+  };
+
+  const loadProfiles = async () => {
+    try {
+      const catalog = await api('/profiles');
+      state.profiles = Array.isArray(catalog.profiles) ? catalog.profiles : [];
+      state.activeProfileId = catalog.active_profile_id || null;
+      els.profileSaveToggle.disabled = false;
+      renderProfileState();
+    } catch (error) {
+      els.profileSaveState.textContent = 'Archivio non disponibile';
+      els.profileSaveToggle.disabled = true;
+      setProfileFeedback(error.message, true);
+    }
+  };
+
+  const toggleProfileForm = (open) => {
+    els.profileSaveForm.hidden = !open;
+    els.profileSaveToggle.setAttribute('aria-expanded', String(open));
+    if (open) {
+      const saved = activeProfile();
+      els.profileName.value = saved?.name || normalize(state.manifest?.brand?.name) || '';
+      setProfileFeedback();
+      els.profileName.focus();
+    }
+  };
+
+  const saveCurrentProfile = async () => {
+    const name = normalize(els.profileName.value);
+    if (!name) {
+      setProfileFeedback('Inserisci un nome per il profilo.', true);
+      els.profileName.focus();
+      return;
+    }
+    els.profileSaveConfirm.disabled = true;
+    els.profileSaveConfirm.textContent = 'Salvo…';
+    try {
+      const result = await api('/profiles', { method: 'POST', body: JSON.stringify({ name }) });
+      state.profiles = Array.isArray(result.profiles) ? result.profiles : [];
+      state.activeProfileId = result.profile?.id || null;
+      renderProfileState();
+      toggleProfileForm(false);
+      setProfileFeedback(`Profilo “${result.profile?.name || name}” disponibile per i prossimi lavori.`);
+    } catch (error) {
+      setProfileFeedback(error.message, true);
+    } finally {
+      els.profileSaveConfirm.disabled = false;
+      els.profileSaveConfirm.textContent = 'Salva';
+    }
+  };
+
+  const renderAltTextState = () => {
+    const custom = Boolean(els.altTextLabel.value.trim());
+    els.altTextState.textContent = custom ? 'Personalizzato' : 'Alt text automatico ✓';
   };
 
   const renderFontSupport = () => {
@@ -707,8 +800,9 @@
     els.transformation.textContent = TRANSFORMATION_LABELS[transformation] || transformation;
     els.evidence.textContent = EVIDENCE_LABELS[evidence] || evidence;
     els.session.textContent = 'Responsabilità utente';
-    els.textIntegrityHint.textContent = 'Tipo di formulazione e verifica restano nel riepilogo inferiore.';
+    els.textIntegrityHint.textContent = 'Tipo di formulazione e verifica nel riepilogo inferiore.';
     if (serverDeclaration?.alt_text_suggestion) els.altTextLabel.placeholder = serverDeclaration.alt_text_suggestion;
+    renderAltTextState();
     syncActionButtons();
   };
 
@@ -753,9 +847,11 @@
     const draft = state.draft;
     els.attributionLabel.value = draft.attribution?.label || '';
     els.altTextLabel.value = draft.alt_text || '';
+    renderAltTextState();
     activate($('#logo-control'), 'logo', draft.presentation.logo_mode);
     renderGraphicControl();
     activate($('#output-control'), 'output', draft.presentation.output_mode || 'all');
+    syncPreviewToSelectedOutput(false);
     $$('.directions button').forEach((button) => {
       const active = button.dataset.direction === draft.direction;
       button.classList.toggle('is-active', active);
@@ -841,48 +937,135 @@
   const clearGeneratedOutputs = () => {
     els.generatedOutput.replaceChildren();
     els.generatedOutput.hidden = true;
+    state.renderedGenerationSignature = null;
+  };
+
+  const generationSignature = (outputs = []) => JSON.stringify(outputs.map((output) => ({
+    kind: output.kind || '',
+    format: output.format || '',
+    filename: output.filename || '',
+    url: output.url || '',
+    absolute_path: output.absolute_path || '',
+  })));
+
+  const outputFolderLabel = (value = '') => {
+    const parts = String(value).replace(/\\/g, '/').split('/').filter(Boolean);
+    const folders = parts.slice(0, -1);
+    if (!folders.length) return 'Download disponibile';
+    const tail = folders.slice(-2).join(' / ');
+    return `Cartella: ${folders.length > 2 ? `… / ${tail}` : tail}`;
   };
 
   const renderGeneratedOutputs = (outputs = []) => {
     clearGeneratedOutputs();
+    if (!outputs.length) return;
+
+    const head = document.createElement('div');
+    head.className = 'generated-output-head';
+    const heading = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = 'Output pronti';
+    const count = document.createElement('span');
+    count.textContent = `${outputs.length} file`;
+    heading.append(title, count);
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'generated-dismiss';
+    dismiss.textContent = '×';
+    dismiss.setAttribute('aria-label', 'Nascondi il riepilogo degli output');
+    head.append(heading, dismiss);
+    els.generatedOutput.append(head);
+
     outputs.forEach((output) => {
       const item = document.createElement('div');
       item.className = 'generated-output-item';
       const status = document.createElement('strong');
       status.className = 'generated-status';
-      status.textContent = output.kind === 'zip' ? 'Pacchetto generato ✓' : 'PNG generato ✓';
+      const formatLabel = { '4x5': '4:5', '1x1': '1:1', '9x16': '9:16' }[output.format] || output.format;
+      status.textContent = output.kind === 'zip' ? 'Pacchetto pronto ✓' : `${formatLabel} pronto ✓`;
 
       const location = document.createElement('span');
       location.className = 'generated-location';
-      const locationLabel = document.createElement('span');
-      locationLabel.textContent = 'Salvato in';
-      const path = document.createElement('code');
-      path.textContent = output.absolute_path || output.filename;
-      path.title = output.absolute_path || output.filename;
-      location.append(locationLabel, path);
+      const filename = document.createElement('code');
+      filename.textContent = output.filename;
+      filename.title = output.absolute_path || output.filename;
+      const folder = document.createElement('span');
+      folder.className = 'generated-folder';
+      folder.textContent = outputFolderLabel(output.absolute_path || output.filename);
+      location.append(filename, folder);
+
+      const itemActions = document.createElement('span');
+      itemActions.className = 'generated-item-actions';
+      const copy = document.createElement('button');
+      copy.type = 'button';
+      copy.className = 'generated-copy';
+      copy.textContent = 'Copia percorso';
+      copy.dataset.copyPath = output.absolute_path || output.filename;
+      copy.setAttribute('aria-label', `Copia il percorso di ${output.filename}`);
 
       const link = document.createElement('a');
       link.className = 'generated-link';
       link.href = output.url;
       link.download = output.filename;
-      link.textContent = output.kind === 'zip' ? 'Apri ZIP' : `Apri ${output.format}`;
+      link.textContent = output.kind === 'zip' ? 'Scarica ZIP' : `Scarica ${formatLabel}`;
       link.title = `Scarica ${output.filename}`;
       link.setAttribute('aria-label', output.kind === 'zip' ? `Scarica il pacchetto ${output.filename}` : `Scarica il formato ${output.format}`);
-      item.append(status, location, link);
+      itemActions.append(copy, link);
+      item.append(status, location, itemActions);
       els.generatedOutput.append(item);
     });
-    els.generatedOutput.hidden = !els.generatedOutput.childElementCount;
+    state.renderedGenerationSignature = generationSignature(outputs);
+    els.generatedOutput.hidden = false;
   };
 
   const renderWarnings = (warnings, qa = null) => {
-    const passedChecks = !warnings.length && qa?.checks?.length ? qa.checks.length : 0;
-    els.warningCount.textContent = warnings.length ? warnings.length : passedChecks;
-    els.qaLabel.textContent = warnings.length
-      ? `${warnings.length === 1 ? 'avviso da risolvere' : 'avvisi da risolvere'}`
+    const items = Array.isArray(warnings) ? warnings : [];
+    const passedChecks = !items.length && qa?.checks?.length ? qa.checks.length : 0;
+    els.warningCount.textContent = items.length ? items.length : passedChecks;
+    els.qaLabel.textContent = items.length
+      ? `${items.length === 1 ? 'avviso da risolvere' : 'avvisi da risolvere'}`
       : passedChecks
         ? 'controlli superati'
         : 'vincoli locali validi';
-    els.dot.classList.toggle('is-error', Boolean(warnings.length));
+    els.dot.classList.toggle('is-error', Boolean(items.length));
+
+    els.warningList.replaceChildren();
+    els.qaDetails.hidden = !items.length;
+    els.warningState.textContent = items.length ? `${items.length} ${items.length === 1 ? 'intervento' : 'interventi'}` : '';
+    items.forEach((warning, index) => {
+      const source = typeof warning === 'string' ? { message: warning } : (warning || {});
+      const formatMatch = String(source.message || '').match(/^(4x5|1x1|9x16):\s*/i);
+      const format = source.format && source.format !== 'all' ? source.format : formatMatch?.[1] || '';
+      const message = String(source.message || 'Controllo non superato.').replace(/^(4x5|1x1|9x16):\s*/i, '');
+      const code = String(source.code || '').toLowerCase();
+      const searchable = `${code} ${message}`.toLowerCase();
+      let action = { target: '#visual-text-editor', label: 'Correggi testo', category: 'Testo' };
+      if (/output|formati del pacchetto/.test(searchable)) action = { target: '#output-control', label: 'Scegli formato', category: 'Output' };
+      else if (/decoration|motivo|graphic/.test(searchable)) action = { target: '#graphic-control', label: 'Cambia motivo', category: 'Motivo' };
+      else if (/safe_area|attribuzione|attribution/.test(searchable)) action = { target: '#position-control', label: 'Cambia posizione', category: 'Spazi' };
+      else if (/text_fit|text_outside|outline_too_small|scala|massimo sicuro/.test(searchable)) action = { target: '#scale', label: 'Regola scala', category: 'Ingombro' };
+      else if (/contrast|contrasto/.test(searchable)) action = { target: '.directions', label: 'Cambia stile', category: 'Contrasto' };
+      else if (/svg_|geometria svg|anteprima svg/.test(searchable)) action = { target: 'preview', label: 'Riprova', category: 'Anteprima' };
+
+      const item = document.createElement('li');
+      const copy = document.createElement('div');
+      copy.className = 'warning-copy';
+      const meta = document.createElement('strong');
+      const formatLabel = { '4x5': '4:5', '1x1': '1:1', '9x16': '9:16' }[format] || 'Tutti i formati';
+      meta.textContent = `${formatLabel} · ${action.category}`;
+      const detail = document.createElement('span');
+      detail.textContent = message;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'warning-action';
+      button.textContent = action.label;
+      button.dataset.warningTarget = action.target;
+      button.dataset.warningFormat = format;
+      button.setAttribute('aria-label', `${action.label}: avviso ${index + 1}, ${formatLabel}`);
+      copy.append(meta, detail);
+      item.append(copy, button);
+      els.warningList.append(item);
+    });
   };
 
   const showActivePreview = () => {
@@ -974,6 +1157,18 @@
     if (state.draft) syncFormatControls();
     showActivePreview();
     storeDraft();
+  };
+
+  const syncPreviewToSelectedOutput = (announce = false) => {
+    const output = state.draft?.presentation?.output_mode;
+    if (!output || output === 'all' || !state.draft.formats.some((item) => item.id === output)) return false;
+    const changed = state.activeFormat !== output;
+    if (changed) setFormat(output);
+    if (changed && announce) {
+      const label = { '4x5': '4:5', '1x1': '1:1', '9x16': '9:16' }[output] || output;
+      setMessage(`Anteprima sincronizzata con l’output ${label}.`);
+    }
+    return changed;
   };
 
   const setZoom = (value) => {
@@ -1106,13 +1301,18 @@
       const persistedRevision = String(status.last_generation?.revision ?? '');
       const showPersistedGeneration = persistedOutputs.length
         && state.dismissedGenerationRevision !== persistedRevision;
-      if (showPersistedGeneration) renderGeneratedOutputs(persistedOutputs);
+      const persistedSignature = generationSignature(persistedOutputs);
+      const hasNewPersistedGeneration = showPersistedGeneration
+        && state.renderedGenerationSignature !== persistedSignature;
+      if (hasNewPersistedGeneration) {
+        renderGeneratedOutputs(persistedOutputs);
+      }
       if (status.chatbot_generation?.status === 'running' || status.chatbot_generation?.status === 'queued') {
         state.chatbotRequestId = status.chatbot_generation.request_id;
         setButtonsDisabled(true);
         setGenerateState('running');
         watchChatbot(status.chatbot_generation);
-      } else if (status.chatbot_generation?.status === 'completed' && showPersistedGeneration) {
+      } else if (status.chatbot_generation?.status === 'completed' && hasNewPersistedGeneration) {
         setButtonsDisabled(false);
         setGenerateState('completed');
         setMessage(status.chatbot_generation.message || 'Chatbot completato: PNG pronti.');
@@ -1150,7 +1350,55 @@
     }
   };
 
+  const clearResetRecovery = () => {
+    clearTimeout(state.resetRecoveryTimer);
+    state.resetRecoveryTimer = null;
+    state.resetRecovery = null;
+    els.reset.textContent = 'Ripristina';
+    els.reset.setAttribute('aria-label', 'Ripristina la bozza');
+    els.reset.title = 'Ripristina la bozza';
+  };
+
+  const armResetRecovery = (draft, activeFormat) => {
+    clearTimeout(state.resetRecoveryTimer);
+    state.resetRecovery = { draft, activeFormat };
+    els.reset.textContent = 'Annulla ripristino';
+    els.reset.setAttribute('aria-label', 'Annulla il ripristino della bozza');
+    els.reset.title = 'Annulla il ripristino della bozza';
+    state.resetRecoveryTimer = setTimeout(clearResetRecovery, 10000);
+  };
+
+  const restoreResetDraft = () => {
+    const recovery = state.resetRecovery;
+    if (!recovery) return false;
+    clearResetRecovery();
+    state.draft = clone(recovery.draft);
+    state.activeFormat = recovery.activeFormat;
+    clearGeneratedOutputs();
+    setGenerateState('idle');
+    setFormat(state.activeFormat, false);
+    renderDraftControls();
+    resetHistory();
+    preview();
+    setMessage('Ripristino annullato: la bozza precedente è di nuovo disponibile.');
+    return true;
+  };
+
   const resetDraft = () => {
+    if (restoreResetDraft()) return;
+    updateActiveFormat();
+    state.draft.attribution = {
+      label: els.attributionLabel.value.trim(),
+      role: els.attributionLabel.value.trim() ? 'author' : 'none',
+    };
+    state.draft.alt_text = els.altTextLabel.value.trim();
+    if (JSON.stringify(state.draft) === JSON.stringify(state.baseline)) {
+      setMessage('La bozza coincide già con la revisione corrente.');
+      return;
+    }
+    if (!window.confirm('Ripristinare la bozza? Le modifiche correnti verranno sostituite.')) return;
+    const recoveryDraft = clone(state.draft);
+    const recoveryFormat = state.activeFormat;
     state.draft = clone(state.baseline);
     localStorage.removeItem(storageKey);
     clearGeneratedOutputs();
@@ -1158,14 +1406,15 @@
     renderDraftControls();
     resetHistory();
     preview();
-    setMessage('Bozza ripristinata dalla revisione corrente.');
+    armResetRecovery(recoveryDraft, recoveryFormat);
+    setMessage('Bozza ripristinata. Puoi annullare dal pulsante per 10 secondi.');
   };
 
   const load = async () => {
     try {
       initializeSession(await api('/session'), false);
       setZoom(state.zoom);
-      await Promise.all([preview(), refreshStatus()]);
+      await Promise.all([preview(), refreshStatus(), loadProfiles()]);
     } catch (error) {
       els.session.textContent = 'Sessione non disponibile';
       els.dot.classList.add('is-error');
@@ -1175,7 +1424,21 @@
     }
   };
 
-  $$('.format-tab').forEach((button) => button.addEventListener('click', () => setFormat(button.dataset.format)));
+  $$('.format-tab').forEach((button) => button.addEventListener('click', () => {
+    const format = button.dataset.format;
+    if (state.draft.presentation.output_mode !== 'all') {
+      state.draft.presentation.output_mode = format;
+      activate($('#output-control'), 'output', format);
+      setFormat(format);
+      schedulePreview();
+      const label = { '4x5': '4:5', '1x1': '1:1', '9x16': '9:16' }[format] || format;
+      setMessage(`Anteprima e output impostati su ${label}.`);
+      return;
+    }
+    setFormat(format);
+    const label = { '4x5': '4:5', '1x1': '1:1', '9x16': '9:16' }[format] || format;
+    setMessage(`Anteprima ${label}. Output: tutti i formati.`);
+  }));
   $$('.directions button').forEach((button) => button.addEventListener('click', () => {
     state.graphicVariants[state.draft.direction] = normalizeGraphicVariant(
       state.draft.direction,
@@ -1254,6 +1517,7 @@
       els.scaleValue.value = `${value}%`;
       els.scaleValue.textContent = els.scaleValue.value;
     }
+    if (input === els.altTextLabel) renderAltTextState();
     schedulePreview();
   }));
   [$('#position-control'), $('#logo-control'), $('#graphic-control'), $('#output-control')].forEach((group) => group.addEventListener('click', (event) => {
@@ -1277,9 +1541,74 @@
     } else {
       activate(group, 'output', button.dataset.output);
       state.draft.presentation.output_mode = button.dataset.output;
+      syncPreviewToSelectedOutput(true);
     }
     schedulePreview();
   }));
+  els.warningList.addEventListener('click', (event) => {
+    const button = event.target.closest('.warning-action');
+    if (!button) return;
+    const format = button.dataset.warningFormat;
+    if (format && state.draft.formats.some((item) => item.id === format)) setFormat(format);
+    if (button.dataset.warningTarget === 'preview') {
+      preview();
+      setMessage('Nuovo controllo dell’anteprima in corso.');
+      return;
+    }
+    const target = $(button.dataset.warningTarget);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const focusTarget = target.matches('button, input, textarea, select, [contenteditable="true"]')
+      ? target
+      : target.querySelector('.is-active, button, input, textarea, select, [contenteditable="true"]');
+    focusTarget?.focus({ preventScroll: true });
+    setMessage('Controllo aperto: applica la correzione indicata e ricontrolla l’anteprima.');
+  });
+  els.generatedOutput.addEventListener('click', async (event) => {
+    const dismiss = event.target.closest('.generated-dismiss');
+    if (dismiss) {
+      state.dismissedGenerationRevision = String(state.baseRevision);
+      clearGeneratedOutputs();
+      setMessage('Riepilogo chiuso. Il pulsante principale torna alla chat.');
+      return;
+    }
+    const copy = event.target.closest('.generated-copy');
+    if (!copy) return;
+    const path = copy.dataset.copyPath || '';
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(path);
+      else {
+        const temporary = document.createElement('textarea');
+        try {
+          temporary.value = path;
+          temporary.setAttribute('readonly', '');
+          temporary.style.position = 'fixed';
+          temporary.style.opacity = '0';
+          document.body.append(temporary);
+          temporary.select();
+          if (!document.execCommand('copy')) throw new Error('Copia non disponibile');
+        } finally {
+          temporary.remove();
+        }
+      }
+      copy.textContent = 'Copiato ✓';
+      copy.setAttribute('aria-label', 'Percorso copiato');
+      setMessage('Percorso copiato negli appunti.');
+      window.setTimeout(() => {
+        if (!copy.isConnected) return;
+        copy.textContent = 'Copia percorso';
+        copy.setAttribute('aria-label', `Copia il percorso di ${path.split(/[\\/]/).pop() || 'output'}`);
+      }, 1800);
+    } catch (_) {
+      setMessage('Non riesco a copiare automaticamente il percorso. Usa il nome file mostrato nel riepilogo.', true);
+    }
+  });
+  els.profileSaveToggle.addEventListener('click', () => toggleProfileForm(els.profileSaveForm.hidden));
+  els.profileSaveCancel.addEventListener('click', () => toggleProfileForm(false));
+  els.profileSaveForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    saveCurrentProfile();
+  });
   $('#zoom-in').addEventListener('click', () => setZoom(state.zoom + 10));
   $('#zoom-out').addEventListener('click', () => setZoom(state.zoom - 10));
   els.cvdMode.addEventListener('change', () => {
@@ -1295,7 +1624,7 @@
     if (state.generatePhase === 'completed') returnToChat();
     else generate();
   });
-  $('#reset').addEventListener('click', resetDraft);
+  els.reset.addEventListener('click', resetDraft);
   els.backLink.addEventListener('click', (event) => {
     event.preventDefault();
     setMessage('Seleziona il testo per applicare grassetto, corsivo, sottolineatura o evidenziazione.');
