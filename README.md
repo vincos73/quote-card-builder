@@ -1,10 +1,12 @@
 # Quote Card Builder
 
-Quote Card Builder è una skill per Codex che trasforma una frase, un testo, un URL, un documento o un’idea in una quote card pronta da condividere.
+Quote Card Builder è una skill per ChatGPT e Claude che trasforma una frase, un testo, un URL, un documento o un’idea in una quote card pronta da condividere.
 
 È pensata per creator, marketer e professionisti che vogliono ottenere rapidamente una grafica coerente, senza aprire un editor professionale. Il testo, l’attribuzione e le scelte editoriali restano sempre sotto il controllo dell’utente.
 
 Versione corrente: **1.5.0**
+
+<img width="1956" height="1130" alt="quote-card-builder-screen" src="https://github.com/user-attachments/assets/550fbf0b-21b3-4b01-b8f1-48cbd04574d5" />
 
 ## Che cosa fa
 
@@ -81,7 +83,7 @@ Questa cartella è separata dall’installazione della skill: aggiornare Quote C
 
 ## Installazione semplice
 
-### Prima installazione su macOS
+### Prima installazione su MacOS
 
 1. Apri la pagina delle [release](https://github.com/vincos73/quote-card-builder/releases/latest).
 2. Scarica il file `quote-card-builder.zip` dalla sezione **Assets**.
@@ -134,24 +136,13 @@ Anche su Windows `SKILL.md` deve trovarsi direttamente nella cartella `quote-car
 
 Per il flusso completo servono:
 
-- Codex con supporto alle skill locali;
+- ChatGPT o Claude con supporto alle skill locali;
 - Python 3;
 - un browser locale per il Visual Review Studio.
 
 La generazione PNG usa Node.js e `sharp` quando sono già disponibili nella sessione. La skill non installa dipendenze automaticamente. Se non trova un convertitore PNG compatibile, conserva l’SVG e dichiara il fallback invece di simulare una consegna riuscita.
 
 Il server dell’editor ascolta soltanto su `127.0.0.1` e usa un token di sessione. Fonte, brand e dimensioni sono campi protetti nell’interfaccia.
-
-## Dove vengono salvati i file
-
-Il percorso dipende dalla task e dalla cartella di lavoro. Dopo la generazione, l’editor mostra:
-
-- lo stato della produzione;
-- il nome dell’artefatto;
-- il percorso locale assoluto;
-- un collegamento per aprire o scaricare il file.
-
-Un singolo formato produce normalmente un PNG. L’opzione **Tutti** produce un solo ZIP con i tre rapporti, le miniature e una scheda di contatto.
 
 ## Problemi comuni
 
@@ -162,18 +153,6 @@ Controlla che il percorso termini esattamente con `quote-card-builder/SKILL.md`.
 ### L’editor non si apre
 
 Verifica che Python 3 sia disponibile e che il browser possa aprire indirizzi locali su `127.0.0.1`. La skill deve mostrare un errore reale prima di usare un percorso alternativo.
-
-### Vedo un SVG invece di un PNG
-
-Il convertitore PNG non era disponibile. Installa o rendi disponibili Node.js e `sharp` nell’ambiente usato da Codex, quindi ripeti la generazione.
-
-### Non trovo il file generato
-
-Leggi la voce **Salvato in** mostrata al termine della generazione. Contiene il percorso completo, non soltanto il nome del file.
-
-### Un motivo invade il testo
-
-Riduci la scala del testo o prova un’altra posizione. Preview, controllo qualità ed export usano lo stesso calcolo; se una sovrapposizione reale resta nella card, la generazione deve essere bloccata.
 
 ## Verifica del download
 
