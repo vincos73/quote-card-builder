@@ -1,8 +1,65 @@
 # Quote Card Builder — Product Requirements Document
 
+<!-- impeccable:product-schema 1 -->
+
 Stato: rilascio v1.0.1
 Data: 15 agosto 2026
 Ambito: skill Codex, con primo nucleo editoriale riutilizzabile
+
+## Platform
+
+web
+
+## Users
+
+Creator, marketer, autori, giornalisti, curatori di newsletter, consulenti e social media manager che devono trasformare rapidamente una frase o una fonte in una quote card affidabile. Il pubblico comprende sia utenti neofiti, che devono arrivare al primo output senza imparare un editor professionale, sia utenti ricorrenti, che si aspettano di riutilizzare il proprio profilo di brand.
+
+## Product Purpose
+
+Trasformare frase, testo, URL, documento o idea in una quote card pronta da condividere, mantenendo sotto il controllo dell’utente testo, attribuzione, provenienza e scelte visuali. Il successo è ottenere un artefatto leggibile e coerente in pochi passaggi, con un controllo reale prima della generazione.
+
+## Positioning
+
+Quote Card Builder non compete con un canvas libero. Unisce selezione editoriale, dichiarazioni di provenienza, composizioni vincolate, preview ed export dallo stesso renderer e quality gate tecnico. La promessa specifica è velocità senza confondere parole della fonte, formulazione pubblicata, attribuzione e identità del brand.
+
+## Operating Context
+
+La skill viene invocata in una task Codex e apre un editor web locale su `127.0.0.1`. Manifest, sessioni, profili e output restano sul computer; non sono richiesti account o servizi remoti per l’editor. L’utente lavora tipicamente su una singola card, controlla la prova renderizzata, preme `Genera` e torna alla task con il file prodotto.
+
+## Capabilities and Constraints
+
+- editor vincolato, non canvas grafico libero;
+- brand, fonte e dimensioni protetti durante la revisione;
+- profili di brand locali riutilizzabili, scelti sempre esplicitamente;
+- profili limitati a nome, colori, font e logo, senza contenuti editoriali;
+- alt text automatico con sostituzione facoltativa nel pannello avanzato `Accessibilità`;
+- master e adattamenti compositivi distinti per `4:5`, `1:1` e `9:16`;
+- PNG come consegna predefinita e SVG come fallback dichiarato quando manca un convertitore;
+- nessuna deduzione automatica del brand da fonte, memoria o profilo personale.
+
+## Brand Commitments
+
+L’identità dell’interfaccia è Vincos e segue il sistema Plotter Bench documentato in `DESIGN.md`. L’identità della card resta invece quella del profilo fornito o approvato dall’utente: palette dell’editor e palette dell’output non devono essere confuse.
+
+## Evidence on Hand
+
+- renderer deterministico SVG/PNG e adattatori di formato nel repository;
+- Visual Review Studio locale con preview ed export prodotti dallo stesso motore;
+- manifest, report QA, output e sessioni di prova sotto `work/`;
+- suite automatica Python e controlli JavaScript per validazione, rendering, server e formattazione;
+- nessun testimonial, benchmark commerciale o dato di utilizzo pubblico da inventare.
+
+## Product Principles
+
+1. La provenienza resta visibile e la decisione editoriale appartiene all’utente.
+2. Brand, attribuzione e persona citata sono ruoli distinti.
+3. Il percorso principale deve restare rapido; opzioni avanzate e spiegazioni appaiono soltanto quando servono.
+4. Preview, quality gate ed export devono condividere lo stesso renderer e gli stessi vincoli.
+5. La persistenza locale deve essere esplicita, leggibile e resistente agli aggiornamenti della skill.
+
+## Accessibility & Inclusion
+
+Ogni output deve avere un alt text disponibile. L’interfaccia usa controlli nativi, focus visibile, stati comprensibili senza dipendere dal solo colore, regioni live, target mobili di almeno 44px e rispetto di `prefers-reduced-motion`. La simulazione delle principali condizioni di visione dei colori è un controllo di anteprima, non sostituisce il quality gate di contrasto.
 
 ## 1. Sintesi
 

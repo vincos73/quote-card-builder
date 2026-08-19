@@ -9,7 +9,7 @@ colors:
   concrete-light: "#e7e9e5"
   chartreuse-signal: "#b9d936"
   chartreuse-dark: "#6f8217"
-  lavender-guide: "#8c77a1"
+  lavender-guide: "#9b86ad"
   lavender-light: "#d8cedb"
   instrument-ink: "#171619"
   paper-ink: "#252328"
@@ -24,6 +24,11 @@ typography:
     fontWeight: 750
     lineHeight: 1
     letterSpacing: ".045em"
+  byline:
+    fontFamily: "QCB Onest, QCB Barlow, Helvetica Neue, system-ui, sans-serif"
+    fontSize: "10px"
+    fontWeight: 500
+    lineHeight: 1
   body:
     fontFamily: "QCB Barlow, Helvetica Neue, system-ui, sans-serif"
     fontSize: "14px"
@@ -149,7 +154,7 @@ La palette contrappone chrome melanzana e superfici di cemento, con lavanda per 
 - **Azione di generazione** (800, 15px): unica CTA con enfasi Barlow piena e non tutta maiuscola.
 - **Body UI** (400, 14px, 1.4): testo leggibile, candidato selezionato e contenuto editoriale modificabile.
 - **Label strumento** (500, 11px, tracking .03em, maiuscolo): nomi dei controlli e intestazioni del rail.
-- **Metadato** (400–500, 9–10px, maiuscolo quando è uno stato): misure, aiuti, formati, valori, revisione e ledger; valori numerici con cifre tabulari.
+- **Metadato** (400–500, 10px, maiuscolo quando è uno stato): misure, formati, valori, revisione e ledger; valori numerici con cifre tabulari. Gli aiuti operativi usano 11px per non diventare microtesto.
 
 **The Instrument-Language Rule.** Usa il mono quando il testo si comporta come misura, comando o stato; usa Barlow per lettura e decisione; limita Orbitron e Onest alla firma di prodotto.
 
@@ -191,17 +196,17 @@ Il letto di cemento combina griglia, righelli, tacche, quote e linee di registro
 
 ### Rail strumenti
 
-Il rail melanzana è una sequenza di sezioni separate da cuciture da 1px: Provenienza richiudibile, Direzione, Testo e formattazione, Scala dal massimo, Posizione, Logo, Elemento grafico, Output finale e Quality gate. Il testo usa un editor visuale con toolbar per grassetto, corsivo, sottolineato ed evidenziato; Invio crea una riga e una riga vuota produce un'interlinea completa. Trattamento e stato della prova non sono controlli: restano informazioni persistenti nel ledger. Campi ed editor hanno fondo aubergine-chrome, raggio zero e bordo tenue; hover rafforza il bordo, focus lo porta al chartreuse. I gruppi segmentati e le direzioni condividono lo stesso stato attivo bordo+testo, senza card interne.
+Il rail melanzana è una sequenza di sezioni separate da cuciture da 1px: Palette protetta richiudibile, Direzione, Testo e formattazione, Scala dal massimo, Posizione, Logo, Elemento grafico, Output finale e Quality gate. La palette resta riconoscibile da un riepilogo cromatico compatto, può salvare il brand corrente come profilo locale riutilizzabile e non rende modificabili colori o asset nel normale batch editoriale. Il testo usa un editor visuale con toolbar per grassetto, corsivo, sottolineato ed evidenziato; le istruzioni sugli a capo restano accessibili ma non occupano stabilmente il rail. Trattamento e stato della prova non sono controlli: restano informazioni persistenti nel ledger. L'alt text automatico è lo stato predefinito; la sostituzione manuale compare soltanto aprendo `Accessibilità`. Campi ed editor hanno fondo aubergine-chrome, raggio zero e bordo tenue; hover rafforza il bordo, focus lo porta al chartreuse. I gruppi segmentati e le direzioni condividono lo stesso stato attivo bordo+testo, senza card interne.
 
 ### Ledger di audit e actionbar
 
-Il ledger persiste in basso e tiene visibili conteggio QA, dichiarazioni correnti, stato sessione e revisione. Il check chartreuse indica gate superato; una X corallo e messaggi espliciti indicano errore. `Genera`, unica campitura chartreuse, salva le modifiche correnti, esegue gate e renderer e, a esito positivo, mostra i link compatti ai formati prodotti.
+Il ledger persiste in basso e tiene visibili conteggio QA, dichiarazioni correnti, stato sessione e revisione. Il check chartreuse indica gate superato; una X corallo e messaggi espliciti indicano errore. `Genera`, unica campitura chartreuse, salva le modifiche correnti, esegue gate e renderer e, a esito positivo, apre una ricevuta compatta con filename, cartella abbreviata, copia del percorso e download. La ricevuta è richiudibile e non sostituisce l’azione principale `Torna alla chat`.
 
 ### Stati, feedback e accessibilità
 
-Loading attenua temporaneamente lo SVG e imposta `aria-busy`; il preview message, la lista warning e il messaggio d’azione spiegano l’esito. Le modifiche salvano una bozza locale e aggiornano l’anteprima dopo 360ms. `Genera` si disabilita durante la richiesta; conflitti di revisione, generazione pendente e QA tecnica fallita restano stati testuali e bloccanti, non soli cambi di colore.
+Loading attenua temporaneamente lo SVG e imposta `aria-busy`; il preview message, la lista warning e il messaggio d’azione spiegano l’esito. Le modifiche salvano una bozza locale e aggiornano l’anteprima dopo 360ms. Il salvataggio profilo usa un form inline dentro la Palette, conferma la persistenza per gli usi successivi e non interrompe la composizione con una modale. `Genera` si disabilita durante la richiesta; conflitti di revisione, generazione pendente e QA tecnica fallita restano stati testuali e bloccanti, non soli cambi di colore.
 
-Tutti i controlli interattivi usano elementi nativi, label o nomi accessibili. Il focus visibile è un outline chartreuse da 2px con offset 3px; gli stati selezionati aggiornano `aria-pressed`; warning e stato usano regioni live. Con `prefers-reduced-motion: reduce` transizioni e scroll animato vengono disattivati.
+Tutti i controlli interattivi usano elementi nativi, label o nomi accessibili. La simulazione Visione è un controllo di ispezione richiudibile e dichiara che non modifica gli export. Il focus visibile è un outline chartreuse da 2px con offset 3px; gli stati selezionati aggiornano `aria-pressed`; warning e stato usano regioni live. Su mobile i target primari e le tab formato misurano almeno 44px. Con `prefers-reduced-motion: reduce` transizioni e scroll animato vengono disattivati.
 
 **The Renderer-Boundary Rule.** Il chrome misura e controlla; il renderer produce la card. Non replicare la card con HTML/CSS né applicare la palette del banco al contenuto del brand.
 
@@ -216,6 +221,7 @@ Tutti i controlli interattivi usano elementi nativi, label o nomi accessibili. I
 - **Do** usare Orbitron e Onest soltanto nella firma di testata, Barlow per UI leggibile e il mono per controlli, numeri, misure e audit.
 - **Do** mantenere l’actionbar/ledger persistente e condensarlo, senza rimuoverne dichiarazione e azione primaria, sui viewport stretti.
 - **Do** esporre loading, salvataggio locale, warning, conflitto, disabilitazione e successo con feedback testuale azionabile.
+- **Do** applicare progressive disclosure a istruzioni, profilo e accessibilità: stato breve nel flusso, dettaglio soltanto su richiesta.
 - **Do** preservare focus visibile, `aria-pressed`, `aria-busy`, regioni live e preferenza reduced motion.
 
 ### Don't:
@@ -226,3 +232,4 @@ Tutti i controlli interattivi usano elementi nativi, label o nomi accessibili. I
 - **Don't** rasterizzare lo SVG, ritagliare un formato per ottenerne un altro o modificare fonte, brand e dimensioni protette.
 - **Don't** nascondere dichiarazioni e QA nell’header o in un drawer: appartengono al ledger persistente.
 - **Don't** affidare selezione, validità, errore o blocco al solo colore.
+- **Don't** lasciare spiegazioni permanenti sotto controlli standard quando un’etichetta, un tooltip o un pannello avanzato sono sufficienti.

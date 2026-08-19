@@ -36,16 +36,22 @@
           <button id="zoom-out" class="compact-control icon-control" type="button" aria-label="Riduci zoom">−</button>
           <output id="zoom-output" for="zoom-out zoom-in">100%</output>
           <button id="zoom-in" class="compact-control icon-control" type="button" aria-label="Aumenta zoom">+</button>
-          <label class="cvd-control">
-            <span>Visione</span>
-            <select id="cvd-mode" aria-label="Simula tipo di visione dei colori">
-              <option value="normal">Normale</option>
-              <option value="deuteranopia">Deuteranopia</option>
-              <option value="protanopia">Protanopia</option>
-              <option value="tritanopia">Tritanopia</option>
-              <option value="achromatopsia">Acromatopsia</option>
-            </select>
-          </label>
+          <details class="inspection-menu">
+            <summary>Visione</summary>
+            <div class="inspection-popover">
+              <label class="cvd-control" for="cvd-mode">
+                <span>Simulazione colore</span>
+                <select id="cvd-mode" aria-label="Simula tipo di visione dei colori">
+                  <option value="normal">Normale</option>
+                  <option value="deuteranopia">Deuteranopia</option>
+                  <option value="protanopia">Protanopia</option>
+                  <option value="tritanopia">Tritanopia</option>
+                  <option value="achromatopsia">Acromatopsia</option>
+                </select>
+              </label>
+              <p>Modifica solo la prova a schermo, mai il file esportato.</p>
+            </div>
+          </details>
         </div>
         <p id="preview-message" class="preview-message">Caricamento prova visuale…</p>
         <div class="format-tabs" role="group" aria-label="Formato anteprima">
@@ -78,14 +84,29 @@
         <span id="draft-state" class="draft-state">Bozza locale</span>
       </div>
 
-      <section class="color-palette-panel" aria-labelledby="color-palette-heading">
-        <div class="palette-heading">
+      <details class="color-palette-panel">
+        <summary class="palette-heading">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h2.5a6.5 6.5 0 0 0 0-13H12Z"/><circle cx="7.5" cy="10" r=".8"/><circle cx="10" cy="7" r=".8"/><circle cx="14" cy="7" r=".8"/></svg>
           <div><h2 id="color-palette-heading">Palette della card</h2><p id="color-palette-subtitle">Colori applicati alla card</p></div>
+          <span id="palette-preview" class="palette-preview" aria-hidden="true"></span>
+        </summary>
+        <div class="palette-content">
+          <div id="brand-colors" class="brand-colors" role="list" aria-label="Colori applicati alla card"></div>
+          <p id="color-palette-help" class="palette-help">Profilo protetto.</p>
+          <div class="profile-save-row">
+            <span><small>Profilo riutilizzabile</small><strong id="profile-save-state">Verifica in corso</strong></span>
+            <button id="profile-save-toggle" class="profile-save-toggle" type="button" aria-expanded="false" aria-controls="profile-save-form">Salva</button>
+          </div>
+          <form id="profile-save-form" class="profile-save-form" hidden>
+            <label for="profile-name"><span>Nome profilo</span><input id="profile-name" type="text" maxlength="80" autocomplete="off"></label>
+            <div class="profile-save-actions">
+              <button id="profile-save-cancel" type="button">Annulla</button>
+              <button id="profile-save-confirm" type="submit">Salva</button>
+            </div>
+          </form>
+          <p id="profile-save-feedback" class="profile-save-feedback" role="status" aria-live="polite" hidden></p>
         </div>
-        <div id="brand-colors" class="brand-colors" role="list" aria-label="Colori applicati alla card"></div>
-        <p id="color-palette-help" class="palette-help">Profilo colore scelto per questa card.</p>
-      </section>
+      </details>
 
       <form id="editor-form">
         <fieldset class="tool-section direction-section">
@@ -119,7 +140,7 @@
               <span class="motif-label">Nessuno</span>
             </button>
           </div>
-          <p id="graphic-help" class="field-help">Il motivo segue lo stile selezionato.</p>
+          <p id="graphic-help" class="sr-only">Il motivo segue lo stile selezionato.</p>
         </fieldset>
 
         <div id="editorial-fields" class="tool-section lines-section content-section">
@@ -147,13 +168,18 @@
             <div id="visual-text-editor" class="visual-text-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="visual-text-label" aria-describedby="font-support-note lines-help" spellcheck="true"></div>
           </div>
           <p id="font-support-note" class="field-help font-support-note" role="status" hidden></p>
-          <p id="lines-help" class="field-help">Invio crea una nuova riga; una riga vuota aggiunge spazio. Testo e a capo restano identici in tutti i formati.</p>
-          <div class="editorial-meta-grid">
+          <p id="lines-help" class="sr-only">Invio crea una nuova riga. Comando Invio riequilibra gli a capo.</p>
+          <div class="editorial-meta-grid editorial-meta-primary">
             <label for="attribution-label"><span>Attribuzione</span><input id="attribution-label" type="text" autocomplete="off"></label>
-            <label for="alt-text-label"><span>Alt text</span><input id="alt-text-label" type="text" autocomplete="off"></label>
           </div>
-          <p class="field-help">Suggerita da testo e attribuzione; lascia vuoto per usarla, scrivi per sostituirla.</p>
-          <p id="text-integrity-hint" class="field-help integrity-hint" aria-live="polite">Tipo di formulazione e verifica restano nel riepilogo inferiore.</p>
+          <details class="accessibility-panel">
+            <summary><span>Accessibilità</span><strong id="alt-text-state">Alt text automatico ✓</strong></summary>
+            <div class="accessibility-content">
+              <label for="alt-text-label"><span>Alt text personalizzato</span><input id="alt-text-label" type="text" autocomplete="off" aria-describedby="alt-text-help"></label>
+              <p id="alt-text-help" class="field-help">Lascia vuoto per usare quello automatico.</p>
+            </div>
+          </details>
+          <p id="text-integrity-hint" class="sr-only" aria-live="polite">Tipo di formulazione e verifica nel riepilogo inferiore.</p>
         </div>
 
         <div class="tool-section scale-section">
@@ -165,7 +191,7 @@
             <output id="scale-value" for="scale">100%</output>
           </div>
           <input id="scale" type="range" min="80" max="100" value="100" step="1">
-          <p id="scale-fit-note" class="field-help" role="status" hidden></p>
+          <p id="scale-fit-note" class="sr-only" role="status" hidden></p>
         </div>
 
         <fieldset class="tool-section position-section">
@@ -202,7 +228,13 @@
             <button type="button" data-output="1x1">1:1</button>
             <button type="button" data-output="9x16">9:16</button>
           </div>
-          <p class="field-help">Il pacchetto contiene PNG; l’SVG resta soltanto un passaggio tecnico. Con Tutti, Genera consegna un unico .zip con i tre formati.</p>
+          <section id="qa-details" class="qa-panel" aria-labelledby="qa-details-title" aria-live="polite" hidden>
+            <div class="qa-heading">
+              <h2 id="qa-details-title">Da correggere</h2>
+              <span id="qa-mini-state" class="qa-mini-state"></span>
+            </div>
+            <ul id="warning-list" class="warnings"></ul>
+          </section>
         </fieldset>
 
       </form>
@@ -215,7 +247,7 @@
       <span id="status-dot" class="status-dot" aria-hidden="true"></span>
       <strong id="qa-count">0</strong>
       <span id="qa-label">controlli in corso</span>
-      <span id="action-message" class="action-message" role="status">L’anteprima si aggiorna automaticamente.</span>
+      <span id="action-message" class="action-message" role="status">Pronto.</span>
     </div>
 
     <dl class="audit-ledger" aria-label="Stato editoriale e sessione">

@@ -4,7 +4,7 @@ Quote Card Builder è una skill per Codex che trasforma una frase, un testo, un 
 
 È pensata per creator, marketer e professionisti che vogliono ottenere rapidamente una grafica coerente, senza aprire un editor professionale. Il testo, l’attribuzione e le scelte editoriali restano sempre sotto il controllo dell’utente.
 
-Versione corrente: **1.4.1 — Guided Setup**
+Versione corrente: **1.5.0**
 
 ## Che cosa fa
 
@@ -53,9 +53,31 @@ La skill prepara il contenuto e apre il Visual Review Studio nel browser. Nell�
 - usare grassetto, corsivo, sottolineato, evidenziato, accento o contorno;
 - ridurre la dimensione del testo e scegliere la posizione verticale;
 - mostrare o nascondere il logo;
+- salvare il brand corrente come profilo riutilizzabile;
 - esportare in `4:5`, `1:1`, `9:16` oppure in tutti i formati.
 
-Quando premi **Genera**, l’interfaccia mostra il nome del file, il percorso completo in cui è stato salvato e il comando per tornare alla task Codex.
+L’alt text viene creato automaticamente. Se serve correggerlo, il campo facoltativo si trova nel pannello **Accessibilità**.
+
+Quando premi **Genera**, l’interfaccia mostra il nome del file, una cartella abbreviata, il comando per copiare il percorso completo e l’azione per tornare alla task Codex.
+
+## Profili riutilizzabili
+
+Apri **Palette della card** e scegli **Salva profilo** per conservare il brand corrente. Il profilo include soltanto:
+
+- nome del brand;
+- quattro colori della card;
+- famiglia e file del font;
+- file del logo.
+
+Citazioni, fonti, attribuzioni e alt text non vengono salvati nel profilo. Nei lavori successivi la skill elenca i profili locali disponibili e ne usa uno solo dopo la tua scelta esplicita.
+
+I profili restano sul computer in:
+
+```text
+~/.quote-card-builder/profiles.json
+```
+
+Questa cartella è separata dall’installazione della skill: aggiornare Quote Card Builder non elimina i profili. Se sposti o cancelli font e loghi collegati, la skill segnala gli asset mancanti prima di usarli.
 
 ## Installazione semplice
 

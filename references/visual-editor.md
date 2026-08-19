@@ -56,7 +56,7 @@ Includere uno o più formati fra `4x5`, `1x1` e `9x16`. Usare rispettivamente i 
 - `text`: testo corrente ricostruito dalle righe del formato attivo;
 - `transformation` ed `evidence_status`: dichiarazioni dell'utente conservate nel batch e mostrate come informazioni nel ledger, senza pulsanti di modifica nell'editor;
 - `attribution.label`: unico campo editabile per l'attribuzione. `attribution.role` non ha un controllo in UI (non produce alcun trattamento visivo diverso sulla card): il batch lo deriva automaticamente come `author` quando `label` non è vuota, `none` quando è vuota;
-- `content.alt_text`: descrizione accessibile, al più 400 caratteri. Vuoto per default: l'editor mostra come segnaposto la stessa descrizione automatica (testo, attribuzione e fonte quando presente) che finisce nel `<desc>` dell'SVG e nella scheda di contatto. Un valore digitato dall'utente la sostituisce integralmente ed è quello che il production pack registra in `accessibility.alt_text` con `declared_by: user`; vuoto resta `declared_by: auto`;
+- `content.alt_text`: descrizione accessibile, al più 400 caratteri. Il flusso principale mostra soltanto `Alt text automatico`; il campo di sostituzione vive nel pannello avanzato `Accessibilità`, richiuso per default. Vuoto mostra come segnaposto la stessa descrizione automatica (testo, attribuzione e fonte quando presente) che finisce nel `<desc>` dell'SVG e nella scheda di contatto. Un valore digitato dall'utente la sostituisce integralmente ed è quello che il production pack registra in `accessibility.alt_text` con `declared_by: user`; vuoto resta `declared_by: auto`;
 - `direction`: `editorial`, `statement`, `contextual`;
 - `content.styles`: al massimo 64 intervalli `{start, end, type}` sul testo normalizzato, con `type` fra `bold`, `italic`, `underline`, `highlight`, `accent`, `outline`; gli intervalli possono attraversare gli a capo. `highlight` è disponibile in tutte le direzioni, inclusa `statement` / Poster: la fascia va misurata con le metriche del font in grassetto (il Poster renderizza sempre in grassetto), reali quando disponibili o con un fattore di compensazione altrimenti, per non produrre una fascia più corta delle parole coperte. `highlight`, `accent` e `outline` decidono tutti e tre di cosa è riempito un glifo e restano quindi mutuamente esclusivi sullo stesso intervallo: applicarne uno rimuove l'altro. `outline` disegna glifi cavi (`fill="none"` più `stroke`) nel colore d'inchiostro che il testo avrebbe comunque avuto, con spessore proporzionale alla dimensione della riga che traccia: è un cambio di forma, mai di palette, e non promuove una riga Poster a enfasi;
 - `content.emphasis`: campo legacy facoltativo; l'editor lo converte in `bold` quando apre un manifest precedente e poi lo svuota nel batch;
@@ -81,6 +81,10 @@ Prima di qualsiasi selezione manuale, una card senza stili né enfasi legacy mos
 La sessione deve esporre le capacità del font risolto. `bold_path` garantisce il grassetto reale; in sua assenza il renderer può dichiarare una resa sintetica quando esiste `regular_path`. `italic_path` è necessario per abilitare il corsivo. Se una faccia manca, mostrare vicino alla toolbar un messaggio con funzione interessata, causa e recupero; un controllo non disponibile resta focalizzabile per spiegare il problema ma non applica lo stile. Sottolineato ed evidenziato non richiedono facce aggiuntive.
 
 Fonte osservata, brand e dimensioni restano immutabili nell'editor. Tutti i campi editoriali sono dichiarazioni dell'utente.
+
+Il pannello Palette può salvare il brand immutabile corrente come profilo locale riutilizzabile. `GET /api/profiles` restituisce nomi, palette, font, stato degli asset e l'eventuale profilo coincidente con il brand corrente. `POST /api/profiles` accetta soltanto `{ "name": "..." }`: il server prende il brand dal manifest validato, risolve come assoluti gli eventuali path relativi di font e logo e lo salva atomicamente in `~/.quote-card-builder/profiles.json`. Il client non può inviare o modificare il contenuto del brand attraverso questa API. Citazione, fonte, attribuzione e alt text non entrano mai nell'archivio.
+
+Prima di costruire un nuovo manifest, elencare l'archivio con `python3 scripts/brand_profiles.py list`; mostrare i profili disponibili e usarne uno soltanto dopo una scelta esplicita. `python3 scripts/brand_profiles.py show <id>` restituisce il brand completo. Se `assets.ready` è falso, chiedere asset aggiornati o un altro profilo invece di usare riferimenti mancanti.
 
 ## Batch
 
@@ -134,6 +138,8 @@ Dopo una generazione riuscita, l'editor deve separare esito e azione: mostra `PN
 ```text
 python3 scripts/card_review_server.py <manifest.json> --session-dir <session-dir> [--return-thread-id <thread-id>]
 ```
+
+`--profile-store <path>` sostituisce l'archivio profili soltanto per test o ambienti portabili; il percorso utente predefinito resta separato dalla skill.
 
 3. Aprire l'URL `127.0.0.1` restituito dalla prima riga JSON.
 4. Mantenere attivo il processo e attendere l'evento senza intervalli superiori a 50 secondi.
