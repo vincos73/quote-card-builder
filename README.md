@@ -93,29 +93,7 @@ python3 scripts/brand_profiles.py validate <profilo.json>
 
 1. Apri la pagina delle [release](https://github.com/vincos73/quote-card-builder/releases/latest).
 2. Scarica il file `quote-card-builder.zip` dalla sezione **Assets**.
-3. Fai doppio clic sullo ZIP per estrarlo.
-4. Nel Finder scegli **Vai > Vai alla cartella…**.
-5. Incolla `~/.codex/skills` e premi Invio.
-6. Sposta nella cartella `skills` la cartella estratta e chiamala `quote-card-builder`.
-7. Chiudi e riapri Codex, oppure avvia una nuova task.
-
-L’installazione è corretta se questo file esiste:
-
-```text
-~/.codex/skills/quote-card-builder/SKILL.md
-```
-
-Attenzione a non creare un livello in più, per esempio `quote-card-builder/quote-card-builder/SKILL.md`: in quel caso Codex potrebbe non trovare la skill.
-
-### Aggiornamento di una versione esistente
-
-1. Chiudi le task che stanno usando Quote Card Builder.
-2. Rinomina la cartella attuale `quote-card-builder` in `quote-card-builder.backup`.
-3. Installa la nuova cartella seguendo i passaggi precedenti.
-4. Avvia una nuova task e controlla la versione in `SKILL.md`.
-5. Quando la nuova versione funziona, puoi conservare o eliminare il backup.
-
-Questo metodo evita di lasciare file appartenenti a versioni precedenti dentro la nuova installazione.
+3. Caricalo in ChatGPT o Claude e chiedi di installarlo come skill
 
 ### Installazione da Terminale su macOS o Linux
 
