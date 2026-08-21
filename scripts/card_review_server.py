@@ -31,11 +31,11 @@ import render_quote_card_pack as pack
 import inspect_render as inspector
 import apply_card_review as review_applier
 import brand_profiles
+from quote_card_contract import MAX_LINES
 
 MAX_BODY_BYTES = 250_000
 MAX_TEXT_LENGTH = 600
 ALT_TEXT_MAX_LENGTH = proof.ALT_TEXT_MAX_LENGTH
-MAX_LINES = 40  # defensive ceiling only; real limit is available space, see render_quote_card.MAX_LINES
 MAX_FORMATS = 3
 FORMAT_IDS = {"4x5", "1x1", "9x16"}
 DIRECTIONS = {"editorial", "statement", "contextual"}
@@ -151,16 +151,60 @@ def record_and_apply_feedback(
     """Persist one validated batch and apply it before returning to the editor."""
     state_path = session_dir / "session-state.json"
     feedback_path = session_dir / "feedback.json"
-    state_now = read_json(state_path)
-    if state_now.get("last_feedback_id") != state_now.get("applied_feedback_id") and state_now.get("last_feedback_id"):
+    state_before = read_json(state_path)
+    if state_before.get("last_feedback_id") != state_before.get("applied_feedback_id") and state_before.get("last_feedback_id"):
         raise RuntimeError("Il feedback precedente attende ancora di essere applicato")
-    atomic_write_json(feedback_path, feedback)
-    state_now.update({
+
+    # The applier owns the complete mutable contract. Run the same validation
+    # before feedback.json or session-state.json can expose a pending batch;
+    # otherwise a validator mismatch makes the editor permanently read-only.
+    manifest_before = read_json(manifest_path)
+    review_applier.validate_feedback(feedback, manifest_before)
+    manifest_after = review_applier.expected_manifest_after_feedback(manifest_before, feedback)
+    feedback_before = read_json(feedback_path) if feedback_path.exists() else None
+    state_pending = copy.deepcopy(state_before)
+    state_pending.update({
         "manifest_revision": feedback["base_revision"],
         "last_feedback_id": feedback["feedback_id"],
     })
-    atomic_write_json(state_path, state_now)
-    return review_applier.apply_review(manifest_path, feedback_path, session_dir)
+    try:
+        atomic_write_json(feedback_path, feedback)
+        atomic_write_json(state_path, state_pending)
+        return review_applier.apply_review(manifest_path, feedback_path, session_dir)
+    except Exception as exc:
+        rollback_errors: list[str] = []
+        try:
+            current_manifest = read_json(manifest_path)
+            if current_manifest == manifest_after:
+                atomic_write_json(manifest_path, manifest_before)
+        except Exception as rollback_exc:
+            rollback_errors.append(f"manifest: {rollback_exc}")
+        try:
+            current_feedback = read_json(feedback_path) if feedback_path.exists() else None
+            if current_feedback == feedback:
+                if feedback_before is None:
+                    feedback_path.unlink(missing_ok=True)
+                else:
+                    atomic_write_json(feedback_path, feedback_before)
+        except Exception as rollback_exc:
+            rollback_errors.append(f"feedback: {rollback_exc}")
+        try:
+            current_state = read_json(state_path)
+            if current_state.get("last_feedback_id") == feedback["feedback_id"]:
+                for key in ("last_feedback_id", "applied_feedback_id", "manifest_revision"):
+                    if key in state_before:
+                        current_state[key] = copy.deepcopy(state_before[key])
+                    else:
+                        current_state.pop(key, None)
+                atomic_write_json(state_path, current_state)
+        except Exception as rollback_exc:
+            rollback_errors.append(f"session-state: {rollback_exc}")
+        if rollback_errors:
+            raise RuntimeError(
+                "Applicazione del feedback non riuscita e rollback incompleto: "
+                + "; ".join(rollback_errors)
+            ) from exc
+        raise
 
 
 def error(errors: list[str], message: str) -> None:
@@ -301,6 +345,7 @@ def session_model(
     """Return the selected candidate plus the values reviewable in the editor."""
     model = {key: copy.deepcopy(manifest[key]) for key in ("schema_version", "state", "revision", "content", "direction", "presentation", "formats", "brand", "source", "output")}
     model["font_capabilities"] = font_capabilities(manifest, manifest_dir or Path.cwd())
+    model["limits"] = {"max_lines": MAX_LINES}
     model["return_url"] = return_url
     return model
 

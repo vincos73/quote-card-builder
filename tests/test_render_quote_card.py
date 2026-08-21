@@ -105,6 +105,32 @@ class VisualManifestTests(unittest.TestCase):
         manifest = valid_visual_manifest()
         self.assertEqual([], RENDERER.validate_visual_manifest(manifest, Path.cwd()))
 
+    def test_rejects_seven_hard_lines(self):
+        manifest = valid_visual_manifest()
+        lines = [f"Riga {index}" for index in range(7)]
+        manifest["content"].update(
+            {
+                "text": " ".join(lines),
+                "lines": lines,
+                "emphasis": "",
+            }
+        )
+
+        errors = RENDERER.validate_visual_manifest(manifest, Path.cwd())
+
+        self.assertIn(
+            ("content.lines", "lines"),
+            {(error["path"], error["code"]) for error in errors},
+        )
+
+    def test_statement_visual_lines_preserves_eight_hard_rows(self):
+        lines = [f"Riga {index}" for index in range(8)]
+
+        self.assertEqual(
+            lines,
+            RENDERER.statement_visual_lines(lines, width=1440, height=1800),
+        )
+
     def test_accepts_optional_alt_text_override(self):
         manifest = valid_visual_manifest()
         manifest["content"]["alt_text"] = "Una descrizione accessibile scelta a mano."

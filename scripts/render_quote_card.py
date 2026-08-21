@@ -21,6 +21,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import rasterize
+from quote_card_contract import MAX_LINES
 
 DIRECTIONS = ("editorial", "statement", "contextual")
 GRAPHIC_VARIANTS = {
@@ -39,10 +40,6 @@ STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent", "outline"}
 # not equally supported across the three rasterisers this project targets.
 OUTLINE_STROKE_EM = 0.035
 SYSTEM_CARD_FONTS = {"arial"}
-# Not a design suggestion: a defensive ceiling only, so malformed/pasted
-# input can't produce a pathological line array. The real constraint is
-# vertical/horizontal fit, already enforced by the safe-area QA checks.
-MAX_LINES = 40
 # Generous enough for a short descriptive sentence plus a source citation,
 # tight enough to keep an accidental essay out of an accessibility field.
 ALT_TEXT_MAX_LENGTH = 400
@@ -211,7 +208,12 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
         or any(not isinstance(line, str) for line in lines if isinstance(lines, list))
         or (isinstance(lines, list) and not any(line.strip() for line in lines if isinstance(line, str)))
     ):
-        add_error(errors, "content.lines", "lines", f"Inserire almeno una riga di testo (fino a {MAX_LINES}, oltre è lo spazio del formato a decidere se il testo entra).")
+        add_error(
+            errors,
+            "content.lines",
+            "lines",
+            f"Inserire da 1 a {MAX_LINES} righe di testo.",
+        )
         lines = []
     if lines and normalize_spaces(" ".join(lines)) != normalize_spaces(text):
         add_error(
@@ -660,11 +662,20 @@ def statement_visual_lines(lines: list[str], width: int, height: int) -> list[st
             rows.append(" ".join(current))
         return rows
 
+    # A hard break is authored content: it cannot be merged to satisfy the
+    # preferred poster row count. In particular, more hard rows than the
+    # preferred maximum used to make the widening loop impossible to satisfy.
+    target_rows = max(maximum_rows, len(lines))
     visual = wrap(target_units)
-    while len(visual) > maximum_rows:
+    for _ in range(64):
+        if len(visual) <= target_rows:
+            return visual
         target_units *= 1.12
         visual = wrap(target_units)
-    return visual
+
+    # Deterministic safety net for pathological input: disable soft wrapping
+    # while preserving every user-authored hard row exactly and always terminate.
+    return list(lines)
 
 
 def statement_strong_rows(

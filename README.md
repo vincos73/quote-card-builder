@@ -4,7 +4,7 @@ Quote Card Builder è una skill per ChatGPT e Claude che trasforma una frase, un
 
 È pensata per creator, marketer e professionisti che vogliono ottenere rapidamente una grafica coerente, senza aprire un editor professionale. Il testo, l’attribuzione e le scelte editoriali restano sempre sotto il controllo dell’utente.
 
-Versione corrente: **1.5.1**
+Versione corrente: **1.5.2**
 
 <img width="1956" height="1130" alt="quote-card-builder-screen" src="https://github.com/user-attachments/assets/550fbf0b-21b3-4b01-b8f1-48cbd04574d5" />
 

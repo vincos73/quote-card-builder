@@ -13,6 +13,10 @@
   const FILL_STYLE_TYPES = new Set(['highlight', 'accent', 'outline']);
   const pointLength = (value) => Array.from(String(value || '')).length;
   const normalizeText = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+  const normalizeLineLimit = (value, fallback = 6) => {
+    const safeFallback = Number.isSafeInteger(fallback) && fallback >= 1 ? fallback : 6;
+    return Number.isSafeInteger(value) && value >= 1 ? value : safeFallback;
+  };
 
   const normalizeStyleRanges = (styles) => {
     const grouped = new Map();
@@ -100,11 +104,11 @@
     return offset + (hasText && current ? 1 : 0);
   };
 
-  const suggestBalancedLines = (text, preferredCount = null) => {
+  const suggestBalancedLines = (text, preferredCount = null, maximumCount = 6) => {
     const words = normalizeText(text).split(' ').filter(Boolean);
     if (words.length < 2) return words;
 
-    const maxLines = Math.min(40, words.length);
+    const maxLines = Math.min(normalizeLineLimit(maximumCount), words.length);
     const wordUnits = words.map((word) => pointLength(word));
     const prefix = [0];
     wordUnits.forEach((units) => prefix.push(prefix.at(-1) + units));
@@ -221,6 +225,7 @@
     defaultEmphasisSpan,
     fillTypeAt,
     nextFillType,
+    normalizeLineLimit,
     normalizeStyleRanges,
     normalizeText,
     pointLength,

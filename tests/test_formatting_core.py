@@ -65,6 +65,19 @@ class FormattingCoreTests(unittest.TestCase):
         )
         self.assertTrue(all(len(line.split()) > 1 for line in result))
 
+    def test_balanced_lines_respect_the_session_line_limit(self):
+        result = self.run_core(
+            "core.suggestBalancedLines(Array(30).fill('parola').join(' '), 12, 3)"
+        )
+        self.assertEqual(3, len(result))
+        self.assertEqual(["parola"] * 30, " ".join(result).split(" "))
+
+    def test_invalid_session_line_limit_falls_back_to_six(self):
+        result = self.run_core(
+            "[undefined,null,0,-1,6,8,'8'].map((value)=>core.normalizeLineLimit(value))"
+        )
+        self.assertEqual([6, 6, 6, 6, 6, 8, 6], result)
+
     def test_outline_is_an_allowed_inline_style(self):
         result = self.run_core("Array.from(core.STYLE_TYPES).includes('outline')")
         self.assertTrue(result)
