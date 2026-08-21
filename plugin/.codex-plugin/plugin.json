@@ -1,0 +1,37 @@
+{
+  "name": "quote-card-builder",
+  "version": "1.5.2",
+  "description": "Trasforma frasi, testi, URL, documenti e idee in quote card con revisione editoriale e visuale guidata.",
+  "author": {
+    "name": "Vincenzo Cosenza",
+    "url": "https://github.com/vincos73"
+  },
+  "homepage": "https://github.com/vincos73/quote-card-builder",
+  "repository": "https://github.com/vincos73/quote-card-builder",
+  "keywords": [
+    "quote-card",
+    "social-media",
+    "editorial",
+    "marketing",
+    "italian"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Quote Card Builder",
+    "shortDescription": "Crea quote card fedeli alla fonte e al brand.",
+    "longDescription": "Seleziona o sviluppa una frase, controlla provenienza e attribuzione, revisiona la composizione nel Visual Review Studio e genera output pronti per i social senza perdere il controllo editoriale.",
+    "developerName": "Vincenzo Cosenza",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/vincos73/quote-card-builder",
+    "defaultPrompt": [
+      "Trasforma questa frase in una quote card.",
+      "Trova la frase più forte in questo testo e crea una quote card.",
+      "Crea un post kit a partire da questa idea."
+    ],
+    "brandColor": "#12161F"
+  }
+}
