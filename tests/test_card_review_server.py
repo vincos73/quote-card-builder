@@ -7,6 +7,8 @@ import unittest
 import zipfile
 from unittest import mock
 from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request
 from urllib.request import urlopen
 
 MODULE_PATH = Path(__file__).parents[1] / "scripts" / "card_review_server.py"
@@ -264,6 +266,179 @@ class CardReviewServerTests(unittest.TestCase):
             self.assertEqual(2, updated["revision"])
             self.assertEqual("editorial", updated["direction"])
             self.assertEqual(state["last_feedback_id"], state["applied_feedback_id"])
+
+    def test_seven_lines_are_rejected_before_persistence_and_session_is_reusable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = root / "manifest.json"
+            source = manifest()
+            manifest_path.write_text(json.dumps(source), encoding="utf-8")
+            session_dir = root / "session"
+            session_dir.mkdir()
+            feedback_path = session_dir / "feedback.json"
+            previous_feedback = {"feedback_id": "feedback-previous"}
+            feedback_path.write_text(json.dumps(previous_feedback), encoding="utf-8")
+            state_before = {
+                "manifest": str(manifest_path.resolve()),
+                "feedback_path": str(feedback_path.resolve()),
+                "manifest_revision": 1,
+                "last_feedback_id": "feedback-previous",
+                "applied_feedback_id": "feedback-previous",
+            }
+            (session_dir / "session-state.json").write_text(
+                json.dumps(state_before), encoding="utf-8",
+            )
+
+            invalid_draft = copy.deepcopy(source)
+            invalid_draft["formats"][0]["lines"] = [
+                "Una", "frase", "verificata.", "", "", "", "",
+            ]
+            with self.assertRaisesRegex(ValueError, "da 1 a 6"):
+                SERVER.validate_draft({
+                    "base_revision": 1,
+                    "formats": invalid_draft["formats"],
+                }, source)
+            invalid_feedback = SERVER.approval_feedback(invalid_draft, 1)
+            with self.assertRaisesRegex(SERVER.review_applier.ReviewError, "da 1 a 6"):
+                SERVER.record_and_apply_feedback(manifest_path, session_dir, invalid_feedback)
+
+            self.assertEqual(
+                state_before,
+                json.loads((session_dir / "session-state.json").read_text(encoding="utf-8")),
+            )
+            self.assertEqual(
+                previous_feedback,
+                json.loads(feedback_path.read_text(encoding="utf-8")),
+            )
+            self.assertEqual(1, json.loads(manifest_path.read_text(encoding="utf-8"))["revision"])
+
+            valid_feedback = SERVER.approval_feedback(source, 1)
+            applied = SERVER.record_and_apply_feedback(manifest_path, session_dir, valid_feedback)
+            state_after = json.loads((session_dir / "session-state.json").read_text(encoding="utf-8"))
+            self.assertTrue(applied["approval_requested"])
+            self.assertEqual(state_after["last_feedback_id"], state_after["applied_feedback_id"])
+
+    def test_failed_apply_rolls_back_manifest_feedback_and_pending_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = root / "manifest.json"
+            source = manifest()
+            manifest_path.write_text(json.dumps(source), encoding="utf-8")
+            session_dir = root / "session"
+            session_dir.mkdir()
+            feedback_path = session_dir / "feedback.json"
+            previous_feedback = {"feedback_id": "feedback-previous"}
+            feedback_path.write_text(json.dumps(previous_feedback), encoding="utf-8")
+            state_before = {
+                "manifest": str(manifest_path.resolve()),
+                "feedback_path": str(feedback_path.resolve()),
+                "manifest_revision": 1,
+                "last_feedback_id": "feedback-previous",
+                "applied_feedback_id": "feedback-previous",
+            }
+            (session_dir / "session-state.json").write_text(
+                json.dumps(state_before), encoding="utf-8",
+            )
+            draft = copy.deepcopy(source)
+            draft["direction"] = "editorial"
+            feedback = SERVER.approval_feedback(draft, 1)
+            expected = SERVER.review_applier.expected_manifest_after_feedback(source, feedback)
+
+            def fail_after_manifest_write(*_args):
+                SERVER.atomic_write_json(manifest_path, expected)
+                raise SERVER.review_applier.ReviewError("errore applicazione simulato")
+
+            with mock.patch.object(
+                SERVER.review_applier, "apply_review", side_effect=fail_after_manifest_write,
+            ):
+                with self.assertRaisesRegex(
+                    SERVER.review_applier.ReviewError, "errore applicazione simulato",
+                ):
+                    SERVER.record_and_apply_feedback(manifest_path, session_dir, feedback)
+
+            self.assertEqual(source, json.loads(manifest_path.read_text(encoding="utf-8")))
+            self.assertEqual(
+                state_before,
+                json.loads((session_dir / "session-state.json").read_text(encoding="utf-8")),
+            )
+            self.assertEqual(
+                previous_feedback,
+                json.loads(feedback_path.read_text(encoding="utf-8")),
+            )
+
+    def test_session_exposes_the_shared_line_limit(self):
+        self.assertEqual(6, SERVER.MAX_LINES)
+        self.assertEqual(SERVER.MAX_LINES, SERVER.review_applier.MAX_LINES)
+        self.assertEqual(
+            {"max_lines": SERVER.MAX_LINES},
+            SERVER.session_model(manifest(), Path.cwd())["limits"],
+        )
+
+    def test_generate_rejects_seven_lines_without_poisoning_the_http_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = root / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest()), encoding="utf-8")
+            session_dir = root / "session"
+            server, token = SERVER.create_server(manifest_path, session_dir)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                endpoint = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post_generate(lines):
+                    body = json.dumps({
+                        "base_revision": 1,
+                        "formats": [{
+                            "id": "4x5", "width": 1440, "height": 1800,
+                            "lines": lines, "text_scale": 1.0,
+                            "vertical_position": "center",
+                        }],
+                    }).encode("utf-8")
+                    return urlopen(Request(
+                        f"{endpoint}/api/generate?token={token}",
+                        data=body,
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    ))
+
+                with self.assertRaises(HTTPError) as rejected:
+                    post_generate([
+                        "Una", "frase", "verificata.", "", "", "", "",
+                    ])
+                self.assertEqual(422, rejected.exception.code)
+                rejected.exception.close()
+
+                with urlopen(f"{endpoint}/api/status?token={token}") as response:
+                    status = json.loads(response.read().decode("utf-8"))
+                self.assertFalse(status["feedback_pending"])
+                self.assertIsNone(status["last_feedback_id"])
+
+                fake_generation = {
+                    "valid": True,
+                    "state": "qa",
+                    "formats": [],
+                    "contact_sheet": "",
+                    "qa_report": str(root / "qa.json"),
+                    "warnings": [],
+                    "outputs": [],
+                    "production_manifest": str(root / "production-manifest.json"),
+                    "production_root": str(root / "production"),
+                }
+                (root / "production").mkdir()
+                with (
+                    mock.patch.object(
+                        SERVER, "generate_production_pack", return_value=fake_generation,
+                    ),
+                    mock.patch.object(SERVER, "chatbot_cli_path", return_value=None),
+                ):
+                    with post_generate(["Una frase verificata."]) as response:
+                        generated = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(generated["applied"])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
 
     def test_empty_emphasis_is_valid(self):
         item = manifest(); item["content"]["emphasis"] = ""

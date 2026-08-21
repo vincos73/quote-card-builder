@@ -14,6 +14,12 @@ from pathlib import Path
 from typing import Any
 
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+from quote_card_contract import MAX_LINES
+
+
 DIRECTIONS = {"editorial", "statement", "contextual"}
 LOGO_MODES = {"auto", "hidden"}
 GRAPHIC_MODES = {"auto", "hidden"}
@@ -142,10 +148,10 @@ def _validate_state(state: dict[str, Any], manifest: Path, feedback: Path, data:
 
 
 def _validate_lines(lines: Any, text: str, path: str) -> list[str]:
-    if not isinstance(lines, list) or not 1 <= len(lines) <= 6 or any(
+    if not isinstance(lines, list) or not 1 <= len(lines) <= MAX_LINES or any(
         not isinstance(line, str) for line in lines
     ):
-        raise ReviewError(f"{path}.lines deve contenere da 1 a 6 stringhe.")
+        raise ReviewError(f"{path}.lines deve contenere da 1 a {MAX_LINES} stringhe.")
     if not any(line.strip() for line in lines):
         raise ReviewError(f"{path}.lines deve contenere almeno una riga di testo.")
     if _normalise(" ".join(lines)) != _normalise(text):
@@ -280,6 +286,23 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
             raise ReviewError("vertical_position non ammessa.")
 
 
+def validate_feedback(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
+    """Validate a review batch before any session file marks it pending."""
+    _validate_patch(feedback, manifest)
+
+
+def expected_manifest_after_feedback(
+    manifest: dict[str, Any], feedback: dict[str, Any]
+) -> dict[str, Any]:
+    """Return the exact manifest an application may atomically persist."""
+    validate_feedback(feedback, manifest)
+    candidate = json.loads(json.dumps(manifest))
+    revision = candidate["revision"]
+    if _apply_patch(candidate, feedback):
+        candidate["revision"] = revision + 1
+    return candidate
+
+
 def _apply_patch(manifest: dict[str, Any], feedback: dict[str, Any]) -> bool:
     changed = False
     content_patch = feedback.get("content", {})
@@ -325,7 +348,7 @@ def apply_review(manifest_path: Path, feedback_path: Path, session_dir: Path) ->
         feedback = _load_json(feedback_path, "Feedback")
         state = _load_json(state_path, "session-state")
         _validate_state(state, manifest_path, feedback_path, feedback)
-        _validate_patch(feedback, manifest)
+        validate_feedback(feedback, manifest)
         before = json.loads(json.dumps(manifest))
         changed = _apply_patch(manifest, feedback)
         revision = manifest["revision"]

@@ -11,7 +11,7 @@
   const {
     DIRECTION_EMPHASIS_TYPE, FILL_CYCLE, FILL_STYLE_TYPES, STYLE_TYPES, canonicalLineStart,
     clampStyleRanges, clearFillRanges, defaultEmphasisSpan, fillTypeAt, nextFillType,
-    normalizeStyleRanges, normalizeText: normalize, pointLength, remapStyleRanges,
+    normalizeLineLimit, normalizeStyleRanges, normalizeText: normalize, pointLength, remapStyleRanges,
     suggestBalancedLines,
   } = formatting;
   const normalizeScale = (value) => {
@@ -118,6 +118,7 @@
     returnUrl: '',
     resetRecovery: null,
     resetRecoveryTimer: null,
+    maxLines: 6,
   };
 
   const els = {
@@ -547,7 +548,7 @@
     // The current count is a weak preference, not a constraint: a better
     // split with one row more or less is allowed to win.
     const preferred = format.lines.filter((line) => normalize(line)).length;
-    const suggested = suggestBalancedLines(text, preferred || null);
+    const suggested = suggestBalancedLines(text, preferred || null, state.maxLines);
     if (!suggested.length || JSON.stringify(suggested) === JSON.stringify(format.lines)) {
       els.formattingState.textContent = 'Gli a capo sono già equilibrati';
       return;
@@ -906,6 +907,7 @@
   const initializeSession = (manifest, preserveFormat = true) => {
     const previousFormat = state.activeFormat;
     state.manifest = manifest;
+    state.maxLines = normalizeLineLimit(manifest.limits?.max_lines);
     state.returnUrl = /^codex:\/\/threads\/[0-9a-f-]+$/i.test(manifest.return_url || '')
       ? manifest.return_url
       : '';
@@ -934,8 +936,8 @@
     const errors = [];
     const sourceText = normalize(state.draft.text);
     state.draft.formats.forEach((format) => {
-      if (!Array.isArray(format.lines) || format.lines.length < 1 || format.lines.length > 40 || !format.lines.some((line) => normalize(line))) {
-        errors.push(`${format.id}: usa da 1 a 40 righe.`);
+      if (!Array.isArray(format.lines) || format.lines.length < 1 || format.lines.length > state.maxLines || !format.lines.some((line) => normalize(line))) {
+        errors.push(`${format.id}: usa da 1 a ${state.maxLines} righe.`);
       } else if (!format.lines.every((line) => typeof line === 'string')) {
         errors.push(`${format.id}: ogni riga deve essere testuale.`);
       } else if (normalize(format.lines.join(' ')) !== sourceText) {

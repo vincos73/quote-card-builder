@@ -2,9 +2,11 @@
 
 Quote Card Builder è una skill per ChatGPT e Claude che trasforma una frase, un testo, un URL, un documento o un’idea in una quote card pronta da condividere.
 
+È disponibile anche come plugin italiano skills-only per ChatGPT e Codex. Il pacchetto plugin usa la stessa skill canonica e viene generato automaticamente, così le due distribuzioni non possono divergere.
+
 È pensata per creator, marketer e professionisti che vogliono ottenere rapidamente una grafica coerente, senza aprire un editor professionale. Il testo, l’attribuzione e le scelte editoriali restano sempre sotto il controllo dell’utente.
 
-Versione corrente: **1.5.1**
+Versione corrente: **1.5.2**
 
 <img width="1956" height="1130" alt="quote-card-builder-screen" src="https://github.com/user-attachments/assets/550fbf0b-21b3-4b01-b8f1-48cbd04574d5" />
 
@@ -89,6 +91,10 @@ python3 scripts/brand_profiles.py validate <profilo.json>
 
 ## Installazione semplice
 
+### Plugin per ChatGPT e Codex
+
+La release include `quote-card-builder-plugin.zip`, il pacchetto destinato al Plugin Directory. Per lo sviluppo locale viene installato tramite un marketplace personale; la candidatura pubblica resta separata dalla normale installazione della skill.
+
 ### Prima installazione su MacOS
 
 1. Apri la pagina delle [release](https://github.com/vincos73/quote-card-builder/releases/latest).
@@ -160,7 +166,7 @@ Esegui tutti i test dalla radice del progetto:
 python3 -m unittest discover -s tests -v
 ```
 
-La pipeline GitHub esegue la suite su Python 3.10, 3.11, 3.12 e 3.13. Il workflow di release controlla che il tag coincida con la versione dichiarata in `SKILL.md`, crea `quote-card-builder.zip` e pubblica il checksum SHA-256.
+La pipeline GitHub esegue la suite su Python 3.10, 3.11, 3.12 e 3.13. Il workflow di release controlla che il tag coincida con la versione dichiarata in `SKILL.md`, crea `quote-card-builder.zip` e `quote-card-builder-plugin.zip`, quindi pubblica i checksum SHA-256.
 
 ## Licenze dei font
 

@@ -5,7 +5,7 @@ description: Trasforma frasi, testi, URL, documenti e idee in quote card. Usa qu
 
 # Quote Card Builder
 
-Versione: **1.5.1**
+Versione: **1.5.2**
 
 Separare sempre provenienza osservata, dichiarazioni editoriali dell'utente e produzione visuale. La skill non inventa dati né certifica le scelte dell'utente: propone etichette e segnala incongruenze, ma l'utente può modificare e approvare testo, classificazione, prova, attribuzione ed è il garante finale.
 
