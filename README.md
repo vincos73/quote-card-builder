@@ -6,7 +6,7 @@ Quote Card Builder è una skill per ChatGPT e Claude che trasforma una frase, un
 
 È pensata per creator, marketer e professionisti che vogliono ottenere rapidamente una grafica coerente, senza aprire un editor professionale. Il testo, l’attribuzione e le scelte editoriali restano sempre sotto il controllo dell’utente.
 
-Versione corrente: **1.5.2**
+Versione corrente: **1.7.11**
 
 <img width="1956" height="1130" alt="quote-card-builder-screen" src="https://github.com/user-attachments/assets/550fbf0b-21b3-4b01-b8f1-48cbd04574d5" />
 
@@ -165,6 +165,41 @@ Esegui tutti i test dalla radice del progetto:
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+### Vertical slice MCP locale
+
+Il repository include ora un backend MCP stdio minimo ma reale, documentato in
+[references/mcp-pilot.md](references/mcp-pilot.md). Il flusso usa tre tool coordinati:
+`quote_card_builder_open_editor` apre una sola MCP App, `preview_quote_card` aggiorna i dati
+nella stessa interfaccia senza rimontarla e `produce_quote_card` genera l'SVG canonico
+solo dopo il clic dell'utente su **Genera**. Prima della chiamata la skill raccoglie frase,
+attribuzione, palette neutra o personalizzata e direzione visuale; non chiede un tono e non
+sostituisce l'app con file generati direttamente in chat. La UI consente di correggere queste scelte
+e propone Editoriale, Manifesto o Campo. I tre tool riusano il renderer canonico e il
+profilo neutro soltanto quando l'utente lo sceglie. I risultati includono lo snapshot completo
+dell'editor, quindi frase e palette iniziali non dipendono dai tempi del bridge. Non esegue pubblicazione, storage remoto
+o modifiche all'installazione personale.
+
+La MCP App riprende ora i controlli principali del vecchio editor: toolbar per grassetto,
+corsivo, sottolineato e riempimenti, riequilibrio degli a capo, motivo originale/alternativo/
+nascosto, scala dal massimo, posizione verticale e palette esplicita. L'iframe incorpora inoltre
+Barlow e Orbitron e usa la palette Plotter Bench dell'editor locale; la palette della card resta
+quella del profilo neutro o personalizzato scelto dall'utente. Il vertical slice supporta
+4:5 e 1:1; il formato 9:16 continua a essere gestito dal Visual Review Studio locale finché
+non verrà portato nello stesso contratto MCP.
+
+Per provarlo in un ambiente isolato:
+
+```bash
+python3 -m venv /private/tmp/quote-card-builder-mcp-venv
+/private/tmp/quote-card-builder-mcp-venv/bin/python -m pip install -r requirements-mcp.txt
+/private/tmp/quote-card-builder-mcp-venv/bin/python -m unittest discover -s tests -v
+```
+
+Il manifest del plugin collega `.mcp.json` al server incluso; il builder mantiene
+sincronizzati sorgente della skill e pacchetto plugin. Il server espone inoltre una
+MCP App opzionale per la preview inline, descritta nel documento del pilot; Cloud Run,
+autenticazione e storage restano decisioni operative separate.
 
 La pipeline GitHub esegue la suite su Python 3.10, 3.11, 3.12 e 3.13. Il workflow di release controlla che il tag coincida con la versione dichiarata in `SKILL.md`, crea `quote-card-builder.zip` e `quote-card-builder-plugin.zip`, quindi pubblica i checksum SHA-256.
 

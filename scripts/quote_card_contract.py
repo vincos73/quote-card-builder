@@ -3,6 +3,6 @@
 from __future__ import annotations
 
 
-# Six lines is the product contract used by the renderer and by every backend
-# boundary that accepts an editable line split.
+# The legacy review editor still uses a bounded composition contract. The
+# renderer and MCP App accept any authored line split and fit it dynamically.
 MAX_LINES = 6

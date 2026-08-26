@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_TEMPLATE = ROOT / "plugin"
 PLUGIN_NAME = "quote-card-builder"
-SKILL_FILES = ("SKILL.md", "README.md", "PRODUCT.md", "DESIGN.md")
+SKILL_FILES = ("SKILL.md", "README.md", "PRODUCT.md", "DESIGN.md", "requirements-mcp.txt")
 SKILL_DIRECTORIES = ("agents", "assets", "references", "scripts")
 IGNORED_NAMES = {".DS_Store", "__pycache__", "build_plugin_package.py"}
 
@@ -45,6 +45,18 @@ def validate_template() -> None:
         raise ValueError("La versione del plugin non coincide con la skill canonica")
     if manifest.get("skills") != "./skills/":
         raise ValueError("Il manifest deve dichiarare skills come ./skills/")
+    if manifest.get("mcpServers") != "./.mcp.json":
+        raise ValueError("Il manifest deve dichiarare mcpServers come ./.mcp.json")
+    mcp_path = PLUGIN_TEMPLATE / ".mcp.json"
+    if not mcp_path.is_file():
+        raise ValueError("Il template deve contenere .mcp.json")
+    mcp_config = json.loads(mcp_path.read_text(encoding="utf-8"))
+    servers = mcp_config.get("mcpServers")
+    server = servers.get(PLUGIN_NAME) if isinstance(servers, dict) else None
+    if not isinstance(server, dict) or server.get("command") != "python3":
+        raise ValueError(".mcp.json deve dichiarare il server locale Python del plugin")
+    if server.get("args") != ["skills/quote-card-builder/scripts/mcp_server.py"]:
+        raise ValueError(".mcp.json deve puntare al server MCP incluso nella skill")
     if (PLUGIN_TEMPLATE / "skills").exists():
         raise ValueError("La copia generata della skill non deve essere salvata nel template")
 

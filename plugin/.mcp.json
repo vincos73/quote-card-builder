@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "quote-card-builder": {
+      "command": "python3",
+      "args": ["skills/quote-card-builder/scripts/mcp_server.py"]
+    }
+  }
+}

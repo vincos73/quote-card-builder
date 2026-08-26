@@ -21,7 +21,6 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import rasterize
-from quote_card_contract import MAX_LINES
 
 DIRECTIONS = ("editorial", "statement", "contextual")
 GRAPHIC_VARIANTS = {
@@ -70,6 +69,11 @@ QUOTE_TRACKING_EM = -0.025
 # Poster rows carrying emphasis render 1.12x larger than plain rows.
 STATEMENT_STRONG_MULTIPLIER = 1.12
 VERTICAL_OFFSETS = {"upper": -0.075, "center": 0.0, "lower": 0.075}
+# Attribution must remain legible after the 1440px card is scaled down in an
+# iframe or social feed. The preferred size is shared by every direction and
+# output format; unusually long labels are fitted rather than clipped.
+ATTRIBUTION_FONT_SIZE_RATIO = 0.0625
+ATTRIBUTION_TRACKING_EM = 0.08
 
 
 def direction_geometry(
@@ -204,7 +208,7 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
     lines = content.get("lines")
     if (
         not isinstance(lines, list)
-        or not 1 <= len(lines) <= MAX_LINES
+        or not lines
         or any(not isinstance(line, str) for line in lines if isinstance(lines, list))
         or (isinstance(lines, list) and not any(line.strip() for line in lines if isinstance(line, str)))
     ):
@@ -212,7 +216,7 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
             errors,
             "content.lines",
             "lines",
-            f"Inserire da 1 a {MAX_LINES} righe di testo.",
+            "Inserire almeno una riga di testo.",
         )
         lines = []
     if lines and normalize_spaces(" ".join(lines)) != normalize_spaces(text):
@@ -263,8 +267,10 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
         add_error(errors, "canvas.width", "range", "La larghezza deve essere un intero di almeno 800 px.")
     if not isinstance(height, int) or isinstance(height, bool) or height < 1000:
         add_error(errors, "canvas.height", "range", "L'altezza deve essere un intero di almeno 1000 px.")
-    if isinstance(width, int) and isinstance(height, int) and not math.isclose(width / height, 4 / 5, rel_tol=0.001):
-        add_error(errors, "canvas", "ratio", "Il renderer 0.2 accetta soltanto il rapporto 4:5.")
+    if isinstance(width, int) and isinstance(height, int):
+        ratio = width / height
+        if not any(math.isclose(ratio, expected, rel_tol=0.001) for expected in (4 / 5, 1.0)):
+            add_error(errors, "canvas", "ratio", "Il renderer accetta soltanto i rapporti 4:5 o 1:1.")
 
     direction = root.get("direction")
     if direction not in DIRECTIONS:
@@ -634,7 +640,10 @@ def fitted_font_size(
     max_units = max(width_units(line) for line in lines)
     width_size = available_width / max(max_units, 1e-6)
     height_size = available_height / (len(lines) * 1.18)
-    return max(48, min(maximum, width_size, height_size))
+    # Authored hard breaks are unbounded. Keep a tiny positive floor only so
+    # pathological but text-length-bounded input still produces valid SVG;
+    # ordinary copy remains governed by the width/height max-fit above.
+    return max(1, min(maximum, width_size, height_size))
 
 
 def statement_visual_lines(lines: list[str], width: int, height: int) -> list[str]:
@@ -749,11 +758,16 @@ def initial_direction_styles(text: str, direction: str) -> list[dict[str, Any]]:
     direction. Used only when no user-owned inline treatment or legacy
     emphasis exists -- a manual selection always replaces the first-run cue.
     """
+    # Manifesto starts neutral. Accent is an explicit editorial treatment,
+    # never a direction-owned default: a user should be able to switch to
+    # Poster without seeing an unrequested word recoloured.
+    if direction == "statement":
+        return []
     span = default_emphasis_span(text)
     if span is None:
         return []
     start, end = span
-    style_type = "bold" if direction == "editorial" else "accent" if direction == "statement" else "highlight"
+    style_type = "bold" if direction == "editorial" else "highlight"
     return [{"start": start, "end": end, "type": style_type}]
 
 
@@ -787,7 +801,7 @@ def statement_fitted_font_size(
     vertical_multipliers = statement_row_multipliers(lines, strong_rows)
     vertical_units = sum(vertical_multipliers[:-1]) * line_ratio + vertical_multipliers[-1]
     height_limit = geometry["fit_height"] / max(vertical_units, 1)
-    return max(48, min(width * 0.12, height_limit, *width_limits))
+    return max(1, min(width * 0.12, height_limit, *width_limits))
 
 
 def statement_block_height(font_size: float, lines: list[str], strong_rows: set[int]) -> float:
@@ -988,12 +1002,13 @@ def highlight_rects(
                 start_x = x - full_width / 2 + before
             else:
                 start_x = x + before
-            # Leading edge is an exact fit: it lines up with the start of
-            # the text block, and bleeding past that breaks the alignment
-            # rather than reading as a highlighter stroke. Trailing edge
-            # gets real overshoot, as a highlighter does when the pen
-            # lifts -- proportional to size so it scales with the card.
+            # Give the marker a small overshoot on both sides. Without a
+            # leading pad, antialiasing can leave the first glyph visibly
+            # outside the highlight, especially for italic or outlined text.
             width += row_size * 0.18
+            side_pad = row_size * 0.06
+            start_x -= side_pad
+            width += side_pad * 2
             # Uppercase glyphs (poster) have a taller cap-height relative to
             # font-size than mixed-case text, so the marker needs a bit more
             # headroom than the mixed-case band or capital tops poke out
@@ -1101,7 +1116,10 @@ def statement_text_block(
         row_baselines.append(cursor_y)
         # A highlight is a background marker, never an accent-colored glyph:
         # keeping the row white preserves contrast against the accent band.
-        fill = color if index in highlight_rows else emphasis_color if index in strong_rows else color
+        # Row strength controls scale only. Colour belongs to the exact
+        # selected span emitted by styled_lines/emphasized_lines; colouring
+        # the whole strong row made ordinary bold text look accented.
+        fill = color
         weight = ' font-weight="700"' if index in strong_rows else ""
         rows.append(
             f'<tspan x="{x:.1f}" y="{cursor_y:.1f}" font-size="{size:.1f}" fill="{fill}"{weight}>{content}</tspan>'
@@ -1255,26 +1273,29 @@ def direction_graphic(
         stroke_color = colors["primary"]
         stroke_width = max(2.0, width * 0.0022)
         radius = max(3.0, width * 0.0045)
-        paths = (
+        # Draw one route corner and rotate that exact geometry into the
+        # opposite corner.  Keeping a single source shape avoids the visual
+        # drift that used to make the lower-left route look unrelated to the
+        # upper-right one, especially on square canvases.
+        corner_paths = (
             f'<path class="route-line route-line--top" d="M {width * 0.79:.1f} {height * 0.03:.1f} '
             f'H {width * 0.94:.1f} V {height * 0.12:.1f} H {width * 1.02:.1f}"/>'
             f'<path class="route-line route-line--top" d="M {width * 0.87:.1f} {-height * 0.01:.1f} '
             f'V {height * 0.075:.1f} Q {width * 0.87:.1f} {height * 0.105:.1f} '
             f'{width * 0.90:.1f} {height * 0.105:.1f} H {width * 1.02:.1f}"/>'
-            f'<path class="route-line route-line--bottom" d="M {-width * 0.02:.1f} {height * 0.885:.1f} '
-            f'H {width * 0.06:.1f} V {height * 0.975:.1f} H {width * 0.18:.1f}"/>'
-            f'<path class="route-line route-line--bottom" d="M {width * 0.04:.1f} {height * 0.84:.1f} '
-            f'V {height * 0.94:.1f} Q {width * 0.04:.1f} {height * 0.975:.1f} '
-            f'{width * 0.075:.1f} {height * 0.975:.1f} V {height * 1.02:.1f}"/>'
         )
-        nodes = "".join(
+        corner_nodes = "".join(
             f'<circle class="route-node" cx="{x * width:.1f}" cy="{y * height:.1f}" r="{radius:.1f}"/>'
-            for x, y in ((0.94, 0.03), (0.94, 0.12), (0.87, 0.075), (0.06, 0.885), (0.06, 0.975), (0.04, 0.94), (0.075, 0.975))
+            for x, y in ((0.94, 0.03), (0.94, 0.12), (0.87, 0.075))
         )
+        corner = f'{corner_paths}<g class="route-nodes" fill="{stroke_color}" stroke="none">{corner_nodes}</g>'
+        opposite_corner_transform = f'rotate(180 {width / 2:.1f} {height / 2:.1f})'
         return (
             '<g class="direction-graphic direction-graphic--routes" fill="none" '
             f'stroke="{stroke_color}" stroke-width="{stroke_width:.1f}" stroke-linecap="round" '
-            f'stroke-linejoin="round">{paths}<g fill="{stroke_color}" stroke="none">{nodes}</g></g>'
+            f'stroke-linejoin="round"><g class="route-corner route-corner--top">{corner}</g>'
+            f'<g class="route-corner route-corner--bottom" transform="{opposite_corner_transform}">'
+            f'{corner}</g></g>'
         )
     dots: list[str] = []
     gap = width * 0.027
@@ -1335,6 +1356,18 @@ def measured_text_width(text: str, font_size: float, *, letter_spacing_em: float
     return visual_units(text) * font_size + letter_spacing_em * font_size * max(0, len(text) - 1)
 
 
+def attribution_font_size(text: str, width: int, available_width: float) -> float:
+    """Prefer a readable attribution size and fit long labels to their lane."""
+    preferred = width * ATTRIBUTION_FONT_SIZE_RATIO
+    if not text:
+        return preferred
+    unit_width = measured_text_width(text, 1.0, letter_spacing_em=ATTRIBUTION_TRACKING_EM)
+    fitted = min(preferred, available_width / max(unit_width, 1e-6))
+    # SVG serializes this value to one decimal. Floor to that precision so a
+    # rounded-up tenth cannot put the final glyph fractionally outside the lane.
+    return math.floor(fitted * 10) / 10
+
+
 def last_text_line(lines: list[str]) -> str:
     return next((line for line in reversed(lines) if line), "")
 
@@ -1367,6 +1400,15 @@ def render_svg(
     attribution = content["attribution"].get("label", "")
     source = data.get("source") or {}
     options = {**(data.get("presentation") or {}), **(render_options or {})}
+    # Optional editor scale is applied after the canonical max-fit calculation.
+    # Keeping it as a render option preserves the compact visual-manifest 0.2
+    # contract while allowing the MCP editor to expose the same control as the
+    # local review editor.
+    try:
+        text_scale = float(options.get("text_scale", 1.0))
+    except (TypeError, ValueError):
+        text_scale = 1.0
+    text_scale = max(0.8, min(1.0, text_scale))
     logo_mode = options.get("logo_mode", "auto")
     graphic_mode = options.get("graphic_mode", "auto")
     graphic_variant = options.get("graphic_variant", "default")
@@ -1392,6 +1434,8 @@ def render_svg(
             lines, geometry["text_width"], geometry["fit_height"], float(max(width, height)),
             letter_spacing_em=geometry["tracking_em"],
         )
+        if font_size_override is None:
+            font_size *= text_scale
         line_height = font_size * geometry["line_ratio"]
         block_height = line_height * max(0, len(lines) - 1) + font_size
         start_y = geometry["start_y"]
@@ -1409,11 +1453,12 @@ def render_svg(
         # length or font size -- a stable anchor rather than one that
         # drifts with content.
         attribution_y = height * 0.915
+        attribution_size = attribution_font_size(attribution, width, width * 0.82)
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
             f'{graphic}{logo}{quote}'
             f'<text class="meta attribution source-field" x="{width * 0.91:.1f}" y="{attribution_y:.1f}" '
-            f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["text"]}">'
+            f'text-anchor="end" font-size="{attribution_size:.1f}" fill="{colors["text"]}">'
             f'{html.escape(attribution)}</text>'
         )
     elif direction == "statement":
@@ -1429,6 +1474,8 @@ def render_svg(
         font_size = font_size_override or statement_fitted_font_size(
             poster_lines, strong_rows, width, height
         )
+        if font_size_override is None:
+            font_size *= text_scale
         start_y = geometry["start_y"]
         has_light_logo = bool((brand.get("logo") or {}).get("light_path"))
         logo = "" if logo_mode == "hidden" else logo_image(
@@ -1447,11 +1494,12 @@ def render_svg(
         block_height = statement_block_height(font_size, poster_lines, strong_rows)
         # Always the guide's fixed bottom margin, independent of text.
         statement_attribution_y = height * 0.915
+        statement_attribution_size = attribution_font_size(attribution, width, width * 0.89)
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
             f'{graphic}{logo}{quote}'
             f'<text class="meta attribution source-field" x="{width * 0.945:.1f}" y="{statement_attribution_y:.1f}" '
-            f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["background"]}">'
+            f'text-anchor="end" font-size="{statement_attribution_size:.1f}" fill="{colors["background"]}">'
             f'{html.escape(attribution)}</text>'
         )
     else:
@@ -1466,6 +1514,8 @@ def render_svg(
             lines, geometry["text_width"], geometry["fit_height"], float(max(width, height)),
             letter_spacing_em=geometry["tracking_em"],
         )
+        if font_size_override is None:
+            font_size *= text_scale
         line_height = font_size * geometry["line_ratio"]
         block_height = line_height * max(0, len(lines) - 1) + font_size
         start_y = geometry["start_y"]
@@ -1491,6 +1541,7 @@ def render_svg(
         )
         # Always the guide's fixed bottom margin, independent of text.
         field_attribution_y = height * 0.88
+        field_attribution_size = attribution_font_size(attribution, width, geometry["text_width"])
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
             f'<rect class="field-sheet" x="{sheet_x:.1f}" y="{sheet_y:.1f}" '
@@ -1499,7 +1550,7 @@ def render_svg(
             f'{logo}{marks}'
             f'{quote}'
             f'<text class="meta attribution source-field" x="{content_right:.1f}" y="{field_attribution_y:.1f}" '
-            f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["text"]}">'
+            f'text-anchor="end" font-size="{field_attribution_size:.1f}" fill="{colors["text"]}">'
             f'{html.escape(attribution)}</text>'
         )
 
