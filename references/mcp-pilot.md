@@ -3,7 +3,8 @@
 Questa prima integrazione aggiunge un solo flusso end-to-end con tre tool coordinati:
 `quote_card_builder_open_editor` apre l'interfaccia una volta, `preview_quote_card` ne aggiorna
 i dati senza rimontarla e `produce_quote_card` genera l'SVG canonico dopo il clic
-esplicito dell'utente su **Genera**; l'interfaccia lo converte in PNG e offre **Open PNG**.
+esplicito dell'utente su **Genera**; l'interfaccia lo converte in PNG e preferisce **Download PNG**
+oppure **Send PNG to chat**, in base alle capacità dichiarate dall'host.
 Il server MCP gira via stdio nel pacchetto locale e via Streamable HTTP nel servizio remoto; usa
 il renderer Python esistente come unica fonte di verità.
 Il server non rasterizza direttamente PNG, non salva sessioni, non pubblica contenuti e non
@@ -180,7 +181,7 @@ anche `mcp_quote_card.py`, `mcp_app.py` e `requirements-mcp.txt` nella skill inc
 
 Il vertical slice ora include una MCP App portabile per host compatibili con MCP Apps.
 La risorsa UI ha URI stabile versionato
-`ui://quote-card-builder/preview/v1.34.html`, MIME type
+`ui://quote-card-builder/preview/v1.38.html`, MIME type
 `text/html;profile=mcp-app` e viene collegata al tool tramite
 `_meta.ui.resourceUri`; include anche l'alias ChatGPT
 `_meta["openai/outputTemplate"]` per compatibilità con host legacy. Solo
@@ -192,10 +193,15 @@ separate la palette dell'interfaccia e quella della card. Riceve il risultato
 iniziale, mostra lo `svg` prodotto dal renderer canonico e richiama `preview_quote_card`
 dal pulsante **Update preview** con `output_image: false`. Il pulsante **Generate PNG** chiama
 `produce_quote_card`, riesegue la stessa validazione e converte l'SVG canonico in PNG nel browser.
-In ChatGPT la UI carica il file con `window.openai.uploadFile(..., { library: false })`, richiede
-un URL temporaneo con `getFileDownloadUrl` e lo apre tramite il bridge dell'host. Poiché l'API
-documentata apre un link esterno e non forza un download, l'azione è etichettata **Open PNG** e
-indica di salvare l'immagine dal browser; sugli host che
+La UI negozia il protocollo MCP Apps `2026-01-26` e legge le capacità restituite da
+`ui/initialize`. Quando l'host dichiara `downloadFile`, invia il PNG come risorsa binaria incorporata
+tramite `ui/download-file`: è il percorso principale perché il salvataggio è mediato dal client e
+non dipende da link o popup nell'iframe sandboxato. Se è disponibile soltanto la modalità immagine
+di `ui/message`, l'azione diventa **Send PNG to chat** e trasferisce lo stesso PNG alla conversazione.
+Le estensioni ChatGPT `uploadFile`, `getFileDownloadUrl`, `openExternal`, `sendFollowUpMessage` e
+`setWidgetState.imageIds` restano fallback di compatibilità. La UI segnala inoltre l'altezza
+dinamica sia tramite MCP Apps sia tramite `window.openai.notifyIntrinsicHeight`, e rende visibile
+immediatamente lo stato della richiesta di apertura con un timeout esplicito. Sugli host che
 non espongono queste API mantiene un Blob URL locale come fallback. Se la rasterizzazione fallisce, segnala
 esplicitamente che il PNG non è disponibile senza offrire un SVG come falsa consegna finale. I due
 tool dati non possiedono template UI, quindi gli aggiornamenti non possono

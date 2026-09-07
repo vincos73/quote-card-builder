@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import base64
+import json
 from pathlib import Path
 
 
-QUOTE_CARD_APP_VERSION = "v1.34"
-QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.34.html"
+QUOTE_CARD_APP_VERSION = "v1.39"
+QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.39.html"
 QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.26.html",
     "ui://quote-card-builder/preview/v1.27.html",
@@ -17,9 +18,17 @@ QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.31.html",
     "ui://quote-card-builder/preview/v1.32.html",
     "ui://quote-card-builder/preview/v1.33.html",
+    "ui://quote-card-builder/preview/v1.34.html",
+    "ui://quote-card-builder/preview/v1.35.html",
+    "ui://quote-card-builder/preview/v1.36.html",
+    "ui://quote-card-builder/preview/v1.37.html",
+    "ui://quote-card-builder/preview/v1.38.html",
 )
 QUOTE_CARD_PREVIEW_MIME_TYPE = "text/html;profile=mcp-app"
 QUOTE_CARD_PREVIEW_DOMAIN = "https://quote-card-builder-mcp-960066178304.europe-west8.run.app"
+QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS = (
+    "https://oaisdmntpritalynorth.blob.core.windows.net",
+)
 ASSET_DIR = Path(__file__).resolve().parents[1] / "assets" / "card-editor"
 
 
@@ -137,8 +146,11 @@ def quote_card_preview_html() -> str:
       .delivery { display:grid; grid-template-columns:1fr auto; align-items:center; gap:12px; padding:13px 14px; border-bottom:1px solid var(--seam); background:var(--deep); }
       .delivery[hidden] { display:none; }
       .delivery strong { color:var(--signal); font-family:var(--mono); font-size:10px; font-weight:500; text-transform:uppercase; }
+      .delivery-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
       .download { min-height:38px; padding:9px 12px; border:1px solid var(--signal); border-radius:0; background:transparent; color:var(--signal); font-weight:700; }
       .download:hover { background:var(--signal); color:var(--ink); }
+      .direct-download { color:var(--lavender-light); font-family:var(--mono); font-size:9px; text-decoration:underline; text-underline-offset:3px; }
+      .direct-download[hidden] { display:none; }
       .hint { margin:0; color:var(--lavender); font-size:11px; line-height:1.35; }
       ::selection { background:var(--signal); color:var(--ink); }
       @media (max-width:560px) {
@@ -220,7 +232,7 @@ def quote_card_preview_html() -> str:
         </div>
       </form>
       <div class="status" id="status" role="status" aria-live="polite">Waiting for a quote card.</div>
-      <div class="delivery" id="delivery" hidden><strong id="deliveryName">PNG ready</strong><button class="download" id="download" type="button" disabled>Open PNG</button></div>
+      <div class="delivery" id="delivery" hidden><strong id="deliveryName">PNG ready</strong><div class="delivery-actions"><button class="download" id="download" type="button" disabled>Open PNG</button><button class="direct-download" id="handoff" type="button" hidden>Send link to chat</button></div></div>
       <section class="preview" aria-label="Quote card preview"><div id="image" class="svg-preview" role="img" aria-label="" hidden></div><div class="meta" id="meta"></div></section>
       <div class="errors" id="errors" role="alert" hidden></div>
     </main>
@@ -231,8 +243,9 @@ def quote_card_preview_html() -> str:
       const direction = { value: "editorial" }, paletteMode = $("paletteMode"), paletteName = $("paletteName");
       const paletteNameRow = $("paletteNameRow"), palette = $("palette"), format = $("format"), scale = $("scale"), scaleValue = $("scaleValue"), position = $("position");
       const submit = $("submit"), produce = $("produce"), status = $("status"), image = $("image"), meta = $("meta"), errors = $("errors"), toolbarStatus = $("toolbarStatus");
-      const delivery = $("delivery"), deliveryName = $("deliveryName"), download = $("download");
-      let styles = []; let lastTextValue = ""; let resizeFrame = 0; let deliveryUrl = ""; let deliveryFileId = ""; let deliveryFilename = ""; let previewTimer = 0; let previewSequence = 0;
+      const delivery = $("delivery"), deliveryName = $("deliveryName"), download = $("download"), handoff = $("handoff");
+      const allowedDownloadOrigins = new Set(__QCB_REDIRECT_ORIGINS__);
+      let styles = []; let lastTextValue = ""; let resizeFrame = 0; let deliveryUrl = ""; let deliveryFileId = ""; let deliveryFilename = ""; let deliveryFile = null; let hostCapabilities = {}; let previewTimer = 0; let previewSequence = 0;
       const variants = { editorial: ["default", "rhythm_lines"], statement: ["default", "modules"], contextual: ["default", "route_map"] };
       const labels = { editorial: "Editorial", statement: "Poster", contextual: "Frame" };
       const variantLabels = { default: "Original", rhythm_lines: "Alternate", modules: "Alternate", route_map: "Alternate" };
@@ -373,7 +386,25 @@ def quote_card_preview_html() -> str:
         restoreSelection(selectedRange);
       }
       function setTextValue(value, selectedRange) { text.textContent = String(value || ""); renderEditor(selectedRange); lastTextValue = textValue(); }
-      function scheduleResize() { if (resizeFrame) cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(() => { const root = document.documentElement; const height = Math.ceil(Math.max(root.scrollHeight, root.getBoundingClientRect().height)); const width = Math.ceil(Math.max(document.body.scrollWidth, root.clientWidth)); window.parent.postMessage({ jsonrpc:"2.0", method:"ui/notifications/size-changed", params:{ width, height } }, "*"); }); }
+      function scheduleResize() {
+        if (resizeFrame) cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(() => {
+          const root = document.documentElement;
+          const height = Math.ceil(Math.max(root.scrollHeight, root.getBoundingClientRect().height));
+          const width = Math.ceil(Math.max(document.body.scrollWidth, root.clientWidth));
+          // Keep the portable MCP Apps notification and also notify ChatGPT's
+          // host bridge. Desktop clients use the latter to keep dynamically
+          // revealed controls inside the iframe's interactive hit area.
+          const bridge = window.openai;
+          if (typeof bridge?.notifyIntrinsicHeight === "function") {
+            try {
+              const notification = bridge.notifyIntrinsicHeight(height);
+              if (notification?.catch) notification.catch(() => {});
+            } catch (_) {}
+          }
+          window.parent.postMessage({ jsonrpc:"2.0", method:"ui/notifications/size-changed", params:{ width, height } }, "*");
+        });
+      }
       function overlap(a, b) { return a.start < b.end && a.end > b.start; }
       function remapStylesAcrossWhitespace(oldValue, newValue, currentStyles) {
         const oldChars = Array.from(oldValue), newChars = Array.from(newValue);
@@ -451,7 +482,7 @@ def quote_card_preview_html() -> str:
       function currentArguments() { const value = textValue(); return { text:value, format:format.value, attribution:attribution.value, styles:styles.length ? styles : [], lines:readLines(), direction:direction.value, graphic_mode:currentVariant() === "hidden" ? "hidden" : "auto", graphic_variant:currentVariant() === "hidden" ? "default" : currentVariant(), text_scale:Number(scale.value) / 100, vertical_position:position.value, palette:readPalette() }; }
       function currentSignature() { return JSON.stringify(currentArguments()); }
       function syncPaletteVisibility() { const custom = paletteMode.value === "custom"; palette.hidden = !custom; paletteNameRow.hidden = !custom; }
-      function clearProduction() { if (deliveryUrl && deliveryUrl.startsWith("blob:")) URL.revokeObjectURL(deliveryUrl); deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; download.disabled = true; delivery.hidden = true; }
+      function clearProduction() { if (deliveryUrl && deliveryUrl.startsWith("blob:")) URL.revokeObjectURL(deliveryUrl); deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; delivery.hidden = true; }
       function selectedMotif() { return document.querySelector('[data-motif][aria-pressed="true"]')?.dataset.motif || "default"; }
       function currentVariant() { const value = document.querySelector('[data-motif][aria-pressed="true"]')?.dataset.motif || "default"; return value === "alternate" ? (variants[direction.value]?.[1] || "default") : value; }
       function updateMotifHint() { const motif = selectedMotif(); const label = motif === "hidden" ? "None" : motif === "alternate" ? "Alternate" : "Original"; $("motifHint").textContent = `${labels[direction.value]} · selected motif: ${label}.`; }
@@ -473,13 +504,29 @@ def quote_card_preview_html() -> str:
         const width = Number(root.getAttribute("width")) || viewBox[2] || 1440;
         const height = Number(root.getAttribute("height")) || viewBox[3] || 1800;
         if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) throw new Error("Invalid SVG dimensions");
-        // Blob URLs can be blocked inside the ChatGPT widget sandbox. A data
-        // URL keeps the conversion local to the iframe and avoids silently
-        // falling back to an SVG download.
-        const sourceUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
         const imageSource = new Image();
+        const blobUrl = URL.createObjectURL(new Blob([svgText], { type:"image/svg+xml;charset=utf-8" }));
         try {
-          await new Promise((resolve, reject) => { imageSource.onload = resolve; imageSource.onerror = () => reject(new Error("Unable to rasterize the preview")); imageSource.src = sourceUrl; });
+          // Web clients differ in how they decode SVG data URLs inside an
+          // iframe. Try the portable data URL first, then a same-origin Blob
+          // URL before reporting that PNG conversion is unavailable.
+          const sources = [
+            `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`,
+            blobUrl,
+          ];
+          let loaded = false;
+          for (const source of sources) {
+            try {
+              await new Promise((resolve, reject) => {
+                imageSource.onload = resolve;
+                imageSource.onerror = () => reject(new Error("Unable to rasterize the preview"));
+                imageSource.src = source;
+              });
+              loaded = true;
+              break;
+            } catch (_) { /* try the alternate local source */ }
+          }
+          if (!loaded) throw new Error("Unable to rasterize the preview");
           const canvas = document.createElement("canvas");
           canvas.width = Math.round(width); canvas.height = Math.round(height);
           const context = canvas.getContext("2d");
@@ -487,7 +534,103 @@ def quote_card_preview_html() -> str:
           context.drawImage(imageSource, 0, 0, canvas.width, canvas.height);
           const png = await new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("PNG is unavailable")), "image/png"));
           return new File([png], filename.replace(/\.svg$/i, ".png"), { type:"image/png" });
-        } finally { imageSource.src = ""; }
+        } finally { imageSource.src = ""; URL.revokeObjectURL(blobUrl); }
+      }
+      function validatedDownloadUrl(value) {
+        let parsed;
+        try { parsed = new URL(value); }
+        catch (_) { throw new Error("ChatGPT returned an invalid PNG URL."); }
+        if (parsed.protocol !== "https:") throw new Error("ChatGPT returned a non-HTTPS PNG URL.");
+        if (!allowedDownloadOrigins.has(parsed.origin)) throw new Error(`ChatGPT returned an unauthorized PNG host: ${parsed.origin}`);
+        return parsed.href;
+      }
+      function withTimeout(promise, timeoutMs, message) {
+        return new Promise((resolve, reject) => {
+          const timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+          Promise.resolve(promise).then(
+            (value) => { clearTimeout(timeoutId); resolve(value); },
+            (error) => { clearTimeout(timeoutId); reject(error); },
+          );
+        });
+      }
+      function canHostDownload() { return Boolean(deliveryFile && hostCapabilities?.downloadFile); }
+      function canSendImageToChat() { return Boolean(deliveryFile && hostCapabilities?.message?.image); }
+      async function fileToBase64(file) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        let binary = "";
+        for (let offset = 0; offset < bytes.length; offset += 32768) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
+        }
+        return btoa(binary);
+      }
+      async function requestNativeDownload() {
+        if (!canHostDownload()) throw new Error("This host does not advertise native file downloads.");
+        status.textContent = "Opening the save dialog…";
+        scheduleResize();
+        const result = await withTimeout(
+          request("ui/download-file", {
+            contents:[{
+              type:"resource",
+              resource:{
+                uri:`file:///${encodeURIComponent(deliveryFilename || "quote-card.png")}`,
+                mimeType:"image/png",
+                blob:await fileToBase64(deliveryFile),
+              },
+            }],
+          }),
+          30000,
+          "The host did not respond to the native download request.",
+        );
+        if (result?.isError) throw new Error("The PNG download was cancelled or denied by the host.");
+        status.textContent = "PNG download accepted by the host.";
+      }
+      async function sendPreparedImageToChat() {
+        if (!canSendImageToChat()) throw new Error("This host cannot receive PNG images from the widget.");
+        status.textContent = "Sending the PNG to chat…";
+        scheduleResize();
+        const result = await withTimeout(
+          request("ui/message", {
+            role:"user",
+            content:[
+              { type:"text", text:`Quote Card Builder generated ${deliveryFilename}. Return the image as generated; do not invoke the builder again.` },
+              { type:"image", data:await fileToBase64(deliveryFile), mimeType:"image/png" },
+            ],
+          }),
+          30000,
+          "The host did not accept the PNG hand-off.",
+        );
+        if (result?.isError) throw new Error("The PNG hand-off was denied by the host.");
+        status.textContent = "PNG sent to chat. Open the image there to save it.";
+      }
+      function canHandoffToChat() {
+        const bridge = window.openai;
+        return Boolean(deliveryFileId && deliveryUrl.startsWith("https:") && bridge?.sendFollowUpMessage);
+      }
+      async function handoffPreparedDownload() {
+        if (!canHandoffToChat()) throw new Error("This ChatGPT client cannot send the PNG link to the chat.");
+        const bridge = window.openai;
+        status.textContent = "Sending the PNG link to chat…";
+        handoff.disabled = true;
+        scheduleResize();
+        try {
+          if (typeof bridge.setWidgetState === "function") {
+            bridge.setWidgetState({
+              modelContent:`Quote Card Builder generated ${deliveryFilename}. Preserve the image exactly as generated and do not invoke the builder again.`,
+              privateContent:{ filename:deliveryFilename },
+              imageIds:[deliveryFileId],
+            });
+          }
+          const prompt = `The PNG “${deliveryFilename}” is ready. Return only a clickable Markdown link labelled “Download PNG” for this exact temporary URL, without invoking Quote Card Builder again:\n${deliveryUrl}`;
+          await withTimeout(
+            bridge.sendFollowUpMessage({ prompt, scrollToBottom:true }),
+            5000,
+            "ChatGPT did not accept the PNG hand-off.",
+          );
+          status.textContent = "PNG link sent to chat. Use Download PNG in the conversation.";
+        } finally {
+          handoff.disabled = false;
+          scheduleResize();
+        }
       }
       async function prepareDownload(result) {
         clearProduction();
@@ -495,13 +638,17 @@ def quote_card_preview_html() -> str:
         let file; let downloadableName;
         try { file = await svgToPngFile(result.svg, result.filename); downloadableName = file.name; }
         catch (error) { errors.textContent = error?.message || "Unable to prepare the PNG."; errors.hidden = false; status.textContent = "PNG unavailable: try again."; scheduleResize(); return; }
+        deliveryFile = file;
+        deliveryFilename = downloadableName;
         const bridge = window.openai;
-        if (bridge?.uploadFile && bridge?.getFileDownloadUrl) {
+        if (!canHostDownload() && !canSendImageToChat() && bridge?.uploadFile && bridge?.getFileDownloadUrl) {
           try {
             status.textContent = "Preparing the PNG…";
             const uploaded = await bridge.uploadFile(file, { library:false });
             deliveryFileId = uploaded?.fileId || "";
             if (!deliveryFileId) throw new Error("ChatGPT did not return a file identifier.");
+            const resolved = await bridge.getFileDownloadUrl({ fileId:deliveryFileId });
+            deliveryUrl = validatedDownloadUrl(resolved?.downloadUrl || "");
           } catch (error) {
             errors.textContent = error?.message || "Unable to prepare the PNG in ChatGPT.";
             errors.hidden = false;
@@ -509,29 +656,53 @@ def quote_card_preview_html() -> str:
             scheduleResize();
             return;
           }
-        } else {
+        } else if (!canHostDownload() && !canSendImageToChat()) {
           deliveryUrl = URL.createObjectURL(file);
         }
-        deliveryFilename = downloadableName;
+        const hostCanDownload = canHostDownload();
+        const hostCanSendImage = canSendImageToChat();
+        const bridgeCanOpen = Boolean(deliveryFileId && window.openai?.openExternal);
+        const bridgeCanHandoff = canHandoffToChat();
+        download.textContent = hostCanDownload ? "Download PNG" : hostCanSendImage ? "Send PNG to chat" : bridgeCanOpen ? "Open PNG" : bridgeCanHandoff ? "Send link to chat" : "Save PNG";
+        handoff.hidden = !(bridgeCanOpen && bridgeCanHandoff);
         download.disabled = false; deliveryName.textContent = downloadableName; delivery.hidden = false; scheduleResize();
-        status.textContent = "PNG ready. Click Open PNG, then save it from your browser.";
+        status.textContent = hostCanDownload
+          ? "PNG ready. Download it through the host save dialog."
+          : hostCanSendImage
+            ? "PNG ready. Send the image to the conversation."
+          : bridgeCanOpen
+          ? "PNG ready. Open it, or send its link to the chat."
+          : bridgeCanHandoff
+            ? "PNG ready. Send its temporary download link to the chat."
+            : "PNG ready. Save it from this host.";
       }
       async function openPreparedDownload() {
-        if (!deliveryUrl && !deliveryFileId) return;
+        if (!deliveryFile && !deliveryUrl && !deliveryFileId) return;
         download.disabled = true;
+        status.textContent = canHostDownload() ? "Opening the save dialog…" : canSendImageToChat() ? "Sending the PNG to chat…" : canHandoffToChat() && !window.openai?.openExternal ? "Sending the PNG link to chat…" : "Opening PNG…";
+        scheduleResize();
         try {
           const bridge = window.openai;
-          if (deliveryFileId && bridge?.getFileDownloadUrl && bridge?.openExternal) {
-            const resolved = await bridge.getFileDownloadUrl({ fileId:deliveryFileId });
-            const downloadUrl = resolved?.downloadUrl || "";
-            if (!downloadUrl) throw new Error("ChatGPT did not return a download URL.");
-            await bridge.openExternal({ href:downloadUrl, redirectUrl:false });
-            status.textContent = "PNG opened in a new tab. Save it from your browser.";
-          } else {
+          if (canHostDownload()) {
+            await requestNativeDownload();
+          } else if (canSendImageToChat()) {
+            await sendPreparedImageToChat();
+          } else if (deliveryFileId && bridge?.openExternal) {
+            await withTimeout(
+              bridge.openExternal({ href:deliveryUrl, redirectUrl:false }),
+              5000,
+              "ChatGPT did not respond to the open request.",
+            );
+            status.textContent = "Open request sent. If no tab appeared, send the link to chat.";
+          } else if (canHandoffToChat()) {
+            await handoffPreparedDownload();
+          } else if (deliveryUrl.startsWith("blob:")) {
             const link = document.createElement("a");
             link.href = deliveryUrl; link.download = deliveryFilename || "quote-card.png";
             link.style.display = "none"; document.body.append(link); link.click(); link.remove();
-            status.textContent = "PNG opened. Save it from your browser.";
+            status.textContent = "Save request sent to this host.";
+          } else {
+            throw new Error("This host cannot open the PNG or send it to the chat.");
           }
         } catch (error) {
           errors.textContent = error?.message || "Unable to open the PNG.";
@@ -542,6 +713,7 @@ def quote_card_preview_html() -> str:
       function syncFromOpenAiAliases() { const bridge = window.openai; if (!bridge) return; applyInput(bridge.toolInput); if (bridge.toolOutput && !hasRendered) render(bridge.toolOutput); }
       document.querySelectorAll("[data-style]").forEach((button) => { button.addEventListener("mousedown", (event) => event.preventDefault()); button.addEventListener("click", () => applyStyle(button.dataset.style)); });
       download.addEventListener("click", openPreparedDownload);
+      handoff.addEventListener("click", async () => { try { await handoffPreparedDownload(); } catch (error) { errors.textContent = error?.message || "Unable to send the PNG link to chat."; errors.hidden = false; status.textContent = "PNG hand-off failed."; scheduleResize(); } });
       document.querySelectorAll("[data-direction]").forEach((button) => button.addEventListener("click", () => { setDirection(button.dataset.direction); clearProduction(); schedulePreview(0); }));
       document.querySelectorAll("[data-motif]").forEach((button) => button.addEventListener("click", () => { setMotif(button.dataset.motif); clearProduction(); schedulePreview(0); }));
       format.addEventListener("change", () => { clearProduction(); scheduleResize(); schedulePreview(0); }); scale.addEventListener("input", () => { scaleValue.textContent = `${scale.value}%`; clearProduction(); scheduleResize(); schedulePreview(); }); position.addEventListener("change", () => { clearProduction(); schedulePreview(0); }); paletteMode.addEventListener("change", () => { syncPaletteVisibility(); clearProduction(); scheduleResize(); schedulePreview(0); });
@@ -572,7 +744,15 @@ def quote_card_preview_html() -> str:
       window.addEventListener("message", (event) => { if (event.source !== window.parent) return; const message = event.data; if (!message || message.jsonrpc !== "2.0") return; if (message.id !== undefined && pending.has(message.id)) { const current = pending.get(message.id); pending.delete(message.id); if (message.error) current.reject(message.error); else current.resolve(message.result); return; } if (message.method === "ui/notifications/tool-input") applyInput(message.params); if (["ui/notifications/tool-result","ui/tool-result","tool-result","mcp/tool-result"].includes(message.method)) render(extractStructuredContent(message.params || message.result)); if (["ui/notifications/tool-call-result","tool-calls/result"].includes(message.method)) render(extractStructuredContent(message)); });
       if (typeof ResizeObserver === "function") { const observer = new ResizeObserver(scheduleResize); observer.observe(document.documentElement); observer.observe(document.body); }
       setDirection("editorial"); syncPaletteVisibility(); syncFromOpenAiAliases(); renderEditor(); scheduleResize(); let aliasChecks = 0; const aliasTimer = window.setInterval(() => { aliasChecks += 1; syncFromOpenAiAliases(); if (hasRendered || aliasChecks >= 20) window.clearInterval(aliasTimer); }, 100);
-      request("ui/initialize", { protocolVersion:"2025-06-18", capabilities:{}, clientInfo:{ name:"quote-card-builder-ui", version:"0.2.0" } }).then(syncFromOpenAiAliases).catch(() => syncFromOpenAiAliases());
+      request("ui/initialize", {
+        protocolVersion:"2026-01-26",
+        appCapabilities:{},
+        appInfo:{ name:"quote-card-builder-ui", version:"0.3.0" },
+      }).then((result) => {
+        hostCapabilities = result?.hostCapabilities || {};
+        window.parent.postMessage({ jsonrpc:"2.0", method:"ui/notifications/initialized", params:{} }, "*");
+        syncFromOpenAiAliases();
+      }).catch(() => syncFromOpenAiAliases());
     </script>
   </body>
 </html>'''
@@ -581,4 +761,5 @@ def quote_card_preview_html() -> str:
         .replace("__QCB_PRODUCT_WORDMARK__", _svg_data_uri("quote-card-builder-wordmark.svg"))
         .replace("__QCB_VINCOS_LOCKUP__", _svg_data_uri("vincos-lockup-white.svg"))
         .replace("__QCB_APP_VERSION__", QUOTE_CARD_APP_VERSION)
+        .replace("__QCB_REDIRECT_ORIGINS__", json.dumps(QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS))
     )

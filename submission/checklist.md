@@ -37,8 +37,8 @@ is recommended before submission.
 - **PASS** Only `quote_card_builder_open_editor` is model-visible and linked to the UI resource.
 - **PASS** `preview_quote_card` and `produce_quote_card` are app-private and do not open duplicate
   components.
-- **PASS** The UI resource is `text/html;profile=mcp-app`, declares its domain, and has empty exact
-  CSP allowlists because it is self-contained.
+- **PASS** The UI resource is `text/html;profile=mcp-app`, declares its domain, keeps connection and
+  resource CSP allowlists empty, and limits redirects to the observed ChatGPT temporary-file origin.
 - **PASS** The local candidate has a configurable `/.well-known/openai-apps-challenge` route and
   returns `404` while no token is configured.
 - **BLOCKED** Domain verification cannot be completed until the portal issues its token and the
@@ -47,24 +47,30 @@ is recommended before submission.
 
 ## UI and behavior
 
-- **PASS** Remote `resources/read` serves the deployed v1.34 resource and exposes the ChatGPT host
-  file delivery path (`uploadFile` plus `getFileDownloadUrl`).
+- **PASS** Remote `resources/read` serves the deployed v1.38 resource and exposes standard MCP Apps
+  native download (`ui/download-file`) and PNG chat transfer (`ui/message`), plus the older
+  ChatGPT-specific file delivery path as a compatibility fallback.
 - **PASS** The inline editor has two main actions: **Update preview** and **Generate PNG**, with
   clear supporting labels and distinct primary/secondary hierarchy.
 - **PASS** Quote, attribution, neutral/custom palette, direction, 4:5/1:1 format, authored line
   breaks, formatting ranges, scale, position, and motif are represented in editor state.
 - **PASS** Generate revalidates through the canonical renderer and prepares a PNG in the browser.
-- **PASS** Deployed v1.34 embeds Orbitron in a self-contained SVG wordmark with tightened optical
-  spacing and uses ChatGPT's host file APIs for PNG delivery when available.
-- **PASS** A hosted v1.33 test confirmed the title rendering and showed that ChatGPT opens the
-  temporary PNG URL rather than forcing a browser download. Deployed v1.34 labels this behavior
-  accurately as **Open PNG** and tells the user to save the image from the browser.
-- **PASS** The deployed v1.34 production badge has no `TEST` suffix.
+- **PASS** Deployed v1.38 embeds Orbitron in a self-contained SVG wordmark with tightened optical
+  spacing and uses host-mediated MCP Apps delivery when available.
+- **PASS** A hosted v1.33 test confirmed that external navigation opens the temporary PNG URL
+  rather than forcing a browser download. Deployed v1.38 keeps **Open PNG** only as a compatibility
+  fallback after the standard **Download PNG** and **Send PNG to chat** paths.
+- **PASS** The deployed v1.38 production badge has no `TEST` suffix.
 - **PASS** The deployed editor grows with its contents and no longer creates an internal
   `overflow:auto` scroll area.
 - **FIX** Capture desktop and narrow-width visual evidence from the final production resource.
 - **FIX** Verify the complete open-and-save flow in the hosted ChatGPT iframe; protocol and
   resource checks prove the delivery code is live but do not prove the user-visible click-through.
+- **PASS (DEPLOYED)** v1.38 completes the MCP Apps initialization handshake, reads host capabilities,
+  sends embedded PNG bytes to `ui/download-file`, and can hand the PNG itself to `ui/message` when
+  native download is unavailable. ChatGPT-specific upload, URL, and external-open APIs remain
+  compatibility fallbacks. The
+  hosted user-visible click-through remains open as a separate verification.
 - **PORTAL** Confirm keyboard navigation, focus visibility, labels, contrast, and screen-reader
   behavior in the hosted ChatGPT iframe.
 
@@ -84,19 +90,20 @@ is recommended before submission.
 
 ## Release integrity
 
-- **PASS** Local plugin manifest and canonical skill are `1.7.11`; local and deployed UI are v1.34.
-- **PASS** The local plugin ZIP for 1.7.11 was rebuilt, archive-tested, and hashed.
+- **PASS** Local plugin manifest and canonical skill are `1.7.12`; local UI is v1.39 and deployed UI is v1.38.
+- **PASS** The local plugin ZIP for 1.7.12 was rebuilt, archive-tested, and hashed from the
+  candidate worktree; reproduce it from the frozen commit before release publication.
 - **PASS** The project suite passes when socket and headless-browser tests are allowed.
-- **PASS** Remote resource `ui://quote-card-builder/preview/v1.34.html` is readable from the deployed MCP server.
+- **PASS** Remote resource `ui://quote-card-builder/preview/v1.38.html` is readable from the deployed MCP server.
 - **PASS** Local v1.27 source packages have deterministic recorded SHA-256 hashes and clean archive
   listings.
-- **PASS** The clean v1.34 source archive was built by Cloud Build and deployed as revision
-  `quote-card-builder-mcp-00064-raf`; the image digest, 100% traffic split, health, MCP handshake,
+- **PASS** The clean v1.38 source archive was built by Cloud Build and deployed as revision
+  `quote-card-builder-mcp-00074-mod`; the image digest, 100% traffic split, health, MCP handshake,
   and resource descriptor are recorded in `submission/evidence.md`.
-- **FIX** The worktree is detached and dirty; freeze the approved candidate in a clean, traceable
-  commit before submission.
-- **PASS** Deployment evidence for v1.34 is recorded after the corrective deploy.
-- **PASS** The local v1.34 candidate retains v1.26 through v1.33 compatibility resources.
+- **FIX** Freeze the approved v1.39 candidate in a clean, traceable commit before submission.
+- **PASS** Deployment evidence for v1.38 is recorded after the production deploy.
+- **PASS** The local v1.39 candidate retains v1.26 through v1.38 compatibility resources; the
+  deployed v1.38 candidate retains v1.26 through v1.37.
 - **PASS** `pytest.ini` restricts default discovery to `tests/` and excludes `work/`.
 
 ## Final gate

@@ -29,6 +29,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from mcp_quote_card import preview_quote_card as render_preview
 from mcp_app import (
+    QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS,
     QUOTE_CARD_LEGACY_PREVIEW_RESOURCES,
     QUOTE_CARD_PREVIEW_MIME_TYPE,
     QUOTE_CARD_PREVIEW_DOMAIN,
@@ -169,9 +170,7 @@ mcp = FastMCP(
         "openai/widgetCSP": {
             "connect_domains": [],
             "resource_domains": [],
-            "redirect_domains": [
-                "https://oaisdmntpritalynorth.blob.core.windows.net",
-            ],
+            "redirect_domains": list(QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS),
         },
     },
 )
@@ -208,7 +207,7 @@ def _register_legacy_preview_resources() -> None:
                 "openai/widgetCSP": {
                     "connect_domains": [],
                     "resource_domains": [],
-                    "redirect_domains": [],
+                    "redirect_domains": list(QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS),
                 },
             },
         )(legacy_preview_ui)

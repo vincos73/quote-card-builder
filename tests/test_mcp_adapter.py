@@ -351,11 +351,27 @@ class McpAdapterTests(unittest.TestCase):
         self.assertIn("openPreparedDownload", html)
         self.assertIn("getFileDownloadUrl", html)
         self.assertIn("openExternal", html)
+        self.assertIn("notifyIntrinsicHeight", html)
+        self.assertIn('"Opening PNG…"', html)
+        self.assertIn("withTimeout", html)
+        self.assertIn("ChatGPT did not respond to the open request.", html)
         self.assertIn("uploadFile", html)
-        self.assertIn('link.download = deliveryFilename || "quote-card.png"', html)
+        self.assertIn("sendFollowUpMessage", html)
+        self.assertIn("setWidgetState", html)
+        self.assertIn("imageIds:[deliveryFileId]", html)
+        self.assertIn('request("ui/download-file"', html)
+        self.assertIn('request("ui/message"', html)
+        self.assertIn('protocolVersion:"2026-01-26"', html)
+        self.assertIn("hostCapabilities = result?.hostCapabilities || {}", html)
+        self.assertIn('method:"ui/notifications/initialized"', html)
+        self.assertIn("Send link to chat", html)
+        self.assertNotIn('directDownload.click()', html)
         self.assertNotIn('link.target = "_blank"', html)
-        self.assertIn("PNG ready. Click Open PNG", html)
+        self.assertIn("PNG ready. Send its temporary download link to the chat.", html)
         self.assertIn('Open PNG', html)
+        self.assertIn('id="handoff"', html)
+        self.assertIn("validatedDownloadUrl", html)
+        self.assertIn("unauthorized PNG host", html)
         self.assertIn('function trimRangeWhitespace(range)', html)
         self.assertIn('function selectionRange()', html)
         self.assertIn('const caret = selectionRange()', html)
@@ -366,8 +382,8 @@ class McpAdapterTests(unittest.TestCase):
         self.assertIn("data:image/svg+xml;base64,", html)
         self.assertIn('class="product-title" id="title"', html)
         self.assertNotIn("Quote card editor", html)
-        self.assertIn("v1.34", html)
-        self.assertNotIn("v1.34 TEST", html)
+        self.assertIn("v1.39", html)
+        self.assertNotIn("v1.39 TEST", html)
         self.assertIn("overflow:visible", html)
         self.assertNotIn(".editor { min-height:104px; outline:none; overflow:auto", html)
         self.assertNotIn("Optional emphasis", html)
@@ -445,45 +461,230 @@ if (blankRow.value !== "one\n\ntwo") throw new Error(`blank row was lost: ${JSON
         import mcp_app
 
         html = mcp_app.quote_card_preview_html()
-        delivery_functions = "async function prepareDownload" + html.split(
-            "async function prepareDownload", 1
+        delivery_functions = "function validatedDownloadUrl" + html.split(
+            "function validatedDownloadUrl", 1
         )[1].split("function syncFromOpenAiAliases", 1)[0]
         assertions = r'''
 let deliveryUrl = "";
 let deliveryFileId = "";
 let deliveryFilename = "";
+let deliveryFile = null;
+let hostCapabilities = {};
 let blobCount = 0;
 let uploadCount = 0;
 let downloadUrlCount = 0;
 let externalOpenCount = 0;
 let downloadClickCount = 0;
 const download = { disabled:true };
+download.textContent = "";
+const handoff = { hidden:true, disabled:false };
 const deliveryName = { textContent:"" };
 const delivery = { hidden:true };
 const status = { textContent:"" };
 const errors = { textContent:"", hidden:true };
 const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){ downloadClickCount += 1; }, remove(){} }) };
-const URL = { createObjectURL:(file) => { blobCount += 1; return `blob:local/${file.name}`; }, revokeObjectURL(){} };
+const NativeURL = globalThis.URL;
+class URL extends NativeURL {}
+URL.createObjectURL = (file) => { blobCount += 1; return `blob:local/${file.name}`; };
+URL.revokeObjectURL = () => {};
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net"]);
 const window = { openai:{
   uploadFile:async (file, options) => { uploadCount += 1; if (file.name !== "quote-card-test.png" || options.library !== false) throw new Error("unexpected upload"); return { fileId:"file_qcb" }; },
-  getFileDownloadUrl:async ({fileId}) => { downloadUrlCount += 1; if (fileId !== "file_qcb") throw new Error("wrong file id"); return { downloadUrl:"https://files.openai.example/quote-card-test.png" }; },
-  openExternal:async ({href, redirectUrl}) => { externalOpenCount += 1; if (href !== "https://files.openai.example/quote-card-test.png" || redirectUrl !== false) throw new Error("wrong external request"); }
+  getFileDownloadUrl:async ({fileId}) => { downloadUrlCount += 1; if (fileId !== "file_qcb") throw new Error("wrong file id"); return { downloadUrl:"https://oaisdmntpritalynorth.blob.core.windows.net/files/quote-card-test.png?sig=test" }; },
+  openExternal:async ({href, redirectUrl}) => { externalOpenCount += 1; if (href !== "https://oaisdmntpritalynorth.blob.core.windows.net/files/quote-card-test.png?sig=test" || redirectUrl !== false) throw new Error("wrong external request"); }
 } };
 const scheduleResize = () => {};
-const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; download.disabled = true; };
+const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; };
 const svgToPngFile = async (_svg, filename) => ({ name:filename.replace(/\.svg$/i, ".png"), type:"image/png" });
+let unauthorizedRejected = false;
+try { validatedDownloadUrl("https://unexpected.example/quote-card.png"); }
+catch (error) { unauthorizedRejected = String(error.message).includes("unauthorized PNG host"); }
+if (!unauthorizedRejected) throw new Error("unauthorized host was accepted");
 await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-test.svg" });
-if (deliveryUrl !== "") throw new Error("host delivery should not use a local URL");
+if (deliveryUrl !== "https://oaisdmntpritalynorth.blob.core.windows.net/files/quote-card-test.png?sig=test") throw new Error(`host URL was not prepared: ${deliveryUrl}`);
 if (deliveryFileId !== "file_qcb") throw new Error("host file was not prepared");
 if (deliveryFilename !== "quote-card-test.png") throw new Error("filename missing");
 if (download.disabled) throw new Error("download button remained disabled");
 if (blobCount !== 0) throw new Error(`unexpected local Blob: ${blobCount}`);
 if (uploadCount !== 1) throw new Error(`upload missing: ${uploadCount}`);
+if (downloadUrlCount !== 1) throw new Error(`download URL was not prepared before the click: ${downloadUrlCount}`);
+if (download.textContent !== "Open PNG") throw new Error(`unexpected primary action: ${download.textContent}`);
+if (!handoff.hidden) throw new Error("chat handoff should be hidden without sendFollowUpMessage");
 if (delivery.hidden) throw new Error("download action remained hidden");
 await openPreparedDownload();
-if (downloadUrlCount !== 1) throw new Error(`download URL missing: ${downloadUrlCount}`);
+if (downloadUrlCount !== 1) throw new Error(`download URL was fetched again after the click: ${downloadUrlCount}`);
 if (externalOpenCount !== 1) throw new Error(`host download did not start: ${externalOpenCount}`);
-if (status.textContent !== "PNG opened in a new tab. Save it from your browser.") throw new Error(`unexpected status: ${status.textContent}`);
+if (status.textContent !== "Open request sent. If no tab appeared, send the link to chat.") throw new Error(`unexpected status: ${status.textContent}`);
+'''
+        completed = subprocess.run(
+            ["node", "--input-type=module", "-e", delivery_functions + assertions],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+
+    def test_png_delivery_hands_off_to_chat_without_open_external(self):
+        if shutil.which("node") is None:
+            self.skipTest("Node.js non disponibile: test hand-off UI saltato")
+        import mcp_app
+
+        html = mcp_app.quote_card_preview_html()
+        delivery_functions = "function validatedDownloadUrl" + html.split(
+            "function validatedDownloadUrl", 1
+        )[1].split("function syncFromOpenAiAliases", 1)[0]
+        assertions = r'''
+let deliveryUrl = "";
+let deliveryFileId = "";
+let deliveryFilename = "";
+let deliveryFile = null;
+let hostCapabilities = {};
+let sentMessage = null;
+let widgetState = null;
+const download = { disabled:true, textContent:"" };
+const handoff = { hidden:true, disabled:false };
+const deliveryName = { textContent:"" };
+const delivery = { hidden:true };
+const status = { textContent:"" };
+const errors = { textContent:"", hidden:true };
+const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){}, remove(){} }) };
+const NativeURL = globalThis.URL;
+class URL extends NativeURL {}
+URL.createObjectURL = () => { throw new Error("unexpected Blob fallback"); };
+URL.revokeObjectURL = () => {};
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net"]);
+const window = { openai:{
+  uploadFile:async () => ({ fileId:"file_qcb_chat" }),
+  getFileDownloadUrl:async () => ({ downloadUrl:"https://oaisdmntpritalynorth.blob.core.windows.net/files/quote-card-chat.png?sig=test" }),
+  setWidgetState:(state) => { widgetState = state; },
+  sendFollowUpMessage:async (message) => { sentMessage = message; }
+} };
+const scheduleResize = () => {};
+const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; };
+const svgToPngFile = async () => ({ name:"quote-card-chat.png", type:"image/png" });
+await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-chat.svg" });
+if (download.textContent !== "Send link to chat") throw new Error(`wrong desktop action: ${download.textContent}`);
+if (!handoff.hidden) throw new Error("secondary handoff should remain hidden when it is the primary action");
+await openPreparedDownload();
+if (!sentMessage?.prompt.includes(deliveryUrl) || sentMessage.scrollToBottom !== true) throw new Error("temporary URL was not sent to chat");
+if (JSON.stringify(widgetState?.imageIds) !== JSON.stringify(["file_qcb_chat"])) throw new Error("uploaded PNG was not exposed through imageIds");
+if (widgetState?.privateContent?.filename !== "quote-card-chat.png") throw new Error("private delivery state missing");
+if (status.textContent !== "PNG link sent to chat. Use Download PNG in the conversation.") throw new Error(`unexpected handoff status: ${status.textContent}`);
+'''
+        completed = subprocess.run(
+            ["node", "--input-type=module", "-e", delivery_functions + assertions],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+
+    def test_png_delivery_uses_standard_host_download(self):
+        if shutil.which("node") is None:
+            self.skipTest("Node.js non disponibile: test download MCP Apps saltato")
+        import mcp_app
+
+        html = mcp_app.quote_card_preview_html()
+        delivery_functions = "function validatedDownloadUrl" + html.split(
+            "function validatedDownloadUrl", 1
+        )[1].split("function syncFromOpenAiAliases", 1)[0]
+        assertions = r'''
+let deliveryUrl = "";
+let deliveryFileId = "";
+let deliveryFilename = "";
+let deliveryFile = null;
+let requestCount = 0;
+let hostCapabilities = { downloadFile:{} };
+const download = { disabled:true, textContent:"" };
+const handoff = { hidden:true, disabled:false };
+const deliveryName = { textContent:"" };
+const delivery = { hidden:true };
+const status = { textContent:"" };
+const errors = { textContent:"", hidden:true };
+const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){ throw new Error("unexpected anchor fallback"); }, remove(){} }) };
+const NativeURL = globalThis.URL;
+class URL extends NativeURL {}
+URL.createObjectURL = () => { throw new Error("unexpected Blob fallback"); };
+URL.revokeObjectURL = () => {};
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net"]);
+const window = { openai:undefined };
+const scheduleResize = () => {};
+const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; };
+const pngBytes = Uint8Array.from([137,80,78,71,13,10,26,10]);
+const svgToPngFile = async () => ({ name:"quote-card-native.png", type:"image/png", arrayBuffer:async () => pngBytes.buffer });
+const request = async (method, params) => {
+  if (method !== "ui/download-file") throw new Error(`unexpected method: ${method}`);
+  requestCount += 1;
+  const item = params?.contents?.[0];
+  if (item?.type !== "resource") throw new Error("embedded resource missing");
+  if (item.resource?.uri !== "file:///quote-card-native.png") throw new Error(`wrong file URI: ${item.resource?.uri}`);
+  if (item.resource?.mimeType !== "image/png") throw new Error("wrong MIME type");
+  if (item.resource?.blob !== Buffer.from(pngBytes).toString("base64")) throw new Error("wrong PNG payload");
+  return {};
+};
+await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-native.svg" });
+if (download.textContent !== "Download PNG") throw new Error(`wrong native action: ${download.textContent}`);
+if (delivery.hidden || download.disabled) throw new Error("native download action unavailable");
+await openPreparedDownload();
+if (requestCount !== 1) throw new Error(`native download not requested: ${requestCount}`);
+if (status.textContent !== "PNG download accepted by the host.") throw new Error(`unexpected status: ${status.textContent}`);
+'''
+        completed = subprocess.run(
+            ["node", "--input-type=module", "-e", delivery_functions + assertions],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+
+    def test_png_delivery_uses_standard_image_message_fallback(self):
+        if shutil.which("node") is None:
+            self.skipTest("Node.js non disponibile: test hand-off MCP Apps saltato")
+        import mcp_app
+
+        html = mcp_app.quote_card_preview_html()
+        delivery_functions = "function validatedDownloadUrl" + html.split(
+            "function validatedDownloadUrl", 1
+        )[1].split("function syncFromOpenAiAliases", 1)[0]
+        assertions = r'''
+let deliveryUrl = "";
+let deliveryFileId = "";
+let deliveryFilename = "";
+let deliveryFile = null;
+let sentMessage = null;
+let hostCapabilities = { message:{ image:{} } };
+const download = { disabled:true, textContent:"" };
+const handoff = { hidden:true, disabled:false };
+const deliveryName = { textContent:"" };
+const delivery = { hidden:true };
+const status = { textContent:"" };
+const errors = { textContent:"", hidden:true };
+const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){ throw new Error("unexpected anchor fallback"); }, remove(){} }) };
+const NativeURL = globalThis.URL;
+class URL extends NativeURL {}
+URL.createObjectURL = () => { throw new Error("unexpected Blob fallback"); };
+URL.revokeObjectURL = () => {};
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net"]);
+const window = { openai:undefined };
+const scheduleResize = () => {};
+const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; };
+const pngBytes = Uint8Array.from([137,80,78,71,13,10,26,10]);
+const svgToPngFile = async () => ({ name:"quote-card-message.png", type:"image/png", arrayBuffer:async () => pngBytes.buffer });
+const request = async (method, params) => {
+  if (method !== "ui/message") throw new Error(`unexpected method: ${method}`);
+  sentMessage = params;
+  return {};
+};
+await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-message.svg" });
+if (download.textContent !== "Send PNG to chat") throw new Error(`wrong message action: ${download.textContent}`);
+await openPreparedDownload();
+if (sentMessage?.role !== "user") throw new Error("message role missing");
+const image = sentMessage?.content?.find((item) => item.type === "image");
+if (image?.mimeType !== "image/png" || image.data !== Buffer.from(pngBytes).toString("base64")) throw new Error("PNG image block missing");
+if (status.textContent !== "PNG sent to chat. Open the image there to save it.") throw new Error(`unexpected status: ${status.textContent}`);
 '''
         completed = subprocess.run(
             ["node", "--input-type=module", "-e", delivery_functions + assertions],
@@ -545,6 +746,7 @@ class McpProtocolTests(unittest.TestCase):
             raise unittest.SkipTest("SDK MCP non installato: test protocollo saltato")
 
     def test_tool_exposes_explicit_input_and_output_schemas(self):
+        import mcp_app
         import mcp_server
 
         tools = {item.name: item for item in mcp_server.mcp._tool_manager.list_tools()}
@@ -604,12 +806,12 @@ class McpProtocolTests(unittest.TestCase):
             ui_tool.parameters["properties"]["direction"]["description"],
         )
         self.assertEqual(
-            "ui://quote-card-builder/preview/v1.32.html",
+            mcp_app.QUOTE_CARD_PREVIEW_RESOURCE,
             ui_tool.meta["ui"]["resourceUri"],
         )
         self.assertEqual(["model"], ui_tool.meta["ui"]["visibility"])
         self.assertEqual(
-            "ui://quote-card-builder/preview/v1.32.html",
+            mcp_app.QUOTE_CARD_PREVIEW_RESOURCE,
             ui_tool.meta["openai/outputTemplate"],
         )
         self.assertEqual("Opening Quote Card Builder…", ui_tool.meta["openai/toolInvocation/invoking"])
@@ -657,7 +859,7 @@ class McpProtocolTests(unittest.TestCase):
         resource = next(
             item
             for item in resources
-            if str(item.uri) == "ui://quote-card-builder/preview/v1.32.html"
+            if str(item.uri) == mcp_app.QUOTE_CARD_PREVIEW_RESOURCE
         )
         self.assertEqual(
             resource.meta["ui"]["domain"],
@@ -667,13 +869,13 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(resource.meta["ui"]["csp"]["resourceDomains"], [])
         self.assertEqual(
             resource.meta["openai/widgetCSP"]["redirect_domains"],
-            [],
+            list(mcp_app.QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS),
         )
         self.assertEqual("text/html;profile=mcp-app", resource.mimeType)
         self.assertTrue(resource.meta["ui"]["prefersBorder"])
 
         contents = asyncio.run(
-            mcp_server.mcp.read_resource("ui://quote-card-builder/preview/v1.32.html")
+            mcp_server.mcp.read_resource(mcp_app.QUOTE_CARD_PREVIEW_RESOURCE)
         )
         self.assertEqual(1, len(contents))
         html = contents[0].content
@@ -741,18 +943,23 @@ class McpProtocolTests(unittest.TestCase):
 
     def test_cached_preview_resource_versions_serve_the_current_editor(self):
         import asyncio
+        import mcp_app
         import mcp_server
 
         resources = asyncio.run(mcp_server.mcp.list_resources())
-        uris = {str(item.uri) for item in resources}
-        for version in (26, 27, 28, 29, 30, 31, 32, 33):
+        resources_by_uri = {str(item.uri): item for item in resources}
+        for version in (26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38):
             uri = f"ui://quote-card-builder/preview/v1.{version}.html"
-            self.assertIn(uri, uris)
+            self.assertIn(uri, resources_by_uri)
+            self.assertEqual(
+                list(mcp_app.QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS),
+                resources_by_uri[uri].meta["openai/widgetCSP"]["redirect_domains"],
+            )
             contents = asyncio.run(mcp_server.mcp.read_resource(uri))
             self.assertEqual(1, len(contents))
-            self.assertIn("v1.34", contents[0].content)
+            self.assertIn("v1.39", contents[0].content)
 
-        self.assertNotIn("ui://quote-card-builder/preview/v1.25.html", uris)
+        self.assertNotIn("ui://quote-card-builder/preview/v1.25.html", resources_by_uri)
 
     def test_domain_challenge_is_exact_and_disabled_without_a_token(self):
         import asyncio

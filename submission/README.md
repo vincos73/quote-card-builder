@@ -6,11 +6,11 @@ canonical Python renderer.
 
 ## Candidate under review
 
-- Current candidate: plugin `1.7.11`, MCP App UI `v1.34`
-- Deployed MCP App UI: `v1.34`
-- Deployed revision: `quote-card-builder-mcp-00064-raf`, ready and receiving 100% of traffic
+- Current candidate: plugin `1.7.12`, MCP App UI `v1.39`
+- Deployed MCP App UI: `v1.38`
+- Deployed revision: `quote-card-builder-mcp-00074-mod`, ready and receiving 100% of traffic
 - Public MCP endpoint: `https://quote-card-builder-mcp-960066178304.europe-west8.run.app/mcp`
-- Current UI resource: `ui://quote-card-builder/preview/v1.34.html`
+- Candidate UI resource: `ui://quote-card-builder/preview/v1.39.html`
 - Authentication: none
 - Persistence: none in the application runtime
 - Canonical renderer: `scripts/render_quote_card.py`, reached through the thin MCP adapter

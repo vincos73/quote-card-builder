@@ -13,9 +13,11 @@ for tone and does not replace the app with a file generated directly in chat.
 `quote_card_builder_open_editor` opens one interface with a 4:5 or 1:1 SVG preview based on
 those choices. `preview_quote_card` is the data tool called by the UI to refresh the same
 preview without opening another component. `produce_quote_card` is called only by the
-**Generate PNG** button and prepares an **Open PNG** action. In ChatGPT it uses the optional host
-file APIs with `library: false`, opens the temporary PNG in a browser tab, and tells the user to
-save it from the browser; compatible hosts without those APIs retain a local Blob fallback.
+**Generate PNG** button and prepares a capability-based delivery action. It prefers the standard
+MCP Apps **Download PNG** request (`ui/download-file`), which lets the host save an embedded PNG
+from its sandbox. If native download is unavailable but the host accepts image messages, the UI
+offers **Send PNG to chat** through `ui/message`. ChatGPT-specific file URLs and external opening
+remain compatibility fallbacks; non-sandboxed hosts can retain the local Blob fallback.
 The application server does not persist the generated card. The UI exposes
 the internal `editorial`, `statement`, and `contextual` directions and an explicit custom
 palette in addition to the neutral profile.
