@@ -8,7 +8,7 @@ The contents of `skills/quote-card-builder/` are generated from the canonical sk
 
 The plugin includes a local MCP vertical slice: `.mcp.json` starts the stdio server.
 Before opening the editor, the skill always asks for the quote, visible attribution or none,
-a neutral or custom palette, and the Editorial, Poster, or Frame direction. It does not ask
+a neutral or custom palette, and the Blocks, Cutouts, Constellations, or Gradient style. It does not ask
 for tone and does not replace the app with a file generated directly in chat.
 `quote_card_builder_open_editor` opens one interface with a 4:5 or 1:1 SVG preview based on
 those choices. `preview_quote_card` is the data tool called by the UI to refresh the same
@@ -16,9 +16,9 @@ preview without opening another component. `produce_quote_card` is called only b
 **Generate PNG** button and prepares an **Open PNG** action. In ChatGPT it uses the optional host
 file APIs with `library: false`, opens the temporary PNG in a browser tab, and tells the user to
 save it from the browser; compatible hosts without those APIs retain a local Blob fallback.
-The application server does not persist the generated card. The UI exposes
-the internal `editorial`, `statement`, and `contextual` directions and an explicit custom
-palette in addition to the neutral profile.
+The application server does not persist the generated card. The UI exposes the four current
+styles, deterministic pattern variation, the Bosco/Carta/Calda presets, four synchronized
+color and hex inputs, and a stable reset to the palette received when the editor opened.
 
 The skill remains the orchestrator of the full local workflow. The thin MCP adapter does not
 replace the canonical Python renderer or the complete Visual Review Studio workflow. The MCP

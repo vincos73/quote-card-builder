@@ -6,8 +6,8 @@ import base64
 from pathlib import Path
 
 
-QUOTE_CARD_APP_VERSION = "v1.37"
-QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.37.html"
+QUOTE_CARD_APP_VERSION = "v1.38"
+QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.38.html"
 QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.26.html",
     "ui://quote-card-builder/preview/v1.27.html",
@@ -20,6 +20,7 @@ QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.34.html",
     "ui://quote-card-builder/preview/v1.35.html",
     "ui://quote-card-builder/preview/v1.36.html",
+    "ui://quote-card-builder/preview/v1.37.html",
 )
 QUOTE_CARD_PREVIEW_MIME_TYPE = "text/html;profile=mcp-app"
 QUOTE_CARD_PREVIEW_DOMAIN = "https://quote-card-builder-mcp-960066178304.europe-west8.run.app"
@@ -99,10 +100,16 @@ def quote_card_preview_html() -> str:
       .editor .style-highlight { background:var(--signal); color:var(--ink); }
       .editor .style-outline { color:transparent; -webkit-text-stroke:.6px var(--lavender-light); }
       input:focus, select:focus, .editor:focus, button:focus-visible { border-color:var(--signal); outline:2px solid var(--signal); outline-offset:2px; }
-      .grid-2, .palette { display:grid; gap:10px; grid-template-columns:repeat(2,minmax(0,1fr)); }
-      .palette label { align-items:center; grid-template-columns:1fr auto; }
-      .palette input[type=color] { width:52px; height:34px; padding:3px; }
-      .palette-name[hidden], .palette[hidden] { display:none; }
+      .grid-2 { display:grid; gap:10px; grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .palette { display:grid; gap:8px; }
+      .palette-row { display:grid; grid-template-columns:minmax(84px,.7fr) 52px minmax(92px,1fr); align-items:center; gap:8px; padding:7px 8px; border:1px solid var(--seam); background:var(--deep); }
+      .palette-row > span { color:var(--lavender-light); font-family:var(--mono); font-size:9px; text-transform:uppercase; }
+      .palette-row input[type=color] { width:52px; height:34px; padding:3px; }
+      .palette-row input[type=text] { min-height:34px; padding:7px 8px; font-family:var(--mono); font-size:11px; text-transform:uppercase; }
+      .palette-actions { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:8px; }
+      .palette-actions button, .variation button { min-height:38px; padding:8px 10px; border:1px solid var(--seam-strong); border-radius:0; background:var(--deep); color:var(--lavender-light); font-family:var(--mono); font-size:9px; font-weight:700; text-transform:uppercase; }
+      .palette-actions button:hover, .variation button:hover { border-color:var(--signal); color:var(--signal); }
+      .palette-help { margin:0; color:var(--lavender); font-size:11px; line-height:1.35; }
       .toolbar { display:flex; align-items:center; min-height:36px; border:1px solid var(--seam-strong); border-bottom:0; background:var(--deep); }
       .toolbar button { min-width:38px; height:35px; padding:0 10px; border:0; border-right:1px solid var(--seam); border-radius:0; background:transparent; color:var(--lavender-light); }
       .toolbar button:hover { background:var(--raised); color:var(--lavender-light); }
@@ -110,12 +117,14 @@ def quote_card_preview_html() -> str:
       .toolbar-status { margin-left:auto; padding:0 9px; color:var(--lavender); font-family:var(--mono); font-size:9px; text-align:right; text-transform:uppercase; }
       .editor-label { display:flex; align-items:center; justify-content:space-between; }
       .editor-label button { padding:2px 0; border:0; background:none; color:var(--signal); font-family:var(--mono); font-size:9px; text-transform:uppercase; }
-      .directions, .segmented { display:grid; gap:6px; grid-template-columns:repeat(3,minmax(0,1fr)); }
-      .directions button, .segmented button { min-height:44px; padding:7px 5px; border:1px solid var(--seam-strong); border-radius:0; background:var(--deep); color:var(--lavender-light); font:inherit; font-weight:700; }
-      .directions button:hover, .segmented button:hover { background:var(--raised); }
-      .directions button[aria-pressed=true], .segmented button[aria-pressed=true] { border-color:var(--signal); background:var(--raised); color:var(--signal); }
-      .directions small { display:block; margin-top:2px; color:var(--lavender); font-family:var(--mono); font-size:8px; font-weight:400; text-transform:uppercase; }
-      .motif-grid button { font-family:var(--mono); font-size:9px; text-transform:uppercase; }
+      .style-picker { display:grid; gap:6px; grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .style-picker button { min-height:48px; padding:8px 7px; border:1px solid var(--seam-strong); border-radius:0; background:var(--deep); color:var(--lavender-light); font-family:var(--mono); font-size:9px; font-weight:700; text-transform:uppercase; }
+      .style-picker button:hover { background:var(--raised); }
+      .style-picker button[aria-pressed=true] { border-color:var(--signal); background:var(--raised); color:var(--signal); }
+      .style-picker .plain-style { grid-column:1 / -1; min-height:38px; color:var(--lavender); }
+      .variation { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)) auto; align-items:center; gap:6px; }
+      .variation[hidden] { display:none; }
+      .variation output { min-width:62px; text-align:right; }
       .range-row { display:flex; align-items:center; justify-content:space-between; }
       output { color:var(--signal); font-family:var(--mono); font-size:10px; font-variant-numeric:tabular-nums; }
       input[type=range] { min-height:auto; margin:4px 0; padding:0; border:0; accent-color:var(--signal); }
@@ -146,9 +155,10 @@ def quote_card_preview_html() -> str:
       ::selection { background:var(--signal); color:var(--ink); }
       @media (max-width:560px) {
         .app-header { align-items:flex-start; gap:10px; min-height:0; }
-        .grid-2, .palette { grid-template-columns:1fr; }
+        .grid-2 { grid-template-columns:1fr; }
+        .palette-row { grid-template-columns:minmax(76px,.65fr) 48px minmax(86px,1fr); }
         .toolbar-status { max-width:46%; }
-        .directions button, .segmented button { min-height:48px; }
+        .style-picker button { min-height:48px; }
         .actions { grid-template-columns:1fr; }
       }
       @media (max-width:420px) {
@@ -184,20 +194,20 @@ def quote_card_preview_html() -> str:
         </fieldset>
 
         <fieldset>
-          <legend>Visual direction &amp; motif</legend>
-          <div class="directions" role="group" aria-label="Visual style">
-            <button type="button" data-direction="editorial" aria-pressed="true">Editorial<small>Contours</small></button>
-            <button type="button" data-direction="statement" aria-pressed="false">Poster<small>Statement</small></button>
-            <button type="button" data-direction="contextual" aria-pressed="false">Frame<small>Contextual</small></button>
+          <legend>Style</legend>
+          <div class="style-picker" id="stylePicker" role="group" aria-label="Choose a visual style">
+            <button type="button" data-style-choice="blocks" aria-pressed="true">Blocks</button>
+            <button type="button" data-style-choice="cutouts" aria-pressed="false">Cutouts</button>
+            <button type="button" data-style-choice="constellations" aria-pressed="false">Constellations</button>
+            <button type="button" data-style-choice="gradient" aria-pressed="false">Gradient</button>
+            <button class="plain-style" type="button" data-style-choice="plain" aria-pressed="false">Hide pattern</button>
           </div>
-          <div class="segmented motif-grid" id="motifs" role="group" aria-label="Graphic motif">
-            <button type="button" data-motif="cover" aria-pressed="true">Blocks</button>
-            <button type="button" data-motif="cutouts" aria-pressed="false">Cutouts</button>
-            <button type="button" data-motif="constellations" aria-pressed="false">Constellations</button>
-            <button type="button" data-motif="gradient" aria-pressed="false">Gradient</button>
-            <button type="button" data-motif="hidden" aria-pressed="false">None</button>
+          <p class="hint" id="styleHint">Blocks selected. Vary the pattern to explore another deterministic composition.</p>
+          <div class="variation" id="patternVariation">
+            <button type="button" id="patternPrevious">Previous</button>
+            <button type="button" id="patternNext">Vary pattern</button>
+            <output id="patternSeed" aria-live="polite">Seed 0</output>
           </div>
-          <p class="hint" id="motifHint">The motif follows the selected direction.</p>
         </fieldset>
 
         <fieldset>
@@ -209,15 +219,19 @@ def quote_card_preview_html() -> str:
         </fieldset>
 
         <fieldset>
-          <legend>Palette</legend>
-          <label>Profile / palette <select id="paletteMode"><option value="neutral">Neutral profile</option><option value="custom">Custom palette</option></select></label>
-          <label class="palette-name" id="paletteNameRow" hidden>Palette name <input id="paletteName" maxlength="80" value="Custom palette" placeholder="e.g. Personal brand"></label>
-          <div class="palette" id="palette" hidden>
-            <label>Primary <input id="primary" type="color" value="#072743" aria-label="Primary color"></label>
-            <label>Accent <input id="accent" type="color" value="#E3F4FF" aria-label="Accent color"></label>
-            <label>Background <input id="background" type="color" value="#FEFDFB" aria-label="Background color"></label>
-            <label>Text <input id="textColor" type="color" value="#323232" aria-label="Text color"></label>
+          <legend>Card palette</legend>
+          <label>Palette name <input id="paletteName" maxlength="80" value="Initial palette" placeholder="e.g. Personal brand"></label>
+          <div class="palette-actions" aria-label="Palette actions">
+            <label>Ready palette <select id="palettePreset"><option value="initial">Initial</option><option value="forest">Bosco</option><option value="paper">Carta</option><option value="warm">Calda</option><option value="custom" disabled>Custom</option></select></label>
+            <button id="paletteReset" type="button">Reset initial</button>
           </div>
+          <div class="palette" id="palette" role="group" aria-label="Card colors">
+            <label class="palette-row"><span>Primary</span><input id="primary" type="color" value="#072743" aria-label="Choose primary color"><input id="primaryHex" type="text" value="#072743" maxlength="7" spellcheck="false" aria-label="Primary hexadecimal color"></label>
+            <label class="palette-row"><span>Accent</span><input id="accent" type="color" value="#E3F4FF" aria-label="Choose accent color"><input id="accentHex" type="text" value="#E3F4FF" maxlength="7" spellcheck="false" aria-label="Accent hexadecimal color"></label>
+            <label class="palette-row"><span>Background</span><input id="background" type="color" value="#FEFDFB" aria-label="Choose background color"><input id="backgroundHex" type="text" value="#FEFDFB" maxlength="7" spellcheck="false" aria-label="Background hexadecimal color"></label>
+            <label class="palette-row"><span>Text</span><input id="textColor" type="color" value="#323232" aria-label="Choose text color"><input id="textHex" type="text" value="#323232" maxlength="7" spellcheck="false" aria-label="Text hexadecimal color"></label>
+          </div>
+          <p class="palette-help" id="paletteHelp">Edit all four card colors. Reset restores the palette received when this editor opened.</p>
         </fieldset>
         <div class="actions" aria-label="Preview and export actions">
           <button class="secondary" id="submit" type="submit"><span class="action-title">Update preview</span><span class="action-detail">Check current changes</span></button>
@@ -233,16 +247,26 @@ def quote_card_preview_html() -> str:
       const pending = new Map(); let nextId = 1; let hasRendered = false;
       const $ = (id) => document.getElementById(id);
       const form = $("form"), text = $("text"), attribution = $("attribution");
-      const direction = { value: "editorial" }, paletteMode = $("paletteMode"), paletteName = $("paletteName");
-      const paletteNameRow = $("paletteNameRow"), palette = $("palette"), format = $("format"), scale = $("scale"), scaleValue = $("scaleValue"), position = $("position");
+      const direction = { value: "editorial" }, paletteName = $("paletteName"), palette = $("palette"), palettePreset = $("palettePreset");
+      const format = $("format"), scale = $("scale"), scaleValue = $("scaleValue"), position = $("position");
       const submit = $("submit"), produce = $("produce"), status = $("status"), image = $("image"), meta = $("meta"), errors = $("errors"), toolbarStatus = $("toolbarStatus");
       const delivery = $("delivery"), deliveryName = $("deliveryName"), download = $("download");
-      let styles = []; let lastTextValue = ""; let resizeFrame = 0; let deliveryUrl = ""; let deliveryFileId = ""; let deliveryFilename = ""; let previewTimer = 0; let previewSequence = 0;
-      const variants = { editorial: ["cover", "cutouts", "gradient"], statement: [], contextual: ["constellations"] };
-      const motifDefaults = { editorial: "cover", statement: "hidden", contextual: "constellations" };
-      const labels = { editorial: "Editorial", statement: "Poster", contextual: "Frame" };
-      const variantLabels = { cover: "Blocks", cutouts: "Cutouts", constellations: "Constellations", gradient: "Gradient" };
-      const directionLabels = { editorial: "Editorial · Contours", statement: "Poster · Statement", contextual: "Frame · Contextual" };
+      let styles = []; let lastTextValue = ""; let resizeFrame = 0; let deliveryUrl = ""; let deliveryFileId = ""; let deliveryFilename = ""; let previewTimer = 0; let previewSequence = 0; let graphicSeed = 0;
+      let paletteInitial = { name:"Initial palette", colors:{ primary:"#072743", accent:"#E3F4FF", background:"#FEFDFB", text:"#323232" } };
+      const styleOptions = {
+        blocks:{ direction:"editorial", variant:"cover", label:"Blocks" },
+        cutouts:{ direction:"editorial", variant:"cutouts", label:"Cutouts" },
+        constellations:{ direction:"contextual", variant:"constellations", label:"Constellations" },
+        gradient:{ direction:"editorial", variant:"gradient", label:"Gradient" },
+        plain:{ direction:"editorial", variant:"default", hidden:true, label:"Hide pattern" },
+      };
+      const palettePresets = {
+        forest:{ name:"Bosco", colors:{ primary:"#173D35", accent:"#C8E0CC", background:"#F6F8F0", text:"#173D35" } },
+        paper:{ name:"Carta", colors:{ primary:"#072743", accent:"#E3F4FF", background:"#FEFDFB", text:"#323232" } },
+        warm:{ name:"Calda", colors:{ primary:"#5A2C2A", accent:"#E8B4A8", background:"#FFF8F2", text:"#332423" } },
+      };
+      const paletteFields = { primary:["primary","primaryHex"], accent:["accent","accentHex"], background:["background","backgroundHex"], text:["textColor","textHex"] };
+      const hexPattern = /^#[0-9a-f]{6}$/i;
       function pointLength(value) { return Array.from(String(value || "")).length; }
       function cpOffset(value, utf16Index) { return pointLength(String(value || "").slice(0, utf16Index)); }
       function normalizeStyles(value) { const grouped = new Map(); (Array.isArray(value) ? value : []).forEach((item) => { if (!item || !["bold","italic","underline","highlight","accent","outline"].includes(item.type) || !Number.isInteger(item.start) || !Number.isInteger(item.end) || item.start >= item.end) return; if (!grouped.has(item.type)) grouped.set(item.type, []); grouped.get(item.type).push({ start:item.start, end:item.end, type:item.type }); }); const merged = []; grouped.forEach((ranges, type) => { ranges.sort((first, second) => first.start - second.start || first.end - second.end); ranges.forEach((range) => { const previous = merged.at(-1); if (previous?.type === type && range.start <= previous.end) previous.end = Math.max(previous.end, range.end); else merged.push({ ...range }); }); }); return merged.sort((first, second) => first.start - second.start || first.end - second.end || first.type.localeCompare(second.type)); }
@@ -453,24 +477,26 @@ def quote_card_preview_html() -> str:
         scheduleResize();
       }
       function readLines() { const value = textValue(); return value.includes("\n") ? value.split("\n") : null; }
-      function readPalette() { if (paletteMode.value === "neutral") return null; return { name:paletteName.value.trim() || "Custom palette", colors:{ primary:$("primary").value.toUpperCase(), accent:$("accent").value.toUpperCase(), background:$("background").value.toUpperCase(), text:$("textColor").value.toUpperCase() } }; }
-      function currentArguments() { const value = textValue(); return { text:value, format:format.value, attribution:attribution.value, styles:styles.length ? styles : [], lines:readLines(), direction:direction.value, graphic_mode:currentVariant() === "hidden" ? "hidden" : "auto", graphic_variant:currentVariant() === "hidden" ? "default" : currentVariant(), text_scale:Number(scale.value) / 100, vertical_position:position.value, palette:readPalette() }; }
+      function normalizeHex(value) { const normalized = String(value || "").trim().toUpperCase(); return hexPattern.test(normalized) ? normalized : null; }
+      function readPalette() { return { name:paletteName.value.trim() || "Custom palette", colors:Object.fromEntries(Object.entries(paletteFields).map(([key, ids]) => [key, normalizeHex($(ids[1]).value) || $(ids[0]).value.toUpperCase()])) }; }
+      function writePalette(value, rememberInitial = false) { if (!value?.colors) return; const colors = {}; Object.entries(paletteFields).forEach(([key, ids]) => { const color = normalizeHex(value.colors[key]); if (!color) return; colors[key] = color; $(ids[0]).value = color; $(ids[1]).value = color; }); if (Object.keys(colors).length !== 4) return; paletteName.value = String(value.name || "Custom palette"); if (rememberInitial) paletteInitial = { name:paletteName.value, colors:{ ...colors } }; syncPalettePreset(); }
+      function samePalette(first, second) { return Object.keys(paletteFields).every((key) => normalizeHex(first?.colors?.[key]) === normalizeHex(second?.colors?.[key])); }
+      function syncPalettePreset() { const current = readPalette(); if (samePalette(current, paletteInitial)) palettePreset.value = "initial"; else { const match = Object.entries(palettePresets).find(([, value]) => samePalette(current, value)); palettePreset.value = match?.[0] || "custom"; } }
+      function currentArguments() { const value = textValue(), style = selectedStyle(); return { text:value, format:format.value, attribution:attribution.value, styles:styles.length ? styles : [], lines:readLines(), direction:style.direction, graphic_mode:style.hidden ? "hidden" : "auto", graphic_variant:style.variant, graphic_seed:graphicSeed, text_scale:Number(scale.value) / 100, vertical_position:position.value, palette:readPalette() }; }
       function currentSignature() { return JSON.stringify(currentArguments()); }
-      function syncPaletteVisibility() { const custom = paletteMode.value === "custom"; palette.hidden = !custom; paletteNameRow.hidden = !custom; }
       function clearProduction() { if (deliveryUrl && deliveryUrl.startsWith("blob:")) URL.revokeObjectURL(deliveryUrl); deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; download.disabled = true; delivery.hidden = true; }
-      function selectedMotif() { return document.querySelector('[data-motif][aria-pressed="true"]')?.dataset.motif || motifDefaults[direction.value] || "cover"; }
-      function currentVariant() { return selectedMotif(); }
-      function normalizedMotif(value, graphicVariant, graphicMode) { if (graphicMode === "hidden") return "hidden"; return variants[value]?.includes(graphicVariant) ? graphicVariant : motifDefaults[value]; }
-      function updateMotifHint() { const motif = selectedMotif(); const label = motif === "hidden" ? "None" : variantLabels[currentVariant()]; $("motifHint").textContent = `${labels[direction.value]} · selected motif: ${label}.`; }
-      function setDirection(value) { if (!labels[value]) return; direction.value = value; if (![...variants[value], "hidden"].includes(currentVariant())) setMotif(motifDefaults[value]); document.querySelectorAll("[data-direction]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.direction === value))); updateMotifHint(); }
-      function setMotif(value) { document.querySelectorAll("[data-motif]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.motif === value))); updateMotifHint(); }
+      function selectedStyleKey() { return document.querySelector('[data-style-choice][aria-pressed="true"]')?.dataset.styleChoice || "blocks"; }
+      function selectedStyle() { return styleOptions[selectedStyleKey()] || styleOptions.blocks; }
+      function styleKeyFromInput(input) { if (input?.graphic_mode === "hidden") return "plain"; const match = Object.entries(styleOptions).find(([, option]) => !option.hidden && option.direction === input?.direction && option.variant === input?.graphic_variant); return match?.[0] || "blocks"; }
+      function updateStyleState() { const selected = selectedStyle(), key = selectedStyleKey(); direction.value = selected.direction; $("styleHint").textContent = selected.hidden ? "Pattern hidden. Choose a style to restore it." : `${selected.label} selected. Vary the pattern to explore another deterministic composition.`; $("patternVariation").hidden = Boolean(selected.hidden); $("patternSeed").textContent = `Seed ${graphicSeed}`; $("patternPrevious").disabled = graphicSeed === 0; }
+      function setStyleChoice(key) { if (!styleOptions[key]) key = "blocks"; document.querySelectorAll("[data-style-choice]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.styleChoice === key))); updateStyleState(); }
       function request(method, params) { const id = nextId++; window.parent.postMessage({ jsonrpc:"2.0", id, method, params }, "*"); return new Promise((resolve, reject) => pending.set(id, { resolve, reject })); }
       function schedulePreview(delay = 160) { window.clearTimeout(previewTimer); previewTimer = window.setTimeout(() => updatePreview(), delay); }
       function showErrors(items) { const messages = (items || []).map((item) => item.message || String(item)); errors.textContent = messages.join(" "); errors.hidden = messages.length === 0; }
       function extractStructuredContent(message) { const visited = new Set(); function visit(value) { if (!value || typeof value !== "object" || visited.has(value)) return null; visited.add(value); if (value.structuredContent && typeof value.structuredContent === "object") return value.structuredContent; if (value.structured_content && typeof value.structured_content === "object") return value.structured_content; if (typeof value.valid === "boolean" && typeof value.rendered === "boolean") return value; if (Array.isArray(value.content)) { const first = value.content.find((item) => item && item.type === "text"); if (first?.text) { try { const parsed = JSON.parse(first.text); if (parsed && typeof parsed === "object") return parsed; } catch (_) {} } } for (const key of ["result", "params", "toolResult", "tool_result", "output"]) { const found = visit(value[key]); if (found) return found; } return null; } return visit(message); }
       function safeInlineSvg(svgText) { if (typeof svgText !== "string" || !svgText.trim()) return null; const parsed = new DOMParser().parseFromString(svgText, "image/svg+xml"); const root = parsed.documentElement; if (!root || root.nodeName.toLowerCase() !== "svg" || parsed.querySelector("parsererror")) return null; root.querySelectorAll("script, foreignObject").forEach((node) => node.remove()); root.querySelectorAll("*").forEach((node) => [...node.attributes].forEach((attribute) => { const name = attribute.name.toLowerCase(); const value = attribute.value.trim().toLowerCase(); if (name.startsWith("on") || ((name === "href" || name === "xlink:href") && !value.startsWith("#"))) node.removeAttribute(attribute.name); })); return document.importNode(root, true); }
-      function render(result) { if (!result || typeof result.valid !== "boolean" || typeof result.rendered !== "boolean") { errors.textContent = "The preview response was incomplete. Select Update preview to retry."; errors.hidden = false; status.textContent = "Preview response unavailable."; scheduleResize(); return; } if (result.editor_state) applyInput(result.editor_state); hasRendered = true; showErrors(result.errors); const svgNode = result.valid && result.rendered ? safeInlineSvg(result.svg) : null; if (!svgNode) { image.replaceChildren(); image.hidden = true; meta.textContent = "The preview is unavailable."; status.textContent = "Review the errors and try again."; scheduleResize(); return; } if (result.format) format.value = result.format; image.replaceChildren(svgNode); image.setAttribute("aria-label", result.alt_text || "Quote card preview"); image.hidden = false; meta.textContent = `${result.profile} · ${directionLabels[result.direction] || directionLabels.editorial} · ${result.format} · ${Math.round((result.text_scale || Number(scale.value) / 100) * 100)}% · ${result.vertical_position || position.value}`; status.textContent = result.produced ? "Quote card generated by the canonical renderer." : "Preview validated by the canonical renderer."; scheduleResize(); }
-      function applyInput(params) { const input = params?.arguments || params; if (!input) return; if (Array.isArray(input.styles)) styles = normalizeStyles(input.styles); if (typeof input.text === "string") setTextValue(input.text); else renderEditor(); if (["4x5", "1x1"].includes(input.format)) format.value = input.format; if (typeof input.attribution === "string") attribution.value = input.attribution; if (typeof input.direction === "string") setDirection(input.direction); setMotif(normalizedMotif(direction.value, input.graphic_variant, input.graphic_mode)); if (input.profile_mode === "neutral") paletteMode.value = "neutral"; if (input.profile_mode === "custom") paletteMode.value = "custom"; if (input.palette?.colors) { paletteMode.value = "custom"; if (typeof input.palette.name === "string") paletteName.value = input.palette.name; Object.entries(input.palette.colors).forEach(([key, value]) => { const target = key === "text" ? $("textColor") : $(key); if (target && typeof value === "string") target.value = value; }); } if (typeof input.text_scale === "number") { scale.value = String(Math.round(input.text_scale * 100)); scaleValue.textContent = `${scale.value}%`; } if (typeof input.vertical_position === "string") position.value = input.vertical_position; syncPaletteVisibility(); scheduleResize(); }
+      function render(result) { if (!result || typeof result.valid !== "boolean" || typeof result.rendered !== "boolean") { errors.textContent = "The preview response was incomplete. Select Update preview to retry."; errors.hidden = false; status.textContent = "Preview response unavailable."; scheduleResize(); return; } if (result.editor_state) { const editorState = { ...result.editor_state }; if (!editorState.palette && result.palette) editorState.palette = { name:result.profile || "Initial palette", colors:result.palette }; applyInput(editorState); } hasRendered = true; showErrors(result.errors); const svgNode = result.valid && result.rendered ? safeInlineSvg(result.svg) : null; if (!svgNode) { image.replaceChildren(); image.hidden = true; meta.textContent = "The preview is unavailable."; status.textContent = "Review the errors and try again."; scheduleResize(); return; } if (result.format) format.value = result.format; image.replaceChildren(svgNode); image.setAttribute("aria-label", result.alt_text || "Quote card preview"); image.hidden = false; meta.textContent = `${result.profile} · ${selectedStyle().label} · ${result.format} · ${Math.round((result.text_scale || Number(scale.value) / 100) * 100)}% · ${result.vertical_position || position.value}`; status.textContent = result.produced ? "Quote card generated by the canonical renderer." : "Preview validated by the canonical renderer."; scheduleResize(); }
+      function applyInput(params) { const input = params?.arguments || params; if (!input) return; if (Array.isArray(input.styles)) styles = normalizeStyles(input.styles); if (typeof input.text === "string") setTextValue(input.text); else renderEditor(); if (["4x5", "1x1"].includes(input.format)) format.value = input.format; if (typeof input.attribution === "string") attribution.value = input.attribution; setStyleChoice(styleKeyFromInput(input)); if (Number.isInteger(input.graphic_seed) && input.graphic_seed >= 0 && input.graphic_seed <= 999999) graphicSeed = input.graphic_seed; if (input.palette?.colors) writePalette(input.palette, !hasRendered); else if (!hasRendered) writePalette(paletteInitial, true); if (typeof input.text_scale === "number") { scale.value = String(Math.round(input.text_scale * 100)); scaleValue.textContent = `${scale.value}%`; } if (typeof input.vertical_position === "string") position.value = input.vertical_position; updateStyleState(); scheduleResize(); }
       async function svgToPngFile(svgText, filename) {
         const parsed = new DOMParser().parseFromString(svgText, "image/svg+xml");
         const root = parsed.documentElement;
@@ -548,11 +574,14 @@ def quote_card_preview_html() -> str:
       function syncFromOpenAiAliases() { const bridge = window.openai; if (!bridge) return; applyInput(bridge.toolInput); if (bridge.toolOutput && !hasRendered) render(bridge.toolOutput); }
       document.querySelectorAll("[data-style]").forEach((button) => { button.addEventListener("mousedown", (event) => event.preventDefault()); button.addEventListener("click", () => applyStyle(button.dataset.style)); });
       download.addEventListener("click", openPreparedDownload);
-      document.querySelectorAll("[data-direction]").forEach((button) => button.addEventListener("click", () => { setDirection(button.dataset.direction); clearProduction(); schedulePreview(0); }));
-      document.querySelectorAll("[data-motif]").forEach((button) => button.addEventListener("click", () => { const mappedDirection = { cover:"editorial", cutouts:"editorial", gradient:"editorial", constellations:"contextual" }[button.dataset.motif]; if (mappedDirection) setDirection(mappedDirection); setMotif(button.dataset.motif); clearProduction(); schedulePreview(0); }));
-      format.addEventListener("change", () => { clearProduction(); scheduleResize(); schedulePreview(0); }); scale.addEventListener("input", () => { scaleValue.textContent = `${scale.value}%`; clearProduction(); scheduleResize(); schedulePreview(); }); position.addEventListener("change", () => { clearProduction(); schedulePreview(0); }); paletteMode.addEventListener("change", () => { syncPaletteVisibility(); clearProduction(); scheduleResize(); schedulePreview(0); });
+      document.querySelectorAll("[data-style-choice]").forEach((button) => button.addEventListener("click", () => { setStyleChoice(button.dataset.styleChoice); clearProduction(); schedulePreview(0); }));
+      $("patternPrevious").addEventListener("click", () => { graphicSeed = (graphicSeed + 999999) % 1000000; updateStyleState(); clearProduction(); schedulePreview(0); });
+      $("patternNext").addEventListener("click", () => { graphicSeed = (graphicSeed + 1) % 1000000; updateStyleState(); clearProduction(); schedulePreview(0); });
+      palettePreset.addEventListener("change", () => { const chosen = palettePreset.value === "initial" ? paletteInitial : palettePresets[palettePreset.value]; if (chosen) writePalette(chosen); clearProduction(); schedulePreview(0); });
+      $("paletteReset").addEventListener("click", () => { writePalette(paletteInitial); clearProduction(); schedulePreview(0); });
+      format.addEventListener("change", () => { clearProduction(); scheduleResize(); schedulePreview(0); }); scale.addEventListener("input", () => { scaleValue.textContent = `${scale.value}%`; clearProduction(); scheduleResize(); schedulePreview(); }); position.addEventListener("change", () => { clearProduction(); schedulePreview(0); });
       paletteName.addEventListener("input", () => { clearProduction(); schedulePreview(); });
-      ["primary", "accent", "background", "textColor"].forEach((id) => $(id).addEventListener("input", () => { clearProduction(); schedulePreview(); }));
+      Object.entries(paletteFields).forEach(([, ids]) => { const picker = $(ids[0]), hex = $(ids[1]); picker.addEventListener("input", () => { hex.value = picker.value.toUpperCase(); syncPalettePreset(); clearProduction(); schedulePreview(); }); hex.addEventListener("input", () => { const value = normalizeHex(hex.value); hex.setAttribute("aria-invalid", String(!value)); if (value) picker.value = value; syncPalettePreset(); clearProduction(); if (value) schedulePreview(); }); hex.addEventListener("blur", () => { const value = normalizeHex(hex.value); hex.value = value || picker.value.toUpperCase(); hex.removeAttribute("aria-invalid"); }); });
       $("rebalance").addEventListener("click", () => { const previous = textValue(); const words = previous.trim().split(/\s+/).filter(Boolean); if (words.length < 4) return; const target = Math.max(2, Math.ceil(words.length / 2)); const next = [words.slice(0, target).join(" "), words.slice(target).join(" ")].filter(Boolean).join("\n"); styles = remapStylesAfterEdit(previous, next, styles); setTextValue(next); clearProduction(); toolbarStatus.textContent = "Line breaks rebalanced: formatting preserved"; scheduleResize(); });
       text.addEventListener("beforeinput", (event) => {
         if (!['insertParagraph', 'insertLineBreak'].includes(event.inputType)) return;
@@ -577,7 +606,7 @@ def quote_card_preview_html() -> str:
       produce.addEventListener("click", async () => { const arguments_ = currentArguments(), signature = currentSignature(); if (!arguments_.text.trim()) { errors.textContent = "Write or choose a quote before generating the card."; errors.hidden = false; return; } submit.disabled = true; produce.disabled = true; clearProduction(); errors.hidden = true; status.textContent = "Generating…"; try { const result = extractStructuredContent(await request("tools/call", { name:"produce_quote_card", arguments:arguments_ })); if (signature !== currentSignature()) { status.textContent = "The text changed: the previous output was discarded."; return; } render(result); if (result?.produced) await prepareDownload(result); else { errors.textContent = "The card was not generated. Review the errors and try again."; errors.hidden = false; } } catch (error) { errors.textContent = error?.message || "The card was not generated. Try again."; errors.hidden = false; status.textContent = "Generation did not complete."; scheduleResize(); } finally { submit.disabled = false; produce.disabled = false; scheduleResize(); } });
       window.addEventListener("message", (event) => { if (event.source !== window.parent) return; const message = event.data; if (!message || message.jsonrpc !== "2.0") return; if (message.id !== undefined && pending.has(message.id)) { const current = pending.get(message.id); pending.delete(message.id); if (message.error) current.reject(message.error); else current.resolve(message.result); return; } if (message.method === "ui/notifications/tool-input") applyInput(message.params); if (["ui/notifications/tool-result","ui/tool-result","tool-result","mcp/tool-result"].includes(message.method)) render(extractStructuredContent(message.params || message.result)); if (["ui/notifications/tool-call-result","tool-calls/result"].includes(message.method)) render(extractStructuredContent(message)); });
       if (typeof ResizeObserver === "function") { const observer = new ResizeObserver(scheduleResize); observer.observe(document.documentElement); observer.observe(document.body); }
-      setDirection("editorial"); syncPaletteVisibility(); syncFromOpenAiAliases(); renderEditor(); scheduleResize(); let aliasChecks = 0; const aliasTimer = window.setInterval(() => { aliasChecks += 1; syncFromOpenAiAliases(); if (hasRendered || aliasChecks >= 20) window.clearInterval(aliasTimer); }, 100);
+      setStyleChoice("blocks"); writePalette(paletteInitial, true); syncFromOpenAiAliases(); renderEditor(); scheduleResize(); let aliasChecks = 0; const aliasTimer = window.setInterval(() => { aliasChecks += 1; syncFromOpenAiAliases(); if (hasRendered || aliasChecks >= 20) window.clearInterval(aliasTimer); }, 100);
       request("ui/initialize", { protocolVersion:"2025-06-18", capabilities:{}, clientInfo:{ name:"quote-card-builder-ui", version:"0.2.0" } }).then(syncFromOpenAiAliases).catch(() => syncFromOpenAiAliases());
     </script>
   </body>

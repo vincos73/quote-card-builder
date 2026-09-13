@@ -387,8 +387,8 @@ class McpAdapterTests(unittest.TestCase):
         self.assertIn("data:image/svg+xml;base64,", html)
         self.assertIn('class="product-title" id="title"', html)
         self.assertNotIn("Quote card editor", html)
-        self.assertIn("v1.37", html)
-        self.assertNotIn("v1.37 TEST", html)
+        self.assertIn("v1.38", html)
+        self.assertNotIn("v1.38 TEST", html)
         self.assertNotIn('data-motif="default"', html)
         self.assertNotIn('data-motif="alternate"', html)
         self.assertIn("structured_content", html)
@@ -410,7 +410,8 @@ class McpAdapterTests(unittest.TestCase):
         self.assertIn("signature !== currentSignature()", html)
         self.assertIn("function schedulePreview(delay = 160)", html)
         self.assertIn("schedulePreview(0)", html)
-        self.assertIn('["primary", "accent", "background", "textColor"]', html)
+        self.assertIn('const paletteFields = { primary:["primary","primaryHex"]', html)
+        self.assertIn('Object.entries(paletteFields)', html)
 
     def test_editor_remaps_style_ranges_instead_of_dropping_them_after_edits(self):
         if shutil.which("node") is None:
@@ -604,9 +605,9 @@ class McpProtocolTests(unittest.TestCase):
 
         ui_tool = tools["quote_card_builder_open_editor"]
         self.assertNotIn("emphasis", ui_tool.parameters["properties"])
-        self.assertTrue({"text", "attribution", "profile_mode", "direction"}.issubset(ui_tool.parameters["required"]))
+        self.assertTrue({"text", "attribution", "profile_mode", "style"}.issubset(ui_tool.parameters["required"]))
         self.assertEqual(
-            {"text", "attribution", "profile_mode", "direction", "format", "palette"},
+            {"text", "attribution", "profile_mode", "style", "format", "palette"},
             set(ui_tool.parameters["properties"]),
         )
         self.assertEqual("Open Quote Card Builder", ui_tool.title)
@@ -619,22 +620,22 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual("1. Quote", ui_tool.parameters["properties"]["text"]["title"])
         self.assertEqual("2. Visible attribution", ui_tool.parameters["properties"]["attribution"]["title"])
         self.assertEqual("3. Palette", ui_tool.parameters["properties"]["profile_mode"]["title"])
-        self.assertEqual("4. Direction", ui_tool.parameters["properties"]["direction"]["title"])
+        self.assertEqual("4. Style", ui_tool.parameters["properties"]["style"]["title"])
         self.assertIn(
             "does not represent tone, mood, or style",
             ui_tool.parameters["properties"]["profile_mode"]["description"],
         )
         self.assertIn(
-            "Do not accept minimal",
-            ui_tool.parameters["properties"]["direction"]["description"],
+            "Do not accept a generic style label",
+            ui_tool.parameters["properties"]["style"]["description"],
         )
         self.assertEqual(
-            "ui://quote-card-builder/preview/v1.37.html",
+            "ui://quote-card-builder/preview/v1.38.html",
             ui_tool.meta["ui"]["resourceUri"],
         )
         self.assertEqual(["model"], ui_tool.meta["ui"]["visibility"])
         self.assertEqual(
-            "ui://quote-card-builder/preview/v1.37.html",
+            "ui://quote-card-builder/preview/v1.38.html",
             ui_tool.meta["openai/outputTemplate"],
         )
         self.assertEqual("Opening Quote Card Builder…", ui_tool.meta["openai/toolInvocation/invoking"])
@@ -661,7 +662,7 @@ class McpProtocolTests(unittest.TestCase):
             text="noli me tangere lauria uber alles",
             attribution="vincos",
             profile_mode="neutral",
-            direction="editorial",
+            style="blocks",
             format="4x5",
             palette=None,
         )
@@ -682,7 +683,7 @@ class McpProtocolTests(unittest.TestCase):
         resource = next(
             item
             for item in resources
-            if str(item.uri) == "ui://quote-card-builder/preview/v1.37.html"
+            if str(item.uri) == "ui://quote-card-builder/preview/v1.38.html"
         )
         self.assertEqual(
             resource.meta["ui"]["domain"],
@@ -742,9 +743,22 @@ class McpProtocolTests(unittest.TestCase):
         self.assertIn("--signal:#b9d936", html)
         self.assertNotIn("font-family: Inter", html)
 
-        self.assertIn("selected motif", html)
-        self.assertIn('data-direction="editorial"', html)
-        self.assertIn('id="paletteMode"', html)
+        for style in ("blocks", "cutouts", "constellations", "gradient"):
+            self.assertIn(f'data-style-choice="{style}"', html)
+        self.assertNotIn('data-direction=', html)
+        self.assertNotIn('data-motif=', html)
+        self.assertNotIn("Editorial<small>", html)
+        self.assertNotIn("Poster<small>", html)
+        self.assertNotIn("Frame<small>", html)
+        self.assertIn('id="palettePreset"', html)
+        self.assertIn("Bosco", html)
+        self.assertIn("Carta", html)
+        self.assertIn("Calda", html)
+        self.assertIn('id="primaryHex"', html)
+        self.assertIn('id="paletteReset"', html)
+        self.assertIn('id="patternNext"', html)
+        self.assertIn("Vary pattern", html)
+        self.assertIn("graphic_seed:graphicSeed", html)
         self.assertIn("palette:readPalette()", html)
         self.assertIn('id="produce"', html)
         self.assertIn("Update preview", html)
@@ -775,7 +789,7 @@ class McpProtocolTests(unittest.TestCase):
             self.assertIn(uri, uris)
             contents = asyncio.run(mcp_server.mcp.read_resource(uri))
             self.assertEqual(1, len(contents))
-            self.assertIn("v1.37", contents[0].content)
+            self.assertIn("v1.38", contents[0].content)
 
         self.assertNotIn("ui://quote-card-builder/preview/v1.25.html", uris)
 
@@ -861,7 +875,7 @@ class McpProtocolTests(unittest.TestCase):
                             "text": "Una sola interfaccia.",
                             "attribution": "",
                             "profile_mode": "custom",
-                            "direction": "contextual",
+                            "style": "constellations",
                             "palette": {
                                 "name": "Palette test",
                                 "colors": {
@@ -933,7 +947,7 @@ class McpProtocolTests(unittest.TestCase):
                                 "text": "Preview dal pacchetto distribuito.",
                                 "attribution": "",
                                 "profile_mode": "neutral",
-                                "direction": "editorial",
+                                "style": "blocks",
                             },
                         )
                         self.assertFalse(result.isError)
@@ -1002,7 +1016,7 @@ class McpProtocolTests(unittest.TestCase):
                                 "text": "Preview HTTP reale.",
                                 "attribution": "",
                                 "profile_mode": "neutral",
-                                "direction": "editorial",
+                                "style": "blocks",
                             },
                         )
                         self.assertFalse(result.isError)

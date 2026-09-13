@@ -142,7 +142,7 @@ mcp = FastMCP(
         "use image generation, code execution, the local filesystem, standalone SVG, PNG, HTML, "
         "or files, and do not look for a local editor. If information is missing, ask exactly: "
         "1. Quote; 2. Visible attribution or 'none'; 3. Palette: 'neutral profile' or 'custom'; "
-        "4. Direction: Editorial, Poster, or Frame. Do not ask for tone, mood, minimal, or a "
+        "4. Style: Blocks, Cutouts, Constellations, or Gradient. Do not ask for tone, mood, or a "
         "generic style. Do not choose defaults for the user. Once all four answers are known, "
         "call quote_card_builder_open_editor exactly once to show the inline editor. Do not call "
         "preview_quote_card or produce_quote_card: they are private tools used by the interface "
@@ -466,10 +466,10 @@ def produce_quote_card(
     description=(
         "Use this when the user selects Quote Card Builder or asks to create, test, or open a "
         "quote card. This is the workflow's only public tool and opens the interactive inline "
-        "editor. If Quote, Attribution, Palette, and Direction are known, call it once. If a "
+        "editor. If Quote, Attribution, Palette, and Style are known, call it once. If a "
         "choice is missing, ask for it with these exact labels: 1. Quote; 2. Visible attribution "
-        "or none; 3. Palette, neutral profile or custom; 4. Direction, Editorial, Poster, or "
-        "Frame. The third item is the palette, never tone or mood. Do not use image generation, "
+        "or none; 3. Palette, neutral profile or custom; 4. Style, Blocks, Cutouts, "
+        "Constellations, or Gradient. The third item is the palette, never tone or mood. Do not use image generation, "
         "do not create SVG, PNG, HTML, or files directly in chat, do not look for a local editor, "
         "and do not say the plugin is unavailable. Do not choose values for the user. Call this "
         "tool exactly once and do not call preview_quote_card or produce_quote_card first: the UI "
@@ -503,11 +503,11 @@ def quote_card_builder_open_editor(
             "provided custom palette. This does not represent tone, mood, or style."
         ),
     ),
-    direction: Literal["editorial", "statement", "contextual"] = Field(
-        title="4. Direction",
+    style: Literal["blocks", "cutouts", "constellations", "gradient"] = Field(
+        title="4. Style",
         description=(
-            "Fourth explicit user choice: editorial for Editorial, statement for Poster, and "
-            "contextual for Frame. Do not accept minimal or generic labels."
+            "Fourth explicit user choice: Blocks, Cutouts, Constellations, or Gradient. "
+            "Do not accept a generic style label."
         ),
     ),
     format: Literal["4x5", "1x1"] = Field(
@@ -526,6 +526,13 @@ def quote_card_builder_open_editor(
         raise ValueError(
             "A custom palette requires a name and primary, accent, background, and text colors."
         )
+    style_map = {
+        "blocks": ("editorial", "cover"),
+        "cutouts": ("editorial", "cutouts"),
+        "constellations": ("contextual", "constellations"),
+        "gradient": ("editorial", "gradient"),
+    }
+    direction, graphic_variant = style_map[style]
     request = PreviewQuoteCardInput(
         text=text,
         format=format,
@@ -534,7 +541,7 @@ def quote_card_builder_open_editor(
         evidence_status="USER_SUPPLIED",
         direction=direction,
         graphic_mode="auto",
-        graphic_variant="default",
+        graphic_variant=graphic_variant,
         text_scale=1.0,
         vertical_position="center",
         palette=palette.model_dump(mode="json") if profile_mode == "custom" and palette else None,
