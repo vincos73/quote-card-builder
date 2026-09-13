@@ -387,10 +387,12 @@ class McpAdapterTests(unittest.TestCase):
         self.assertIn("data:image/svg+xml;base64,", html)
         self.assertIn('class="product-title" id="title"', html)
         self.assertNotIn("Quote card editor", html)
-        self.assertIn("v1.36", html)
-        self.assertNotIn("v1.36 TEST", html)
+        self.assertIn("v1.37", html)
+        self.assertNotIn("v1.37 TEST", html)
         self.assertNotIn('data-motif="default"', html)
         self.assertNotIn('data-motif="alternate"', html)
+        self.assertIn("structured_content", html)
+        self.assertIn("The preview response was incomplete.", html)
         self.assertIn("overflow:visible", html)
         self.assertNotIn(".editor { min-height:104px; outline:none; overflow:auto", html)
         self.assertNotIn("Optional emphasis", html)
@@ -627,12 +629,12 @@ class McpProtocolTests(unittest.TestCase):
             ui_tool.parameters["properties"]["direction"]["description"],
         )
         self.assertEqual(
-            "ui://quote-card-builder/preview/v1.36.html",
+            "ui://quote-card-builder/preview/v1.37.html",
             ui_tool.meta["ui"]["resourceUri"],
         )
         self.assertEqual(["model"], ui_tool.meta["ui"]["visibility"])
         self.assertEqual(
-            "ui://quote-card-builder/preview/v1.36.html",
+            "ui://quote-card-builder/preview/v1.37.html",
             ui_tool.meta["openai/outputTemplate"],
         )
         self.assertEqual("Opening Quote Card Builder…", ui_tool.meta["openai/toolInvocation/invoking"])
@@ -680,7 +682,7 @@ class McpProtocolTests(unittest.TestCase):
         resource = next(
             item
             for item in resources
-            if str(item.uri) == "ui://quote-card-builder/preview/v1.36.html"
+            if str(item.uri) == "ui://quote-card-builder/preview/v1.37.html"
         )
         self.assertEqual(
             resource.meta["ui"]["domain"],
@@ -696,7 +698,7 @@ class McpProtocolTests(unittest.TestCase):
         self.assertTrue(resource.meta["ui"]["prefersBorder"])
 
         contents = asyncio.run(
-            mcp_server.mcp.read_resource("ui://quote-card-builder/preview/v1.36.html")
+            mcp_server.mcp.read_resource("ui://quote-card-builder/preview/v1.37.html")
         )
         self.assertEqual(1, len(contents))
         html = contents[0].content
@@ -768,12 +770,12 @@ class McpProtocolTests(unittest.TestCase):
 
         resources = asyncio.run(mcp_server.mcp.list_resources())
         uris = {str(item.uri) for item in resources}
-        for version in (26, 27, 28, 29, 30, 31, 32, 33, 34, 35):
+        for version in (26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36):
             uri = f"ui://quote-card-builder/preview/v1.{version}.html"
             self.assertIn(uri, uris)
             contents = asyncio.run(mcp_server.mcp.read_resource(uri))
             self.assertEqual(1, len(contents))
-            self.assertIn("v1.36", contents[0].content)
+            self.assertIn("v1.37", contents[0].content)
 
         self.assertNotIn("ui://quote-card-builder/preview/v1.25.html", uris)
 
