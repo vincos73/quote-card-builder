@@ -1,7 +1,7 @@
 {
   "name": "quote-card-builder",
-  "version": "1.5.2",
-  "description": "Trasforma frasi, testi, URL, documenti e idee in quote card con revisione editoriale e visuale guidata.",
+  "version": "1.7.12",
+  "description": "Turn quotes, text, URLs, documents, and ideas into editable quote cards with guided editorial and visual review.",
   "author": {
     "name": "Vincenzo Cosenza",
     "url": "https://github.com/vincos73"
@@ -13,24 +13,25 @@
     "social-media",
     "editorial",
     "marketing",
-    "italian"
+    "design"
   ],
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Quote Card Builder",
-    "shortDescription": "Crea quote card fedeli alla fonte e al brand.",
-    "longDescription": "Seleziona o sviluppa una frase, controlla provenienza e attribuzione, revisiona la composizione nel Visual Review Studio e genera output pronti per i social senza perdere il controllo editoriale.",
+    "shortDescription": "Open a guided editor for creating quote cards.",
+    "longDescription": "Collect a quote, visible attribution, palette, and visual direction, then open the interactive Quote Card Builder editor. The plugin uses the canonical renderer rather than image generation, direct chat files, or a local editor.",
     "developerName": "Vincenzo Cosenza",
     "category": "Productivity",
     "capabilities": [
       "Interactive",
-      "Write"
+      "Read"
     ],
     "websiteURL": "https://github.com/vincos73/quote-card-builder",
     "defaultPrompt": [
-      "Trasforma questa frase in una quote card.",
-      "Trova la frase più forte in questo testo e crea una quote card.",
-      "Crea un post kit a partire da questa idea."
+      "Open Quote Card Builder and turn this quote into a card.",
+      "Find the strongest quote in this text and open the Quote Card Builder editor.",
+      "Open the Quote Card Builder editor."
     ],
     "brandColor": "#12161F"
   }

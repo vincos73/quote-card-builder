@@ -20,7 +20,7 @@ colors:
 typography:
   display:
     fontFamily: "QCB Orbitron, QCB Barlow, Arial Narrow, sans-serif"
-    fontSize: "21px"
+    fontSize: "clamp(20px, 3.8vw, 28px)"
     fontWeight: 750
     lineHeight: 1
     letterSpacing: ".045em"
@@ -72,24 +72,24 @@ components:
     height: "38px"
   field:
     backgroundColor: "{colors.aubergine-chrome}"
-    textColor: "#f5f0f6"
+    textColor: "{colors.lavender-light}"
     typography: "{typography.label}"
     rounded: "{rounded.square}"
     padding: "9px 10px"
   button-secondary:
     backgroundColor: "transparent"
     textColor: "{colors.lavender-light}"
-    typography: "{typography.metadata}"
+    typography: "{typography.body}"
     rounded: "{rounded.square}"
-    padding: "0 11px"
-    height: "34px"
+    padding: "8px 12px"
+    height: "52px"
   button-generate:
     backgroundColor: "{colors.chartreuse-signal}"
     textColor: "{colors.instrument-ink}"
-    typography: "{typography.display}"
+    typography: "{typography.body}"
     rounded: "{rounded.square}"
-    padding: "0 11px"
-    height: "34px"
+    padding: "8px 12px"
+    height: "52px"
 ---
 
 # Design System: Quote Card Builder — Plotter Bench C2
@@ -132,7 +132,7 @@ La palette contrappone chrome melanzana e superfici di cemento, con lavanda per 
 - **Inchiostro carta:** valore di zoom e microtesto ad alto contrasto sul banco.
 - **Cuciture:** tre intensità semitrasparenti separano chrome e cemento con linee da un pixel.
 
-**The Signal-Rarity Rule.** Il chartreuse non è una decorazione né un colore di riempimento generico: deve sempre significare selezione, validità o approvazione.
+**The Signal-Rarity Rule.** Il chartreuse non è una decorazione né un colore di riempimento generico: deve significare selezione, validità o approvazione. L'unica eccezione identitaria è `Quote Card` nel wordmark del prodotto, ripreso dall'editor locale originale.
 
 **The Two-Materials Rule.** Le grandi superfici appartengono al chrome o al cemento; non introdurre un terzo materiale cromatico per creare gerarchie artificiali.
 
@@ -150,7 +150,7 @@ La palette contrappone chrome melanzana e superfici di cemento, con lavanda per 
 
 ### Hierarchy
 
-- **Identità prodotto** (Orbitron 750, 21px desktop / 12px mobile, maiuscolo): firma la testata senza diventare un hero; `Quote Card` usa lavanda chiaro e `Builder` lavanda medio.
+- **Identità prodotto** (Orbitron, 28px desktop / 20px mobile, maiuscolo): firma la testata senza diventare un hero; `Quote Card` usa chartreuse a peso 750 e `Builder` lavanda medio a peso 400 con tracking più aperto.
 - **Azione di generazione** (800, 15px): unica CTA con enfasi Barlow piena e non tutta maiuscola.
 - **Body UI** (400, 14px, 1.4): testo leggibile, candidato selezionato e contenuto editoriale modificabile.
 - **Label strumento** (500, 11px, tracking .03em, maiuscolo): nomi dei controlli e intestazioni del rail.
@@ -188,7 +188,7 @@ La forma dominante è il rettangolo ortogonale con raggio zero. Tab, campi, grup
 
 ### Testata e tab formato
 
-La testata porta `Quote Card Builder`, seguito dalla firma `by` e dal lockup Vincos bianco, più i tre tab 4:5, 1:1 e 9:16. Il nome usa Orbitron e soltanto i due lavanda della palette: chiaro per `Quote Card`, medio per `Builder`. I tab sono pulsanti nativi con `aria-pressed`; il bordo lavanda diventa chartreuse nello stato attivo, con una velatura quasi impercettibile. Su mobile titolo e firma si dispongono su due righe compatte e restano nel primo viewport.
+La testata porta `Quote Card Builder`, seguito dalla firma `by` e dal lockup Vincos bianco; la versione di test resta isolata a destra. La dicitura ridondante `Quote card editor` non compare. Il wordmark usa Orbitron come nell'editor locale originale: `Quote Card` chartreuse, `Builder` lavanda medio più leggero e spaziato. Su mobile titolo e firma restano compatti e la versione conserva l'allineamento a destra.
 
 ### Letto plotter e prova SVG
 
@@ -200,7 +200,7 @@ Il rail melanzana è una sequenza di sezioni separate da cuciture da 1px: Palett
 
 ### Ledger di audit e actionbar
 
-Il ledger persiste in basso e tiene visibili conteggio QA, dichiarazioni correnti, stato sessione e revisione. Il check chartreuse indica gate superato; una X corallo e messaggi espliciti indicano errore. `Genera`, unica campitura chartreuse, salva le modifiche correnti, esegue gate e renderer e, a esito positivo, apre una ricevuta compatta con filename, cartella abbreviata, copia del percorso e download. La ricevuta è richiudibile e non sostituisce l’azione principale `Torna alla chat`.
+Il ledger persiste in basso e tiene visibili conteggio QA, dichiarazioni correnti, stato sessione e revisione. Il check chartreuse indica gate superato; una X corallo e messaggi espliciti indicano errore. Nell’app MCP `Update preview` resta un’azione secondaria trasparente con la promessa operativa `Check current changes`; `Generate PNG`, unica campitura chartreuse, dichiara invece l’esito `Prepare final download`. Nel Visual Review Studio locale `Genera` mantiene lo stesso ruolo produttivo: salva le modifiche correnti, esegue gate e renderer e, a esito positivo, apre una ricevuta compatta con filename, cartella abbreviata, copia del percorso e download. La ricevuta è richiudibile e non sostituisce l’azione principale `Torna alla chat`.
 
 ### Stati, feedback e accessibilità
 
