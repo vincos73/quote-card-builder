@@ -57,6 +57,7 @@ La skill prepara il contenuto e apre il Visual Review Studio nel browser. Nell�
 - usare grassetto, corsivo, sottolineato, evidenziato, accento o contorno;
 - ridurre la dimensione del testo e scegliere la posizione verticale;
 - mostrare o nascondere il logo;
+- esplorare palette pronte, modificare i quattro colori e ripristinare quelli iniziali;
 - salvare il brand corrente come profilo riutilizzabile;
 - esportare in `4:5`, `1:1`, `9:16` oppure in tutti i formati.
 
@@ -72,6 +73,10 @@ Apri **Palette della card** e scegli **Salva profilo** per conservare il brand c
 - quattro colori della card;
 - famiglia e file del font;
 - file del logo.
+
+Nel medesimo pannello puoi scegliere una palette pronta o modificare i singoli colori, con anteprima e controllo del contrasto a ogni modifica. Queste operazioni cambiano soltanto i colori della card; testo, formattazione, a capo dei tre formati, font, logo, stile, seed e composizione restano invariati. Una combinazione non leggibile viene segnalata e non supera il controllo per la produzione.
+
+**Ripristina iniziali** recupera i quattro colori presenti all'apertura originaria della sessione. Il riferimento resta lo stesso dopo la riapertura, la produzione o l'applicazione di uno stile salvato. Le prove di colore non modificano alcun profilo salvato: solo **Salva profilo / Aggiorna** salva esplicitamente la palette corrente nel profilo. **Save style** include invece la palette corrente nello stile riutilizzabile.
 
 Citazioni, fonti, attribuzioni e alt text non vengono salvati nel profilo. Nei lavori successivi la skill elenca i profili locali disponibili e ne usa uno solo dopo la tua scelta esplicita. Puoi anche allegare il JSON esportato all'inizio di una nuova conversazione: la skill lo valida, mostra palette, font, logo ed eventuali asset mancanti e attende la tua approvazione prima di applicarlo.
 
@@ -132,7 +137,7 @@ Per il flusso completo servono:
 
 La generazione PNG usa Node.js e `sharp` quando sono già disponibili nella sessione. La skill non installa dipendenze automaticamente. Se non trova un convertitore PNG compatibile, conserva l’SVG e dichiara il fallback invece di simulare una consegna riuscita.
 
-Il server dell’editor ascolta soltanto su `127.0.0.1` e usa un token di sessione. Fonte, brand e dimensioni sono campi protetti nell’interfaccia.
+Il server dell’editor ascolta soltanto su `127.0.0.1` e usa un token di sessione. Fonte, font, logo e dimensioni restano protetti nell’interfaccia; i quattro colori della card sono modificabili.
 
 ## Problemi comuni
 
@@ -167,6 +172,10 @@ python3 -m unittest discover -s tests -v
 ```
 
 La pipeline GitHub esegue la suite su Python 3.10, 3.11, 3.12 e 3.13. Il workflow di release controlla che il tag coincida con la versione dichiarata in `SKILL.md`, crea `quote-card-builder.zip` e `quote-card-builder-plugin.zip`, quindi pubblica i checksum SHA-256.
+
+## Stili generativi nell’editor locale
+
+Il selettore offre Blocks, Cutouts, Constellations e Gradient, con variazioni riproducibili del motivo. **Save style** e **My styles** salvano e riapplicano identità visiva, famiglia e seed alla citazione corrente. I motivi precedenti restano compatibili. Contratto e archivio locale: [generative-styles.md](references/generative-styles.md).
 
 ## Licenze dei font
 

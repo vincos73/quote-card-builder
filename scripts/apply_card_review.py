@@ -18,16 +18,13 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 from quote_card_contract import MAX_LINES
+from render_quote_card import GRAPHIC_VARIANTS, graphic_seed_allowed
+
 
 
 DIRECTIONS = {"editorial", "statement", "contextual"}
 LOGO_MODES = {"auto", "hidden"}
 GRAPHIC_MODES = {"auto", "hidden"}
-GRAPHIC_VARIANTS = {
-    "editorial": {"default", "rhythm_lines"},
-    "statement": {"default", "modules"},
-    "contextual": {"default", "route_map"},
-}
 OUTPUT_MODES = {"all", "4x5", "1x1", "9x16"}
 VERTICAL_POSITIONS = {"upper", "center", "lower"}
 TRANSFORMATIONS = {"VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"}
@@ -160,7 +157,7 @@ def _validate_lines(lines: Any, text: str, path: str) -> list[str]:
 
 
 def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
-    allowed = {"feedback_id", "submitted_at", "base_revision", "action", "editorial_responsibility", "content", "direction", "emphasis", "presentation", "formats", "overall_note"}
+    allowed = {"feedback_id", "submitted_at", "base_revision", "action", "editorial_responsibility", "content", "direction", "emphasis", "presentation", "formats", "brand", "overall_note"}
     extra = set(feedback) - allowed
     if extra:
         raise ReviewError("Feedback contiene campi non applicabili: " + ", ".join(sorted(extra)))
@@ -173,6 +170,14 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
         raise ReviewError("feedback.base_revision non coincide con manifest.revision.")
     if manifest.get("schema_version") != "0.4":
         raise ReviewError("È supportato soltanto manifest schema_version 0.4.")
+    brand_patch = feedback.get("brand", {})
+    if brand_patch:
+        colors = brand_patch.get("colors") if isinstance(brand_patch, dict) and set(brand_patch) == {"colors"} else None
+        if not isinstance(colors, dict) or set(colors) != {"primary", "accent", "background", "text"}:
+            raise ReviewError("feedback.brand.colors deve contenere la palette completa.")
+        import re
+        if any(not isinstance(value, str) or not re.fullmatch(r"#[0-9A-F]{6}", value) for value in colors.values()):
+            raise ReviewError("feedback.brand.colors deve contenere colori #RRGGBB canonici.")
 
     content = manifest.get("content")
     if not isinstance(content, dict) or not isinstance(content.get("text"), str):
@@ -231,8 +236,10 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
         raise ReviewError("overall_note deve essere una stringa.")
 
     presentation = feedback.get("presentation", {})
-    if not isinstance(presentation, dict) or set(presentation) - {"logo_mode", "graphic_mode", "graphic_variant", "output_mode"}:
+    if not isinstance(presentation, dict) or set(presentation) - {"logo_mode", "graphic_mode", "graphic_variant", "graphic_seed", "output_mode"}:
         raise ReviewError("Sono consentite solo modifiche di presentazione previste.")
+    if not graphic_seed_allowed(presentation.get("graphic_seed", 0)):
+        raise ReviewError("presentation.graphic_seed deve essere un intero da 0 a 999999.")
     if "logo_mode" in presentation and presentation["logo_mode"] not in LOGO_MODES:
         raise ReviewError("presentation.logo_mode non ammesso.")
     if "graphic_mode" in presentation and presentation["graphic_mode"] not in GRAPHIC_MODES:
@@ -312,6 +319,15 @@ def _apply_patch(manifest: dict[str, Any], feedback: dict[str, Any]) -> bool:
             if key in content_patch and target.get(key) != content_patch[key]:
                 target[key] = content_patch[key]
                 changed = True
+    brand_patch = feedback.get("brand", {})
+    if brand_patch:
+        # Persist the initial session palette exactly once.  This happens in
+        # the same atomic review application as the changed colours.
+        if "palette_initial" not in manifest:
+            manifest["palette_initial"] = dict(manifest["brand"]["colors"])
+        if manifest["brand"].get("colors") != brand_patch["colors"]:
+            manifest["brand"]["colors"] = dict(brand_patch["colors"])
+            changed = True
     for key in ("direction",):
         if key in feedback and manifest.get(key) != feedback[key]:
             manifest[key] = feedback[key]
@@ -319,7 +335,7 @@ def _apply_patch(manifest: dict[str, Any], feedback: dict[str, Any]) -> bool:
     emphasis_patch = {"emphasis": feedback["emphasis"]} if "emphasis" in feedback else {}
     for section, patch, keys in (
         ("content", emphasis_patch, ("emphasis",)),
-        ("presentation", feedback.get("presentation", {}), ("logo_mode", "graphic_mode", "graphic_variant", "output_mode")),
+        ("presentation", feedback.get("presentation", {}), ("logo_mode", "graphic_mode", "graphic_variant", "graphic_seed", "output_mode")),
     ):
         if patch:
             target = manifest.setdefault(section, {})

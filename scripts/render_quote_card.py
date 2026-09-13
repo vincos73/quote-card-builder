@@ -21,13 +21,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import rasterize
-from quote_card_contract import MAX_LINES
 
 DIRECTIONS = ("editorial", "statement", "contextual")
 GRAPHIC_VARIANTS = {
-    "editorial": {"default", "rhythm_lines"},
+    "editorial": {"default", "rhythm_lines", "cover", "cutouts", "gradient"},
     "statement": {"default", "modules"},
-    "contextual": {"default", "route_map"},
+    "contextual": {"default", "route_map", "constellations"},
 }
 TRANSFORMATIONS = {"VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"}
 EVIDENCE_STATUSES = {"VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"}
@@ -70,6 +69,12 @@ QUOTE_TRACKING_EM = -0.025
 # Poster rows carrying emphasis render 1.12x larger than plain rows.
 STATEMENT_STRONG_MULTIPLIER = 1.12
 VERTICAL_OFFSETS = {"upper": -0.075, "center": 0.0, "lower": 0.075}
+COVER_BAND_RATIO = 0.09
+# Attribution must remain legible after the 1440px card is scaled down in an
+# iframe or social feed. The preferred size is shared by every direction and
+# output format; unusually long labels are fitted rather than clipped.
+ATTRIBUTION_FONT_SIZE_RATIO = 0.0625
+ATTRIBUTION_TRACKING_EM = 0.08
 
 
 def direction_geometry(
@@ -110,6 +115,9 @@ def presentation_geometry(
         right_inset = width * DIRECTION_GEOMETRY["editorial"]["inset"]
         geometry["text_x"] = left_inset
         geometry["text_width"] = width - left_inset - right_inset
+    if (cutouts_enabled(direction, options) and options.get("logo_mode", "auto") != "hidden"
+            and data.get("brand", {}).get("logo")):
+        geometry["start_y"] += height * 0.08
     return geometry
 
 
@@ -117,6 +125,37 @@ def graphic_variant_allowed(direction: str, variant: str) -> bool:
     """Return whether a motif belongs to the selected visual direction."""
 
     return variant in GRAPHIC_VARIANTS.get(direction, set())
+
+
+def graphic_seed_allowed(seed: Any) -> bool:
+    return isinstance(seed, int) and not isinstance(seed, bool) and 0 <= seed <= 999999
+
+
+def cover_enabled(direction: str, presentation: dict[str, Any]) -> bool:
+    return (direction == "editorial" and presentation.get("graphic_variant") == "cover"
+            and presentation.get("graphic_mode", "auto") != "hidden")
+
+
+def cover_layout(height: int) -> dict[str, float]:
+    """Shared reservations for the two bands, logo and attribution."""
+    return {"band_height": height * COVER_BAND_RATIO, "logo_y": height * 0.12,
+            "text_top": height * 0.12, "text_bottom": height * 0.80,
+            "attribution_y": height * 0.865}
+
+
+def cutouts_layout(height: int) -> dict[str, float]:
+    """Text reservations matching the clear center of Cutouts."""
+    return {"text_top": height * 0.23, "text_bottom": height * 0.84}
+
+
+def cutouts_enabled(direction: str, presentation: dict[str, Any]) -> bool:
+    return (direction == "editorial" and presentation.get("graphic_variant") == "cutouts"
+            and presentation.get("graphic_mode", "auto") != "hidden")
+
+
+def cover_logo_width(width: int, height: int, aspect_ratio: float) -> float:
+    """Keep tall logos inside Cover's header reservation."""
+    return min(width * 0.21, height * 0.08 * aspect_ratio)
 
 
 def normalize_spaces(value: str) -> str:
@@ -204,7 +243,7 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
     lines = content.get("lines")
     if (
         not isinstance(lines, list)
-        or not 1 <= len(lines) <= MAX_LINES
+        or not lines
         or any(not isinstance(line, str) for line in lines if isinstance(lines, list))
         or (isinstance(lines, list) and not any(line.strip() for line in lines if isinstance(line, str)))
     ):
@@ -212,7 +251,7 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
             errors,
             "content.lines",
             "lines",
-            f"Inserire da 1 a {MAX_LINES} righe di testo.",
+            "Inserire almeno una riga di testo.",
         )
         lines = []
     if lines and normalize_spaces(" ".join(lines)) != normalize_spaces(text):
@@ -263,8 +302,10 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
         add_error(errors, "canvas.width", "range", "La larghezza deve essere un intero di almeno 800 px.")
     if not isinstance(height, int) or isinstance(height, bool) or height < 1000:
         add_error(errors, "canvas.height", "range", "L'altezza deve essere un intero di almeno 1000 px.")
-    if isinstance(width, int) and isinstance(height, int) and not math.isclose(width / height, 4 / 5, rel_tol=0.001):
-        add_error(errors, "canvas", "ratio", "Il renderer 0.2 accetta soltanto il rapporto 4:5.")
+    if isinstance(width, int) and isinstance(height, int):
+        ratio = width / height
+        if not any(math.isclose(ratio, expected, rel_tol=0.001) for expected in (4 / 5, 1.0)):
+            add_error(errors, "canvas", "ratio", "Il renderer accetta soltanto i rapporti 4:5 o 1:1.")
 
     direction = root.get("direction")
     if direction not in DIRECTIONS:
@@ -274,6 +315,8 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
     if not isinstance(presentation, dict):
         add_error(errors, "presentation", "type", "La presentazione deve essere un oggetto.")
     else:
+        if not graphic_seed_allowed(presentation.get("graphic_seed", 0)):
+            add_error(errors, "presentation.graphic_seed", "range", "Usare un seed intero da 0 a 999999.")
         graphic_mode = presentation.get("graphic_mode", "auto")
         if graphic_mode not in {"auto", "hidden"}:
             add_error(errors, "presentation.graphic_mode", "enum", "Usare auto o hidden.")
@@ -327,12 +370,35 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
         isinstance(colors.get(key), str) and HEX_COLOR.fullmatch(colors[key])
         for key in ("primary", "accent", "background", "text")
     ):
-        checks = {
-            "editorial_text": (colors["primary"], colors["background"]),
-            "statement_text": (colors["background"], colors["primary"]),
-            "statement_emphasis": (colors["accent"], colors["primary"]),
-            "contextual_text": (colors["primary"], colors["background"]),
-        }
+        # Validate the selected composition rather than rejecting a brand for
+        # a colour pair that this card never paints. Editorial/Gradient is
+        # special: it derives and verifies its actual full-field surface
+        # below, so an unused raw accent may legitimately fall under 4.5:1.
+        graphic_variant = presentation.get("graphic_variant", "default") if isinstance(presentation, dict) else "default"
+        if (direction == "editorial" and graphic_variant == "gradient"
+                and presentation.get("graphic_mode", "auto") != "hidden"):
+            checks: dict[str, tuple[str, str]] = {}
+            safety = gradient_render_safety(
+                brand, manifest_dir,
+                logo_mode=presentation.get("logo_mode", "auto"),
+            )
+            if not safety["passed"]:
+                add_error(
+                    errors, "presentation.graphic_variant", "gradient_contrast",
+                    "Il gradiente non garantisce contrasto su tutta la superficie o sul logo.",
+                )
+        elif direction == "statement":
+            checks = {
+                "statement_text": (colors["background"], colors["primary"]),
+                "statement_emphasis": (colors["accent"], colors["primary"]),
+            }
+        elif direction == "contextual":
+            checks = {
+                "contextual_text": (colors["primary"], colors["background"]),
+                "contextual_graphic": (colors["primary"], colors["accent"]),
+            }
+        else:
+            checks = {"editorial_text": (colors["primary"], colors["background"])}
         for name, (foreground, background) in checks.items():
             ratio = contrast_ratio(foreground, background)
             if ratio < 4.5:
@@ -415,6 +481,89 @@ def logo_data(brand: dict[str, Any], manifest_dir: Path, *, light: bool) -> tupl
         except (ET.ParseError, OSError, ValueError):
             aspect_ratio = 4.0
     return file_data_uri(path), aspect_ratio
+
+
+def gradient_logo_ink_colours(
+    brand: dict[str, Any], manifest_dir: Path, *, logo_mode: str = "auto",
+) -> tuple[list[str], str]:
+    """Read actual flat SVG logo paints for Gradient's full-field check.
+
+    Raster images and SVGs with CSS variables/currentColor cannot be audited
+    without rendering their pixels, so they are explicitly returned as
+    ``unverifiable``.  The pack records that state instead of pretending a
+    dark logo is equivalent to the palette primary.
+    """
+    if logo_mode == "hidden" or not (brand.get("logo") or {}):
+        return [], "not_present"
+    logo = brand.get("logo") or {}
+    value = logo.get("dark_path") or logo.get("light_path")
+    if not value:
+        return [], "not_present"
+    path = resolve_asset(value, manifest_dir)
+    if path.suffix.lower() != ".svg":
+        return [], "unverifiable_raster_logo"
+    try:
+        root = ET.fromstring(path.read_text(encoding="utf-8"))
+    except (ET.ParseError, OSError, UnicodeDecodeError):
+        return [], "unverifiable_svg_logo"
+    paints: set[str] = set()
+    unresolved = False
+    for element in root.iter():
+        tag = element.tag.rsplit("}", 1)[-1]
+        if tag in {"style", "image", "use", "filter", "mask", "pattern", "linearGradient", "radialGradient"}:
+            unresolved = True
+        for opacity_key in ("opacity", "fill-opacity", "stroke-opacity"):
+            opacity = element.attrib.get(opacity_key)
+            if opacity is not None and opacity.strip() not in {"1", "1.0", "100%"}:
+                unresolved = True
+        if element.attrib.get("filter") or element.attrib.get("mask") or element.attrib.get("clip-path"):
+            unresolved = True
+        style = element.attrib.get("style", "")
+        for key, value in re.findall(r"([\w-]+)\s*:\s*([^;]+)", style):
+            key, value = key.lower(), value.strip()
+            if key in {"opacity", "fill-opacity", "stroke-opacity"} and value not in {"1", "1.0", "100%"}:
+                unresolved = True
+            if key in {"filter", "mask", "clip-path"}:
+                unresolved = True
+        for key in ("fill", "stroke"):
+            value = element.attrib.get(key, "").strip()
+            if HEX_COLOR.fullmatch(value):
+                paints.add(value.upper())
+            elif value and value.lower() not in {"none", "transparent"}:
+                unresolved = True
+        for value in re.findall(r"(?:fill|stroke)\s*:\s*([^;\s]+)", style, flags=re.IGNORECASE):
+            if HEX_COLOR.fullmatch(value):
+                paints.add(value.upper())
+            elif value.lower() not in {"none", "transparent"}:
+                unresolved = True
+        if tag in {"path", "rect", "circle", "ellipse", "polygon", "polyline", "text"}:
+            has_paint = any(key in element.attrib for key in ("fill", "stroke")) or bool(
+                re.search(r"(?:fill|stroke)\s*:", style, flags=re.IGNORECASE)
+            )
+            if not has_paint:
+                # SVG defaults fill to black, which is real ink but cannot be
+                # tied to the brand without resolving inheritance.
+                unresolved = True
+    if unresolved or not paints:
+        return sorted(paints), "unverifiable_svg_logo"
+    return sorted(paints), "verified_svg_logo"
+
+
+def gradient_ink_colours(
+    brand: dict[str, Any], manifest_dir: Path, *, logo_mode: str = "auto",
+) -> tuple[list[str], str]:
+    """Use the actual quote/attribution inks; add verified logo ink."""
+    logo_inks, status = gradient_logo_ink_colours(brand, manifest_dir, logo_mode=logo_mode)
+    return [brand["colors"]["primary"].upper(), brand["colors"]["text"].upper(), *logo_inks], status
+
+
+def gradient_render_safety(
+    brand: dict[str, Any], manifest_dir: Path, *, logo_mode: str = "auto",
+) -> dict[str, Any]:
+    inks, logo_status = gradient_ink_colours(brand, manifest_dir, logo_mode=logo_mode)
+    report = gradient_contrast_report(brand["colors"], inks)
+    return {**report, "logo_status": logo_status,
+            "passed": report["passed"] and logo_status != "unverifiable_raster_logo" and logo_status != "unverifiable_svg_logo"}
 
 
 _FONT_METRICS_CACHE: dict[str, dict[str, float] | None] = {}
@@ -634,7 +783,10 @@ def fitted_font_size(
     max_units = max(width_units(line) for line in lines)
     width_size = available_width / max(max_units, 1e-6)
     height_size = available_height / (len(lines) * 1.18)
-    return max(48, min(maximum, width_size, height_size))
+    # Authored hard breaks are unbounded. Keep a tiny positive floor only so
+    # pathological but text-length-bounded input still produces valid SVG;
+    # ordinary copy remains governed by the width/height max-fit above.
+    return max(1, min(maximum, width_size, height_size))
 
 
 def statement_visual_lines(lines: list[str], width: int, height: int) -> list[str]:
@@ -749,11 +901,16 @@ def initial_direction_styles(text: str, direction: str) -> list[dict[str, Any]]:
     direction. Used only when no user-owned inline treatment or legacy
     emphasis exists -- a manual selection always replaces the first-run cue.
     """
+    # Manifesto starts neutral. Accent is an explicit editorial treatment,
+    # never a direction-owned default: a user should be able to switch to
+    # Poster without seeing an unrequested word recoloured.
+    if direction == "statement":
+        return []
     span = default_emphasis_span(text)
     if span is None:
         return []
     start, end = span
-    style_type = "bold" if direction == "editorial" else "accent" if direction == "statement" else "highlight"
+    style_type = "bold" if direction == "editorial" else "highlight"
     return [{"start": start, "end": end, "type": style_type}]
 
 
@@ -787,7 +944,7 @@ def statement_fitted_font_size(
     vertical_multipliers = statement_row_multipliers(lines, strong_rows)
     vertical_units = sum(vertical_multipliers[:-1]) * line_ratio + vertical_multipliers[-1]
     height_limit = geometry["fit_height"] / max(vertical_units, 1)
-    return max(48, min(width * 0.12, height_limit, *width_limits))
+    return max(1, min(width * 0.12, height_limit, *width_limits))
 
 
 def statement_block_height(font_size: float, lines: list[str], strong_rows: set[int]) -> float:
@@ -988,12 +1145,13 @@ def highlight_rects(
                 start_x = x - full_width / 2 + before
             else:
                 start_x = x + before
-            # Leading edge is an exact fit: it lines up with the start of
-            # the text block, and bleeding past that breaks the alignment
-            # rather than reading as a highlighter stroke. Trailing edge
-            # gets real overshoot, as a highlighter does when the pen
-            # lifts -- proportional to size so it scales with the card.
+            # Give the marker a small overshoot on both sides. Without a
+            # leading pad, antialiasing can leave the first glyph visibly
+            # outside the highlight, especially for italic or outlined text.
             width += row_size * 0.18
+            side_pad = row_size * 0.06
+            start_x -= side_pad
+            width += side_pad * 2
             # Uppercase glyphs (poster) have a taller cap-height relative to
             # font-size than mixed-case text, so the marker needs a bit more
             # headroom than the mixed-case band or capital tops poke out
@@ -1101,7 +1259,10 @@ def statement_text_block(
         row_baselines.append(cursor_y)
         # A highlight is a background marker, never an accent-colored glyph:
         # keeping the row white preserves contrast against the accent band.
-        fill = color if index in highlight_rows else emphasis_color if index in strong_rows else color
+        # Row strength controls scale only. Colour belongs to the exact
+        # selected span emitted by styled_lines/emphasized_lines; colouring
+        # the whole strong row made ordinary bold text look accented.
+        fill = color
         weight = ' font-weight="700"' if index in strong_rows else ""
         rows.append(
             f'<tspan x="{x:.1f}" y="{cursor_y:.1f}" font-size="{size:.1f}" fill="{fill}"{weight}>{content}</tspan>'
@@ -1138,9 +1299,297 @@ def legible_color(preferred: str, fallback: str, surface: str, *, minimum: float
     return preferred if contrast_ratio(preferred, surface) >= minimum else fallback
 
 
+GRADIENT_TEXT_CONTRAST = 4.5
+
+
+def _mix_color(first: str, second: str, amount: float) -> str:
+    """Mix two approved palette colours in sRGB and return a canonical hex.
+
+    The Gradient style deliberately uses only tonal derivatives of the brand
+    palette.  Keeping this little operation here (rather than relying on SVG
+    opacity) makes the derived colours inspectable before a rasteriser has
+    painted them.
+    """
+    amount = max(0.0, min(1.0, amount))
+    channels = [round(a + (b - a) * amount) for a, b in zip(parse_hex(first), parse_hex(second))]
+    return "#" + "".join(f"{value:02X}" for value in channels)
+
+
+def _gradient_contrast_bound(colours: list[str], inks: list[str]) -> dict[str, Any]:
+    """Conservative contrast for every alpha-composited gradient colour.
+
+    A stack of soft fields is a convex combination of its stops.  Its actual
+    RGB channels therefore remain inside the channel-wise min/max envelope of
+    *all* stops.  Checking the darker envelope for dark ink (and the lighter
+    one for light ink) is stricter than checking a few coordinates on each
+    radial gradient and remains valid after fields overlap.
+    """
+    channels = [parse_hex(colour) for colour in colours]
+    lower = "#" + "".join(f"{min(values):02X}" for values in zip(*channels))
+    upper = "#" + "".join(f"{max(values):02X}" for values in zip(*channels))
+    lower_luminance, upper_luminance = relative_luminance(lower), relative_luminance(upper)
+    ratios: dict[str, float] = {}
+    for ink in inks:
+        ink_luminance = relative_luminance(ink)
+        # If ink lies inside the possible background-luminance interval, a
+        # composite may meet it and collapse to 1:1.  Otherwise the nearest
+        # endpoint is the honest worst case.  This covers mid-tone ink on a
+        # dark gradient as well as the more usual dark-on-light card.
+        if lower_luminance <= ink_luminance <= upper_luminance:
+            ratios[ink] = 1.0
+        else:
+            ratios[ink] = min(contrast_ratio(ink, lower), contrast_ratio(ink, upper))
+    return {"lower": lower, "upper": upper, "ratios": ratios,
+            "minimum": min(ratios.values()), "passed": all(value >= GRADIENT_TEXT_CONTRAST for value in ratios.values())}
+
+
+def _most_contrasting_surface(inks: list[str], background: str) -> str:
+    """Nudge the paper tone only as far as needed to create contrast headroom."""
+    extremes = ("#FFFFFF", "#000000")
+    target = max(extremes, key=lambda colour: min(contrast_ratio(ink, colour) for ink in inks))
+    maximum = min(contrast_ratio(ink, target) for ink in inks)
+    # A palette that validates for Editorial is guaranteed 4.5:1 on its
+    # declared paper.  Most palettes can afford extra room for interpolation;
+    # very mid-tone inks cannot, so retain their maximally contrasting paper.
+    desired = min(6.0, max(GRADIENT_TEXT_CONTRAST, maximum - 0.08))
+    if _gradient_contrast_bound([background], inks)["minimum"] >= desired:
+        return background.upper()
+    low, high = 0.0, 1.0
+    for _ in range(24):
+        middle = (low + high) / 2
+        candidate = _mix_color(background, target, middle)
+        if _gradient_contrast_bound([candidate], inks)["minimum"] >= desired:
+            high = middle
+        else:
+            low = middle
+    return _mix_color(background, target, high)
+
+
+def _gradient_safe_tint(candidate: str, base: str, inks: list[str], accepted: list[str]) -> str:
+    """Return the strongest tint whose *whole* interpolation back to base
+    clears text contrast.  Sampling the path is intentionally conservative:
+    SVG gradient interpolation paints every intermediate colour, not only its
+    declared stops.
+    """
+    if _gradient_contrast_bound([base, *accepted, candidate], inks)["passed"]:
+        return candidate.upper()
+    low, high = 0.0, 1.0
+    for _ in range(24):
+        middle = (low + high) / 2
+        tint = _mix_color(base, candidate, middle)
+        if _gradient_contrast_bound([base, *accepted, tint], inks)["passed"]:
+            low = middle
+        else:
+            high = middle
+    return _mix_color(base, candidate, low)
+
+
+def gradient_palette(colors: dict[str, str], ink_colours: list[str] | None = None) -> dict[str, str]:
+    """Make the three soft Editorial/Gradient fields from a brand palette.
+
+    Quote, attribution and the expected dark logo all live directly on this
+    surface, so every generated colour is verified against ``primary``.  The
+    design never adds a reading panel behind text: contrast belongs to the
+    field itself across the full card.
+    """
+    inks = [colour.upper() for colour in (ink_colours or [colors["primary"]])]
+    base = _most_contrasting_surface(inks, colors["background"].upper())
+    bridge_source = _mix_color(colors["primary"], colors["accent"], 0.50)
+    # The safety ceiling can still make a dense, slate-coloured field. Keep
+    # the actual visual weight deliberately below it: the Gradient style is
+    # an open editorial page with colour moving through it, not a dark panel
+    # that happens to pass contrast.
+    sky_limit = _gradient_safe_tint(colors["accent"].upper(), base, inks, [])
+    sky = _mix_color(base, sky_limit, 0.82)
+    bloom_limit = _gradient_safe_tint(colors["primary"].upper(), base, inks, [sky])
+    bloom = _mix_color(base, bloom_limit, 0.28)
+    bridge_limit = _gradient_safe_tint(bridge_source, base, inks, [sky, bloom])
+    bridge = _mix_color(base, bridge_limit, 0.34)
+    return {
+        "base": base,
+        "sky": sky, "bloom": bloom, "bridge": bridge,
+    }
+
+
+def gradient_contrast_report(colors: dict[str, str], ink_colours: list[str] | None = None) -> dict[str, Any]:
+    """Expose auditable full-field contrast for render QA and tests."""
+    inks = [colour.upper() for colour in (ink_colours or [colors["primary"]])]
+    palette = gradient_palette(colors, inks)
+    bound = _gradient_contrast_bound(list(palette.values()), inks)
+    return {
+        "inks": inks,
+        "floor": GRADIENT_TEXT_CONTRAST,
+        "colours": palette,
+        "envelope": {"lower": bound["lower"], "upper": bound["upper"]},
+        "ratios": {ink: round(value, 2) for ink, value in bound["ratios"].items()},
+        "minimum": round(bound["minimum"], 2),
+        "passed": bound["passed"],
+    }
+
+
+def gradient_graphic(
+    width: int, height: int, colors: dict[str, str], seed: int, *, ink_colours: list[str] | None = None,
+    logo_status: str = "not_present",
+) -> str:
+    """Soft, seed-driven Editorial background with a deliberately clear page.
+
+    The stable entropy stream controls the diagonal, field centres, reach and
+    relative weight.  Its first field remains high/left and its bloom low/right
+    so the result keeps the requested airy blue-to-rose editorial flow while
+    every seed produces a visibly different composition.
+    """
+    entropy = _graphic_entropy(seed, "gradient")
+    inks = [colour.upper() for colour in (ink_colours or [colors["primary"]])]
+    palette = gradient_palette(colors, inks)
+    identifier = hashlib.sha256(
+        f"gradient-v1:{seed}:{width}:{height}:{','.join(palette.values())}".encode("ascii")
+    ).hexdigest()[:12]
+    field_count = 2 + entropy[0] % 2
+    angle = -34 + entropy[1] / 255 * 68
+    base_angle = 18 + entropy[2] / 255 * 38
+
+    # A loose diagonal is the visual through-line; offsets still range wide
+    # enough across the seed space to change the composition, not just noise.
+    centers = [
+        (0.10 + entropy[3] / 255 * 0.38, -0.04 + entropy[4] / 255 * 0.36),
+        (0.50 + entropy[5] / 255 * 0.42, 0.54 + entropy[6] / 255 * 0.42),
+        (0.26 + entropy[7] / 255 * 0.50, 0.28 + entropy[8] / 255 * 0.42),
+    ]
+    radii = [0.50 + entropy[9] / 255 * 0.36, 0.54 + entropy[10] / 255 * 0.38,
+              0.38 + entropy[11] / 255 * 0.36]
+    field_names = ("sky", "bloom", "bridge")
+    definitions = [
+        f'<linearGradient id="gradient-base-{identifier}" x1="0" y1="0" x2="1" y2="1" '
+        f'gradientTransform="rotate({base_angle:.1f} .5 .5)"><stop offset="0" stop-color="{palette["base"]}"/>'
+        f'<stop offset="1" stop-color="{_mix_color(palette["base"], palette["sky"], 0.22)}"/></linearGradient>'
+    ]
+    fields: list[str] = []
+    for index in range(field_count):
+        name = field_names[index]
+        cx, cy = centers[index]
+        radius = radii[index]
+        field_id = f"gradient-field-{index}-{identifier}"
+        rotation = angle + (entropy[12 + index] / 255 - .5) * 24
+        middle = _mix_color(palette[name], palette["base"], 0.38 + entropy[15 + index] / 255 * .18)
+        definitions.append(
+            f'<radialGradient id="{field_id}" cx="{cx:.3f}" cy="{cy:.3f}" r="{radius:.3f}" '
+            f'gradientTransform="rotate({rotation:.1f} .5 .5)"><stop offset="0" stop-color="{palette[name]}"/>'
+            f'<stop offset="0.48" stop-color="{middle}" stop-opacity="{0.50 + entropy[18 + index] / 255 * .26:.3f}"/>'
+            f'<stop offset="1" stop-color="{palette["base"]}" stop-opacity="0"/></radialGradient>'
+        )
+        fields.append(
+            f'<rect class="gradient-field gradient-field--{name}" width="{width}" height="{height}" '
+            f'fill="url(#{field_id})"/>'
+        )
+    return (
+        f'<g class="direction-graphic direction-graphic--gradient" data-generator="gradient-v1" '
+        f'data-seed="{seed}" data-field-count="{field_count}" data-gradient-inks="{",".join(inks)}" '
+        f'data-gradient-floor="{GRADIENT_TEXT_CONTRAST:.1f}" data-gradient-logo-status="{logo_status}"><defs>{"".join(definitions)}</defs>'
+        f'<rect class="gradient-surface" width="{width}" height="{height}" fill="url(#gradient-base-{identifier})"/>'
+        f'{"".join(fields)}</g>'
+    )
+
+
+def cover_graphic(width: int, height: int, colors: dict[str, str], seed: int) -> str:
+    """Cover v1: stable normalized mosaics, shared across all aspect ratios.
+
+    Keep this algorithm version intact for saved cards. A future visual
+    grammar should use a new variant ID rather than reinterpret these seeds.
+    """
+    entropy = hashlib.sha256(f"quote-cover-v1:{seed}".encode("ascii")).digest()
+    palette = [colors["primary"], colors["accent"], colors["background"]]
+    weights = [8 + value % 12 for value in entropy[:6]]
+    total = sum(weights)
+    band_height = cover_layout(height)["band_height"]
+    parts = []
+    for band in range(2):
+        y = 0.0 if band == 0 else height - band_height
+        parts.append(f'<rect class="cover-band" x="0" y="{y:.3f}" width="{width}" '
+                     f'height="{band_height:.3f}" fill="{colors["background"]}"/>')
+        x = 0.0
+        order = range(6) if band == 0 else reversed(range(6))
+        for index in order:
+            right = x + width * weights[index] / total
+            split = (entropy[6 + index + band * 6] % 4) / 3
+            first = (index + entropy[18 + band]) % 3
+            second = (first + 1 + entropy[20 + index] % 2) % 3
+            for top, fraction, color in ((0, split, first), (split, 1 - split, second)):
+                if fraction:
+                    parts.append(f'<rect class="cover-tile" x="{x:.3f}" y="{y + top * band_height:.3f}" '
+                                 f'width="{right - x:.3f}" height="{fraction * band_height:.3f}" '
+                                 f'fill="{palette[color]}"/>')
+            x = right
+    return (f'<g class="direction-graphic direction-graphic--cover" '
+            f'data-generator="cover-v1" data-seed="{seed}">' + "".join(parts) + '</g>')
+
+
+def _graphic_entropy(seed: int, label: str) -> bytes:
+    return hashlib.sha256(f"quote-{label}-v1:{seed}".encode("ascii")).digest()
+
+
+def cutouts_graphic(width: int, height: int, colors: dict[str, str], seed: int) -> str:
+    """Flat, asymmetric edge polygons with a clear ivory center."""
+    entropy = _graphic_entropy(seed, "cutouts")
+    accent = colors["accent"]
+    primary = colors["primary"]
+    right = width
+    bottom = height
+    polys = [
+        ((0, 0), (width * (.24 + entropy[0] / 1400), 0),
+         (width * (.08 + entropy[1] / 3000), height * (.07 + .10 * entropy[2] / 255)), (0, height * (.09 + .09 * entropy[3] / 255))),
+        ((right, 0), (right - width * (.58 + entropy[4] / 1800), 0),
+         (right - width * (.18 + entropy[5] / 1800), height * (.12 + .08 * entropy[6] / 255)),
+         (right, height * (.14 + .08 * entropy[7] / 255))),
+        ((right, bottom), (right - width * (.25 + entropy[8] / 1500), bottom),
+         (right - width * (.15 + entropy[9] / 1800), height * (.88 + .07 * entropy[10] / 255)),
+         (right, height * (.84 + .07 * entropy[11] / 255))),
+    ]
+    fills = (accent, primary, accent)
+    elements = []
+    for index, points in enumerate(polys):
+        point_string = " ".join(f"{x:.1f},{y:.1f}" for x, y in points)
+        elements.append(f'<polygon class="cutout cutout--{index + 1}" points="{point_string}" fill="{fills[index]}"/>')
+    return (f'<g class="direction-graphic direction-graphic--cutouts" '
+            f'data-generator="cutouts-v1" data-seed="{seed}">' + "".join(elements) + '</g>')
+
+
+def constellations_graphic(width: int, height: int, colors: dict[str, str], seed: int) -> str:
+    """Sparse diagonal node networks tucked into the two opposite corners."""
+    entropy = _graphic_entropy(seed, "constellations")
+    stroke = colors["primary"]
+    radius = max(3.0, width * .004)
+    groups = []
+    for corner, mirror in (("top", False), ("bottom", True)):
+        offset = 0 if not mirror else 16
+        base_x, base_y = width * .84, height * .06
+        points = [(base_x, base_y), (width * (.90 + entropy[offset] / 5000), height * (.12 + entropy[offset + 1] / 5000)),
+                  (width * (.78 + entropy[offset + 2] / 5000), height * (.16 + entropy[offset + 3] / 5000)),
+                  (width * (.91 + entropy[offset + 4] / 5000), height * (.21 + entropy[offset + 5] / 5000)),
+                  (width * (.84 + entropy[offset + 6] / 5000), height * (.25 + entropy[offset + 7] / 5000)),
+                  (width * (.96 - entropy[offset + 8] / 5000), height * (.07 + entropy[offset + 9] / 5000)),
+                  (width * (.74 + entropy[offset + 10] / 5000), height * (.08 + entropy[offset + 11] / 5000)),
+                  (width * (.95 - entropy[offset + 12] / 6000), height * (.28 + entropy[offset + 13] / 6000))]
+        if mirror:
+            points = [(width - x, height - y) for x, y in points]
+        topology = entropy[offset + 14] % 4
+        edges = (((0, 1), (1, 2), (2, 3), (3, 4), (4, 5)) if topology == 0 else
+                 ((0, 1), (0, 2), (1, 3), (1, 4), (2, 5)) if topology == 1 else
+                 ((0, 1), (1, 2), (2, 0), (2, 3), (3, 4), (4, 6)) if topology == 2 else
+                 ((0, 1), (1, 2), (1, 3), (1, 4), (1, 5), (5, 6)))
+        count = max(b for _, b in edges) + 1
+        points = points[:count]
+        lines = "".join(f'<path class="constellation-line" d="M {points[a][0]:.1f} {points[a][1]:.1f} L {points[b][0]:.1f} {points[b][1]:.1f}"/>' for a, b in edges)
+        nodes = "".join(f'<circle class="constellation-node" cx="{x:.1f}" cy="{y:.1f}" r="{max(radius, width * (.007 + entropy[offset + index] / 30000)):.1f}" fill="{stroke}" stroke="none"/>' for index, (x, y) in enumerate(points))
+        groups.append(f'<g class="constellation constellation--{corner}">{lines}{nodes}</g>')
+    return (f'<g class="direction-graphic direction-graphic--constellations" fill="none" '
+            f'stroke="{stroke}" stroke-width="{max(2.0, width * .002):.1f}" stroke-linecap="round" '
+            f'data-generator="constellations-v1" data-seed="{seed}">' + "".join(groups) + '</g>')
+
+
 def direction_graphic(
     direction: str, *, width: int, height: int, colors: dict[str, str], enabled: bool,
-    variant: str = "default",
+    variant: str = "default", seed: int = 0, gradient_inks: list[str] | None = None,
+    gradient_logo_status: str = "not_present",
 ) -> str:
     """Render one product-specific visual grammar for each direction.
 
@@ -1153,6 +1602,13 @@ def direction_graphic(
     """
     if not enabled:
         return ""
+    if direction == "editorial" and variant == "cover":
+        return cover_graphic(width, height, colors, seed)
+    if direction == "editorial" and variant == "cutouts":
+        return cutouts_graphic(width, height, colors, seed)
+    if direction == "editorial" and variant == "gradient":
+        return gradient_graphic(width, height, colors, seed, ink_colours=gradient_inks,
+                                logo_status=gradient_logo_status)
     if direction == "editorial":
         # The page itself is `colors["background"]`; pick whichever brand
         # color actually reads against it instead of assuming accent does.
@@ -1176,20 +1632,26 @@ def direction_graphic(
                 f'stroke="{stroke_color}" stroke-width="{stroke_width:.1f}">{"".join(rules)}</g>'
             )
         paths: list[str] = []
+        entropy = _graphic_entropy(seed, "contours") if seed else None
         for index in range(6):
             # These are the exact pre-1.3 Contours coordinates. Their natural
             # canvas crop is part of the original visual, not a mask.
             top_x = width * (0.89 + index * 0.026)
             top_y = -height * 0.07 + index * height * 0.018
+            if entropy:
+                top_x += width * ((entropy[index] / 255 - .5) * .018)
+                top_y += height * ((entropy[index + 6] / 255 - .5) * .035)
             paths.append(
                 f'<path class="contour-path contour-path--top" d="M {top_x:.1f} {top_y:.1f} '
-                f'C {top_x - width * 0.12:.1f} {top_y + height * 0.05:.1f}, '
+                f'C {top_x - width * (0.12 + (entropy[index + 12] / 255 - .5) * .025 if entropy else .12):.1f} {top_y + height * 0.05:.1f}, '
                 f'{top_x - width * 0.15:.1f} {top_y + height * 0.14:.1f}, '
                 f'{top_x - width * 0.07:.1f} {top_y + height * 0.21:.1f} '
                 f'S {top_x + width * 0.055:.1f} {top_y + height * 0.29:.1f}, '
                 f'{top_x:.1f} {top_y + height * 0.39:.1f}"/>'
             )
             bottom_y = height * (0.67 + index * 0.019)
+            if entropy:
+                bottom_y += height * ((entropy[index + 18] / 255 - .5) * .035)
             paths.append(
                 f'<path class="contour-path contour-path--bottom" d="M {-width * 0.045:.1f} {bottom_y:.1f} '
                 f'C {width * 0.075:.1f} {bottom_y + height * 0.04:.1f}, '
@@ -1233,6 +1695,7 @@ def direction_graphic(
         ring_color = colors["accent"]
         corners = [(width, 0.0), (0.0, height)]
         ring_count = 4
+        entropy = _graphic_entropy(seed, "echo") if seed else None
         base_radius = width * 0.05
         step = width * 0.07
         max_stroke = width * 0.016
@@ -1241,6 +1704,8 @@ def direction_graphic(
         for cx, cy in corners:
             for i in range(ring_count):
                 radius = base_radius + i * step
+                if entropy:
+                    radius *= 0.90 + entropy[(i + (0 if cx else 8)) % len(entropy)] / 255 * .20
                 fade = i / (ring_count - 1)
                 stroke = max_stroke + (min_stroke - max_stroke) * fade
                 rings.append(
@@ -1248,6 +1713,8 @@ def direction_graphic(
                     f'fill="none" stroke="{ring_color}" stroke-width="{stroke:.1f}"/>'
                 )
         return '<g class="direction-graphic direction-graphic--echo">' + "".join(rings) + '</g>'
+    if variant == "constellations":
+        return constellations_graphic(width, height, colors, seed)
     # Contextual/Frame: dots sit over the accent field; "statement_emphasis"
     # already guarantees primary reads at >=4.5:1 against accent, so draw
     # them at full opacity rather than blending a third hue.
@@ -1255,26 +1722,29 @@ def direction_graphic(
         stroke_color = colors["primary"]
         stroke_width = max(2.0, width * 0.0022)
         radius = max(3.0, width * 0.0045)
-        paths = (
+        # Draw one route corner and rotate that exact geometry into the
+        # opposite corner.  Keeping a single source shape avoids the visual
+        # drift that used to make the lower-left route look unrelated to the
+        # upper-right one, especially on square canvases.
+        corner_paths = (
             f'<path class="route-line route-line--top" d="M {width * 0.79:.1f} {height * 0.03:.1f} '
             f'H {width * 0.94:.1f} V {height * 0.12:.1f} H {width * 1.02:.1f}"/>'
             f'<path class="route-line route-line--top" d="M {width * 0.87:.1f} {-height * 0.01:.1f} '
             f'V {height * 0.075:.1f} Q {width * 0.87:.1f} {height * 0.105:.1f} '
             f'{width * 0.90:.1f} {height * 0.105:.1f} H {width * 1.02:.1f}"/>'
-            f'<path class="route-line route-line--bottom" d="M {-width * 0.02:.1f} {height * 0.885:.1f} '
-            f'H {width * 0.06:.1f} V {height * 0.975:.1f} H {width * 0.18:.1f}"/>'
-            f'<path class="route-line route-line--bottom" d="M {width * 0.04:.1f} {height * 0.84:.1f} '
-            f'V {height * 0.94:.1f} Q {width * 0.04:.1f} {height * 0.975:.1f} '
-            f'{width * 0.075:.1f} {height * 0.975:.1f} V {height * 1.02:.1f}"/>'
         )
-        nodes = "".join(
+        corner_nodes = "".join(
             f'<circle class="route-node" cx="{x * width:.1f}" cy="{y * height:.1f}" r="{radius:.1f}"/>'
-            for x, y in ((0.94, 0.03), (0.94, 0.12), (0.87, 0.075), (0.06, 0.885), (0.06, 0.975), (0.04, 0.94), (0.075, 0.975))
+            for x, y in ((0.94, 0.03), (0.94, 0.12), (0.87, 0.075))
         )
+        corner = f'{corner_paths}<g class="route-nodes" fill="{stroke_color}" stroke="none">{corner_nodes}</g>'
+        opposite_corner_transform = f'rotate(180 {width / 2:.1f} {height / 2:.1f})'
         return (
             '<g class="direction-graphic direction-graphic--routes" fill="none" '
             f'stroke="{stroke_color}" stroke-width="{stroke_width:.1f}" stroke-linecap="round" '
-            f'stroke-linejoin="round">{paths}<g fill="{stroke_color}" stroke="none">{nodes}</g></g>'
+            f'stroke-linejoin="round"><g class="route-corner route-corner--top">{corner}</g>'
+            f'<g class="route-corner route-corner--bottom" transform="{opposite_corner_transform}">'
+            f'{corner}</g></g>'
         )
     dots: list[str] = []
     gap = width * 0.027
@@ -1335,6 +1805,18 @@ def measured_text_width(text: str, font_size: float, *, letter_spacing_em: float
     return visual_units(text) * font_size + letter_spacing_em * font_size * max(0, len(text) - 1)
 
 
+def attribution_font_size(text: str, width: int, available_width: float) -> float:
+    """Prefer a readable attribution size and fit long labels to their lane."""
+    preferred = width * ATTRIBUTION_FONT_SIZE_RATIO
+    if not text:
+        return preferred
+    unit_width = measured_text_width(text, 1.0, letter_spacing_em=ATTRIBUTION_TRACKING_EM)
+    fitted = min(preferred, available_width / max(unit_width, 1e-6))
+    # SVG serializes this value to one decimal. Floor to that precision so a
+    # rounded-up tenth cannot put the final glyph fractionally outside the lane.
+    return math.floor(fitted * 10) / 10
+
+
 def last_text_line(lines: list[str]) -> str:
     return next((line for line in reversed(lines) if line), "")
 
@@ -1367,12 +1849,30 @@ def render_svg(
     attribution = content["attribution"].get("label", "")
     source = data.get("source") or {}
     options = {**(data.get("presentation") or {}), **(render_options or {})}
+    # Optional editor scale is applied after the canonical max-fit calculation.
+    # Keeping it as a render option preserves the compact visual-manifest 0.2
+    # contract while allowing the MCP editor to expose the same control as the
+    # local review editor.
+    try:
+        text_scale = float(options.get("text_scale", 1.0))
+    except (TypeError, ValueError):
+        text_scale = 1.0
+    text_scale = max(0.8, min(1.0, text_scale))
     logo_mode = options.get("logo_mode", "auto")
     graphic_mode = options.get("graphic_mode", "auto")
     graphic_variant = options.get("graphic_variant", "default")
+    gradient_inks: list[str] | None = None
+    gradient_logo_status = "not_present"
+    if (direction == "editorial" and graphic_variant == "gradient"
+            and graphic_mode != "hidden"):
+        gradient_inks, gradient_logo_status = gradient_ink_colours(
+            brand, manifest_dir, logo_mode=logo_mode,
+        )
     graphic = direction_graphic(
         direction, width=width, height=height, colors=colors, enabled=graphic_mode != "hidden",
         variant=graphic_variant if graphic_variant_allowed(direction, graphic_variant) else "default",
+        seed=options.get("graphic_seed", 0), gradient_inks=gradient_inks,
+        gradient_logo_status=gradient_logo_status,
     )
     vertical_position = options.get("vertical_position", "center")
     geometry = presentation_geometry(data, direction, width, height, vertical_position, render_options)
@@ -1385,6 +1885,7 @@ def render_svg(
     )
 
     if direction == "editorial":
+        cover = cover_layout(height) if cover_enabled(direction, options) else None
         background = colors["background"]
         quote_color = colors["primary"]
         quote_x = geometry["text_x"]
@@ -1392,12 +1893,17 @@ def render_svg(
             lines, geometry["text_width"], geometry["fit_height"], float(max(width, height)),
             letter_spacing_em=geometry["tracking_em"],
         )
+        if font_size_override is None:
+            font_size *= text_scale
         line_height = font_size * geometry["line_ratio"]
         block_height = line_height * max(0, len(lines) - 1) + font_size
         start_y = geometry["start_y"]
+        logo_asset = None if logo_mode == "hidden" else logo_data(brand, manifest_dir, light=False)
+        cutouts = cutouts_layout(height) if cutouts_enabled(direction, options) else None
         logo = "" if logo_mode == "hidden" else logo_image(
-            logo_data(brand, manifest_dir, light=False),
-            x=width * 0.07, y=height * 0.055, width=width * 0.21,
+            logo_asset,
+            x=width * 0.07, y=cover["logo_y"] if cover else height * 0.21 if cutouts else height * 0.055,
+            width=cover_logo_width(width, height, logo_asset[1]) if (cover or cutouts) and logo_asset else width * 0.21,
         )
         quote = text_block(
             lines, x=quote_x, y=start_y, font_size=font_size, line_height=line_height,
@@ -1408,12 +1914,15 @@ def render_svg(
         # Always the guide's fixed bottom margin, independent of text
         # length or font size -- a stable anchor rather than one that
         # drifts with content.
-        attribution_y = height * 0.915
+        attribution_y = cover["attribution_y"] if cover else height * 0.82 if cutouts else height * 0.915
+        attribution_size = attribution_font_size(attribution, width, width * 0.82)
+        attribution_x = width * 0.07 if cutouts else width * 0.91
+        attribution_anchor = "start" if cutouts else "end"
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
             f'{graphic}{logo}{quote}'
-            f'<text class="meta attribution source-field" x="{width * 0.91:.1f}" y="{attribution_y:.1f}" '
-            f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["text"]}">'
+            f'<text class="meta attribution source-field" x="{attribution_x:.1f}" y="{attribution_y:.1f}" '
+            f'text-anchor="{attribution_anchor}" font-size="{attribution_size:.1f}" fill="{colors["text"]}">'
             f'{html.escape(attribution)}</text>'
         )
     elif direction == "statement":
@@ -1429,6 +1938,8 @@ def render_svg(
         font_size = font_size_override or statement_fitted_font_size(
             poster_lines, strong_rows, width, height
         )
+        if font_size_override is None:
+            font_size *= text_scale
         start_y = geometry["start_y"]
         has_light_logo = bool((brand.get("logo") or {}).get("light_path"))
         logo = "" if logo_mode == "hidden" else logo_image(
@@ -1447,11 +1958,12 @@ def render_svg(
         block_height = statement_block_height(font_size, poster_lines, strong_rows)
         # Always the guide's fixed bottom margin, independent of text.
         statement_attribution_y = height * 0.915
+        statement_attribution_size = attribution_font_size(attribution, width, width * 0.89)
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
             f'{graphic}{logo}{quote}'
             f'<text class="meta attribution source-field" x="{width * 0.945:.1f}" y="{statement_attribution_y:.1f}" '
-            f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["background"]}">'
+            f'text-anchor="end" font-size="{statement_attribution_size:.1f}" fill="{colors["background"]}">'
             f'{html.escape(attribution)}</text>'
         )
     else:
@@ -1466,6 +1978,8 @@ def render_svg(
             lines, geometry["text_width"], geometry["fit_height"], float(max(width, height)),
             letter_spacing_em=geometry["tracking_em"],
         )
+        if font_size_override is None:
+            font_size *= text_scale
         line_height = font_size * geometry["line_ratio"]
         block_height = line_height * max(0, len(lines) - 1) + font_size
         start_y = geometry["start_y"]
@@ -1491,6 +2005,7 @@ def render_svg(
         )
         # Always the guide's fixed bottom margin, independent of text.
         field_attribution_y = height * 0.88
+        field_attribution_size = attribution_font_size(attribution, width, geometry["text_width"])
         body = (
             f'<rect width="{width}" height="{height}" fill="{background}"/>'
             f'<rect class="field-sheet" x="{sheet_x:.1f}" y="{sheet_y:.1f}" '
@@ -1499,7 +2014,7 @@ def render_svg(
             f'{logo}{marks}'
             f'{quote}'
             f'<text class="meta attribution source-field" x="{content_right:.1f}" y="{field_attribution_y:.1f}" '
-            f'text-anchor="end" font-size="{width * 0.028:.1f}" fill="{colors["text"]}">'
+            f'text-anchor="end" font-size="{field_attribution_size:.1f}" fill="{colors["text"]}">'
             f'{html.escape(attribution)}</text>'
         )
 

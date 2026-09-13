@@ -25,6 +25,41 @@ def manifest():
 class CardReviewServerTests(unittest.TestCase):
     def test_accepts_contract_04(self): self.assertEqual([], SERVER.validate_manifest(manifest()))
 
+    def test_palette_draft_is_canonical_and_preserves_the_editorial_seed(self):
+        source = manifest()
+        before = copy.deepcopy(source)
+        draft = SERVER.validate_draft({
+            "base_revision": 1,
+            "palette": {"primary": "#123abc", "accent": "#e3f4ff", "background": "#fefdfb", "text": "#323232"},
+        }, source)
+        self.assertEqual({"primary": "#123ABC", "accent": "#E3F4FF", "background": "#FEFDFB", "text": "#323232"}, draft["brand"]["colors"])
+        for key in ("text", "transformation", "evidence_status", "emphasis", "attribution"):
+            self.assertEqual(before["content"][key], draft["content"][key])
+        self.assertEqual(before["formats"], draft["formats"])
+        self.assertEqual(before["presentation"], draft["presentation"])
+
+    def test_palette_rejects_partial_or_non_hex_input(self):
+        source = manifest()
+        with self.assertRaisesRegex(ValueError, "soltanto primary"):
+            SERVER.validate_draft({"base_revision": 1, "palette": {"primary": "#000000"}}, source)
+        invalid = copy.deepcopy(source["brand"]["colors"]); invalid["accent"] = "blue"
+        with self.assertRaisesRegex(ValueError, "palette.accent"):
+            SERVER.validate_draft({"base_revision": 1, "palette": invalid}, source)
+
+    def test_palette_initial_is_exposed_and_review_application_persists_it_once(self):
+        source = manifest()
+        draft = SERVER.validate_draft({
+            "base_revision": 1,
+            "palette": {"primary": "#123456", "accent": "#E3F4FF", "background": "#FEFDFB", "text": "#323232"},
+        }, source)
+        self.assertEqual(source["brand"]["colors"], SERVER.session_model(source)["palette_initial"])
+        applied = SERVER.review_applier.expected_manifest_after_feedback(
+            source, SERVER.approval_feedback(draft, 1),
+        )
+        self.assertEqual({"primary": "#072743", "accent": "#E3F4FF", "background": "#FEFDFB", "text": "#323232"}, applied["palette_initial"])
+        self.assertEqual("#123456", applied["brand"]["colors"]["primary"])
+        self.assertEqual(applied["palette_initial"], SERVER.session_model(applied)["palette_initial"])
+
     def test_arial_system_baseline_enables_real_standard_treatments(self):
         item = manifest()
         item["brand"]["font"] = {"family": "Arial"}
@@ -225,6 +260,33 @@ class CardReviewServerTests(unittest.TestCase):
             'attachment; filename="test-social-quote-card-brand.json"',
             disposition,
         )
+
+    def test_profile_save_uses_explicit_draft_without_preview_or_manifest_side_effects(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); manifest_path = root / "manifest.json"; store = root / "profiles.json"
+            source = manifest(); source["brand"]["font"] = {"family": "Arial"}
+            manifest_path.write_text(json.dumps(source), encoding="utf-8")
+            server, token = SERVER.create_server(manifest_path, root / "session", profile_store=store)
+            thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+            try:
+                endpoint = f"http://127.0.0.1:{server.server_address[1]}"
+                original = copy.deepcopy(source)
+                palette_a = copy.deepcopy(source["brand"]["colors"])
+                palette_b = {"primary": "#123456", "accent": "#E3F4FF", "background": "#FEFDFB", "text": "#323232"}
+                def post(path, body):
+                    request = Request(f"{endpoint}{path}?token={token}", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}, method="POST")
+                    with urlopen(request) as response: return json.loads(response.read().decode())
+                post("/api/profiles", {"name": "Brand", "draft": {"base_revision": 1, "palette": palette_a}})
+                post("/api/preview", {"base_revision": 1, "palette": palette_b})
+                profile_id = SERVER.brand_profiles.list_profiles(store)[0]["id"]
+                self.assertEqual(palette_a, SERVER.brand_profiles.get_profile(profile_id, store)["brand"]["colors"])
+                post("/api/profiles", {"name": "Brand", "draft": {"base_revision": 1, "palette": palette_b}})
+                profile = SERVER.brand_profiles.get_profile(profile_id, store)["brand"]
+                self.assertEqual(palette_b, profile["colors"])
+                self.assertEqual(source["brand"]["font"], profile["font"])
+                self.assertEqual(original, json.loads(manifest_path.read_text(encoding="utf-8")))
+            finally:
+                server.shutdown(); server.server_close(); thread.join(timeout=2)
 
     def test_recorded_feedback_is_applied_before_returning(self):
         with tempfile.TemporaryDirectory() as directory:

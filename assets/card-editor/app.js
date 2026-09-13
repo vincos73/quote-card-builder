@@ -27,6 +27,9 @@
       style: 'Editorial',
       default: { value: 'default', label: 'Contours', icon: 'contours' },
       alternate: { value: 'rhythm_lines', label: 'Rhythm Lines', icon: 'rhythm' },
+      cover: { value: 'cover', label: 'Cover', icon: 'cover' },
+      cutouts: { value: 'cutouts', label: 'Cutouts', icon: 'rhythm' },
+      gradient: { value: 'gradient', label: 'Gradient', icon: 'gradient' },
     },
     statement: {
       style: 'Poster',
@@ -37,19 +40,39 @@
       style: 'Frame',
       default: { value: 'default', label: 'Dot Grid', icon: 'dots' },
       alternate: { value: 'route_map', label: 'Route Map', icon: 'routes' },
+      constellations: { value: 'constellations', label: 'Constellations', icon: 'dots' },
     },
   };
   const MOTIF_ICONS = {
+    cover: '<g class="motif-fill"><path d="M1 1h9v3h8V1h9v5H1zM1 13h8v3h10v-3h8v4H1z"/></g>',
     contours: '<path d="M12 1c-4 3-4 6 0 8s4 5 1 8M18 1c-4 3-4 6 0 8s4 5 1 8M24 1c-4 3-4 6 0 8s4 5 1 8"/>',
     rhythm: '<path d="M8 3h18M6 7h20M4 11h22M2 15h24"/>',
     rings: '<circle cx="24" cy="4" r="4"/><circle cx="24" cy="4" r="8"/><circle cx="24" cy="4" r="12"/>',
     modules: '<g class="motif-fill"><rect x="18" y="1" width="4" height="5"/><rect x="24" y="1" width="5" height="5"/><rect x="18" y="8" width="4" height="4"/><rect x="24" y="8" width="5" height="8"/></g>',
     dots: '<g class="motif-fill"><circle cx="17" cy="4" r="1.2"/><circle cx="22" cy="4" r="1.2"/><circle cx="27" cy="4" r="1.2"/><circle cx="17" cy="9" r="1.2"/><circle cx="22" cy="9" r="1.2"/><circle cx="27" cy="9" r="1.2"/><circle cx="17" cy="14" r="1.2"/><circle cx="22" cy="14" r="1.2"/><circle cx="27" cy="14" r="1.2"/></g>',
     routes: '<path d="M2 13h8V5h7v7h9M10 13v4M17 5V1"/><g class="motif-fill"><circle cx="10" cy="13" r="1.5"/><circle cx="10" cy="5" r="1.5"/><circle cx="17" cy="5" r="1.5"/><circle cx="17" cy="12" r="1.5"/></g>',
+    gradient: '<path d="M4 19 32 5M4 14 27 3M9 21 32 10"/><path d="M4 5h28M4 9h28M4 13h28M4 17h28" opacity=".45"/>',
+  };
+  // The picker speaks in product language while the manifest keeps the
+  // renderer's stable direction/variant contract (including old variants).
+  const STYLE_OPTIONS = {
+    blocks: { direction: 'editorial', variant: 'cover', icon: 'cover', label: 'Blocks' },
+    cutouts: { direction: 'editorial', variant: 'cutouts', icon: 'rhythm', label: 'Cutouts' },
+    constellations: { direction: 'contextual', variant: 'constellations', icon: 'dots', label: 'Constellations' },
+    gradient: { direction: 'editorial', variant: 'gradient', icon: 'gradient', label: 'Gradient' },
+    plain: { direction: 'editorial', variant: 'default', hidden: true, label: 'Hide pattern' },
+  };
+  const STYLE_THUMBS = {
+    cover: '<path d="M3 4h10v5h10v-5h10v6H3zM3 14h8v6h12v-6h10v6H3z"/>',
+    rhythm: '<path d="M4 5h10l-3 7h11M4 19h8l3-7h15"/>',
+    dots: '<path d="M6 6l10 5 12-5M16 11l-4 8M16 11l9 8"/><circle cx="6" cy="6" r="1.5"/><circle cx="16" cy="11" r="1.5"/><circle cx="28" cy="6" r="1.5"/><circle cx="12" cy="19" r="1.5"/><circle cx="25" cy="19" r="1.5"/>',
+    contours: '<path d="M4 4c7 4 7 12 0 16M14 4c7 4 7 12 0 16M24 4c7 4 7 12 0 16"/>',
+    rings: '<circle cx="27" cy="12" r="3"/><circle cx="27" cy="12" r="7"/><circle cx="27" cy="12" r="11"/>',
+    gradient: '<path d="M4 19 32 5M4 14 27 3M9 21 32 10"/><path d="M4 5h28M4 9h28M4 13h28M4 17h28"/>',
   };
   const normalizeGraphicVariant = (direction, value) => {
     const config = GRAPHIC_VARIANTS[direction] || GRAPHIC_VARIANTS.editorial;
-    return [config.default.value, config.alternate.value].includes(value) ? value : config.default.value;
+    return [config.default.value, config.alternate.value, config.cover?.value, config.cutouts?.value, config.gradient?.value, config.constellations?.value, value === 'rhythm_lines' ? value : null].filter(Boolean).includes(value) ? value : config.default.value;
   };
   // With no explicit choice, deliver only the format the user is actually
   // looking at (the first/active one) rather than all three -- "all" was a
@@ -59,6 +82,7 @@
     logo_mode: presentation.logo_mode || 'auto',
     graphic_mode: presentation.graphic_mode || 'auto',
     graphic_variant: normalizeGraphicVariant(direction, presentation.graphic_variant || 'default'),
+    graphic_seed: Number.isInteger(presentation.graphic_seed) && presentation.graphic_seed >= 0 && presentation.graphic_seed <= 999999 ? presentation.graphic_seed : 0,
     output_mode: presentation.output_mode || fallbackMode,
   });
   const defaultOutputMode = (manifest) => manifest.formats?.[0]?.id || 'all';
@@ -66,6 +90,8 @@
     text: manifest.content?.text || '',
     direction: manifest.direction || '',
     attribution: manifest.content?.attribution || {},
+    palette: manifest.brand?.colors || {},
+    palette_initial: manifest.palette_initial || manifest.brand?.colors || {},
     presentation: normalizePresentation(manifest.presentation || {}, defaultOutputMode(manifest), manifest.direction),
     formats: manifest.formats || [],
   });
@@ -87,6 +113,35 @@
     accent: { label: 'Accento', usage: 'testo e trattamenti in accento' },
     background: { label: 'Sfondo', usage: 'area di lettura della card' },
     text: { label: 'Testo', usage: 'citazione e attribuzione' },
+  };
+  const PALETTE_KEYS = ['primary', 'accent', 'background', 'text'];
+  const PALETTE_PRESETS = [
+    { id: 'initial', label: 'Iniziale', source: 'initial' },
+    { id: 'forest', label: 'Bosco', palette: { primary: '#173D35', accent: '#C8E0CC', background: '#F6F8F0', text: '#173D35' } },
+    { id: 'paper', label: 'Carta', palette: { primary: '#072743', accent: '#E3F4FF', background: '#FEFDFB', text: '#323232' } },
+    { id: 'warm', label: 'Calda', palette: { primary: '#5A2C2A', accent: '#E8B4A8', background: '#FFF8F2', text: '#332423' } },
+  ];
+  const HEX_PATTERN = /^#[0-9a-f]{6}$/i;
+  const normalizeHex = (value) => {
+    const string = String(value || '').trim();
+    return HEX_PATTERN.test(string) ? string.toUpperCase() : string;
+  };
+  const currentPaletteFrom = (manifest) => {
+    const source = manifest?.brand?.colors || manifest?.palette_initial || {};
+    return Object.fromEntries(PALETTE_KEYS.map((key) => [key, normalizeHex(source[key] || '')]));
+  };
+  const paletteFrom = (manifest) => {
+    const source = manifest?.palette_initial || manifest?.brand?.colors || {};
+    return Object.fromEntries(PALETTE_KEYS.map((key) => [key, normalizeHex(source[key] || '')]));
+  };
+  const luminance = (hex) => {
+    if (!HEX_PATTERN.test(String(hex || ''))) return null;
+    const rgb = [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16) / 255).map((value) => value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+    return (0.2126 * rgb[0]) + (0.7152 * rgb[1]) + (0.0722 * rgb[2]);
+  };
+  const contrastRatio = (foreground, background) => {
+    const a = luminance(foreground); const b = luminance(background);
+    return a === null || b === null ? null : (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
   };
   const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -115,10 +170,15 @@
     renderedGenerationSignature: null,
     profiles: [],
     activeProfileId: null,
+    profileSavedFingerprint: null,
     returnUrl: '',
     resetRecovery: null,
     resetRecoveryTimer: null,
     maxLines: 6,
+    styles: [],
+    styleRequestId: 0,
+    applyingStyle: false,
+    paletteInitial: null,
   };
 
   const els = {
@@ -133,6 +193,9 @@
     profileSaveForm: $('#profile-save-form'), profileName: $('#profile-name'),
     profileSaveCancel: $('#profile-save-cancel'), profileSaveConfirm: $('#profile-save-confirm'),
     profileSaveFeedback: $('#profile-save-feedback'),
+    stylePicker: $('#style-picker'), savedStyles: $('#saved-styles'), styleName: $('#style-name'),
+    styleSaveForm: $('#style-save-form'), styleSaveConfirm: $('#style-save-confirm'),
+    styleSaveFeedback: $('#style-save-feedback'), styleSaveState: $('#style-save-state'),
     fontSupport: $('#font-support-note'),
     scale: $('#scale'), scaleValue: $('#scale-value'), scaleFitNote: $('#scale-fit-note'),
     textIntegrityHint: $('#text-integrity-hint'),
@@ -147,6 +210,7 @@
     generateLabel: $('#generate-label'), generatedOutput: $('#generated-output'),
     qaDetails: $('#qa-details'), warningList: $('#warning-list'), warningState: $('#qa-mini-state'),
     reset: $('#reset'),
+    paletteReset: $('#palette-reset'), palettePreset: $('#palette-preset'), paletteContrast: $('#palette-contrast'),
   };
 
   const api = async (path, options = {}) => {
@@ -614,6 +678,7 @@
       direction: manifest.direction,
       styles: initialStyles(manifest.content, manifest.direction),
       styles_customized: Boolean(manifest.content.styles_customized),
+      palette: currentPaletteFrom(manifest),
       presentation: normalizePresentation(manifest.presentation || {}, defaultOutputMode(manifest), manifest.direction),
       formats: normalizeFormats(manifest.formats),
     };
@@ -662,25 +727,68 @@
 
   const renderCardColors = () => {
     const brand = state.manifest?.brand || {};
-    const colors = brand.colors || {};
-    const orderedKeys = ['primary', 'accent', 'background', 'text'];
-    const entries = orderedKeys.filter((key) => typeof colors[key] === 'string')
-      .map((key) => ({ key, value: colors[key], ...CARD_COLOR_META[key] }));
+    const palette = state.draft?.palette || currentPaletteFrom(state.manifest);
+    const entries = PALETTE_KEYS.filter((key) => typeof palette[key] === 'string')
+      .map((key) => ({ key, value: palette[key], ...CARD_COLOR_META[key] }));
     const brandName = normalize(brand.name) || 'Profilo della card';
     els.colorPaletteSubtitle.textContent = `${brandName} · colori applicati alla card`;
-    els.colorPaletteHelp.textContent = 'Colori e asset protetti.';
+    els.colorPaletteHelp.textContent = 'Modifica i colori della card. Il reset ripristina i colori iniziali di questa sessione.';
     els.colors.setAttribute('aria-label', `Colori applicati alla card: ${brandName}`);
     els.palettePreview.innerHTML = entries.map(({ label, value }) => (
       `<span class="palette-preview-swatch" style="--swatch-color:${value}" title="${label}: ${value}"></span>`
     )).join('');
-    els.colors.innerHTML = entries.map(({ label, value, usage }) => {
+    els.colors.innerHTML = entries.map(({ key, label, value, usage }) => {
       const swatchStyle = ` style="--swatch-color:${value}"`;
       return `<div class="brand-color" role="listitem">
-        <span class="brand-color-swatch"${swatchStyle} aria-hidden="true"></span>
+        <input class="brand-color-picker" type="color" value="${HEX_PATTERN.test(value) ? value : '#000000'}" data-palette-key="${key}" aria-label="Scegli colore ${label}">
         <span class="brand-color-copy"><strong>${label}</strong><small>${usage}</small></span>
-        <code>${value}</code>
+        <label class="brand-color-hex"><span class="sr-only">Codice esadecimale ${label}</span><input type="text" value="${escapeHtml(value)}" maxlength="7" spellcheck="false" inputmode="text" data-palette-key="${key}" aria-label="Codice esadecimale ${label}"><small class="palette-field-error" aria-live="polite"></small></label>
       </div>`;
     }).join('') || '<p class="palette-empty">Nessun colore disponibile nel profilo della card.</p>';
+    if (els.palettePreset) {
+      els.palettePreset.innerHTML = '<option value="custom" disabled>Personalizzata</option>' + PALETTE_PRESETS.map((preset) => `<option value="${preset.id}">${preset.label}</option>`).join('');
+      syncPalettePreset();
+    }
+    renderPaletteContrast();
+  };
+
+  const syncPalettePreset = () => {
+    const palette = state.draft?.palette || {};
+    const match = PALETTE_PRESETS.find((preset) => {
+      const colors = preset.source === 'initial' ? state.paletteInitial : preset.palette;
+      return PALETTE_KEYS.every((key) => normalizeHex(colors?.[key] || '') === normalizeHex(palette[key] || ''));
+    });
+    els.palettePreset.value = match?.id || 'custom';
+  };
+
+  const renderPaletteContrast = () => {
+    if (!els.paletteContrast) return;
+    const palette = state.draft?.palette || {};
+    const ratio = contrastRatio(palette.text, palette.background);
+    els.paletteContrast.textContent = ratio === null ? 'Contrasto in attesa di colori validi.' : `Contrasto testo/sfondo: ${ratio.toFixed(2)}:1 ${ratio >= 4.5 ? '✓' : '· verifica leggibilità'}`;
+    els.paletteContrast.classList.toggle('is-warning', ratio !== null && ratio < 4.5);
+  };
+
+  const syncPaletteInputs = (force = false) => {
+    const palette = state.draft?.palette || {};
+    els.colors.querySelectorAll('[data-palette-key]').forEach((input) => {
+      const value = palette[input.dataset.paletteKey] || '';
+      if (input.type === 'color') input.value = HEX_PATTERN.test(value) ? value : '#000000';
+      else if (force || document.activeElement !== input) input.value = value;
+    });
+    els.colors.querySelectorAll('.brand-color').forEach((row) => {
+      const key = row.querySelector('[data-palette-key]')?.dataset.paletteKey;
+      const value = palette[key] || '';
+      row.style.setProperty('--swatch-color', HEX_PATTERN.test(value) ? value : 'transparent');
+      const error = row.querySelector('.palette-field-error');
+      const valid = HEX_PATTERN.test(value);
+      const hexInput = row.querySelector('input[type="text"]');
+      if (hexInput && (force || document.activeElement !== hexInput)) hexInput.setAttribute('aria-invalid', String(!valid));
+      if (error && (force || document.activeElement !== hexInput)) error.textContent = valid ? '' : 'Usa #RRGGBB';
+    });
+    els.palettePreview.innerHTML = PALETTE_KEYS.map((key) => `<span class="palette-preview-swatch" style="--swatch-color:${HEX_PATTERN.test(palette[key]) ? palette[key] : 'transparent'}" title="${CARD_COLOR_META[key].label}: ${escapeHtml(palette[key] || '')}"></span>`).join('');
+    syncPalettePreset();
+    renderPaletteContrast();
   };
 
   const setProfileFeedback = (message = '', isError = false) => {
@@ -690,12 +798,16 @@
   };
 
   const activeProfile = () => state.profiles.find((profile) => profile.id === state.activeProfileId) || null;
+  const paletteInputsValid = () => [...els.colors.querySelectorAll('.brand-color-hex input')].every((input) => HEX_PATTERN.test(input.value.trim()));
 
   const renderProfileState = () => {
     const brandName = normalize(state.manifest?.brand?.name) || 'Profilo corrente';
     const saved = activeProfile();
     if (saved) {
-      els.profileSaveState.textContent = saved.name;
+      const currentFingerprint = JSON.stringify(state.draft?.palette || {});
+      els.profileSaveState.textContent = state.profileSavedFingerprint === currentFingerprint
+        ? saved.name
+        : `${saved.name} · modifiche non salvate`;
       els.profileSaveToggle.textContent = 'Aggiorna';
       els.profileName.value = saved.name;
       els.profileExport.hidden = false;
@@ -716,6 +828,7 @@
       const catalog = await api('/profiles');
       state.profiles = Array.isArray(catalog.profiles) ? catalog.profiles : [];
       state.activeProfileId = catalog.active_profile_id || null;
+      state.profileSavedFingerprint = state.activeProfileId ? JSON.stringify(currentPaletteFrom(state.manifest)) : null;
       els.profileSaveToggle.disabled = false;
       renderProfileState();
     } catch (error) {
@@ -748,9 +861,18 @@
     els.profileSaveConfirm.disabled = true;
     els.profileSaveConfirm.textContent = 'Salvo…';
     try {
-      const result = await api('/profiles', { method: 'POST', body: JSON.stringify({ name }) });
+      const invalidPaletteInput = [...els.colors.querySelectorAll('.brand-color-hex input')].find((input) => !HEX_PATTERN.test(input.value.trim()));
+      if (invalidPaletteInput) {
+        invalidPaletteInput.setAttribute('aria-invalid', 'true');
+        invalidPaletteInput.nextElementSibling.textContent = 'Usa #RRGGBB';
+        setProfileFeedback('Correggi i codici colore prima di salvare il profilo.', true);
+        invalidPaletteInput.focus();
+        return;
+      }
+      const result = await api('/profiles', { method: 'POST', body: JSON.stringify({ name, draft: payload() }) });
       state.profiles = Array.isArray(result.profiles) ? result.profiles : [];
       state.activeProfileId = result.profile?.id || null;
+      state.profileSavedFingerprint = JSON.stringify(state.draft?.palette || {});
       renderProfileState();
       toggleProfileForm(false);
       setProfileFeedback(`Profilo “${result.profile?.name || name}” disponibile per i prossimi lavori.`);
@@ -794,6 +916,71 @@
       els.profileExport.disabled = false;
       els.profileExport.textContent = 'Esporta JSON';
     }
+  };
+
+  const setStyleFeedback = (message = '', error = false) => {
+    els.styleSaveFeedback.textContent = message;
+    els.styleSaveFeedback.classList.toggle('is-error', error);
+    els.styleSaveFeedback.hidden = !message;
+  };
+
+  const renderSavedStyles = () => {
+    els.savedStyles.replaceChildren();
+    if (!state.styles.length) {
+      els.styleSaveState.textContent = 'No saved styles yet';
+      return;
+    }
+    els.styleSaveState.textContent = `${state.styles.length} saved`;
+    state.styles.forEach((style) => {
+      const item = document.createElement('div');
+      item.className = 'saved-style'; item.setAttribute('role', 'listitem');
+      const name = document.createElement('span'); name.textContent = style.name || 'Unnamed style';
+      const button = document.createElement('button'); button.type = 'button'; button.dataset.styleId = style.id;
+      button.textContent = 'Apply'; button.setAttribute('aria-label', `Apply ${style.name || 'saved style'}`);
+      item.append(name, button); els.savedStyles.append(item);
+    });
+  };
+
+  const loadStyles = async () => {
+    try {
+      const result = await api('/styles');
+      state.styles = Array.isArray(result.styles) ? result.styles : [];
+      renderSavedStyles();
+    } catch (error) {
+      els.styleSaveState.textContent = 'Unavailable';
+      setStyleFeedback(error.message, true);
+    }
+  };
+
+  const saveCurrentStyle = async () => {
+    const name = normalize(els.styleName.value);
+    if (!name) { setStyleFeedback('Enter a style name.', true); els.styleName.focus(); return; }
+    if (!paletteInputsValid()) { setStyleFeedback('Correggi i codici colore prima di salvare lo stile.', true); return; }
+    els.styleSaveConfirm.disabled = true; els.styleSaveConfirm.textContent = 'Saving…';
+    try {
+      const result = await api('/styles', { method: 'POST', body: JSON.stringify({ name, draft: payload() }) });
+      state.styles = Array.isArray(result.styles) ? result.styles : state.styles;
+      renderSavedStyles(); els.styleName.value = '';
+      setStyleFeedback(`Style “${name}” saved.`);
+    } catch (error) { setStyleFeedback(error.message, true); }
+    finally { els.styleSaveConfirm.disabled = false; els.styleSaveConfirm.textContent = 'Save style'; }
+  };
+
+  const applySavedStyle = async (id) => {
+    if (state.applyingStyle) return;
+    const request = ++state.styleRequestId;
+    state.applyingStyle = true; els.styleSaveState.textContent = 'Applying…'; setStyleFeedback();
+    try {
+      const result = await api('/styles/apply', { method: 'POST', body: JSON.stringify({ id, draft: payload() }) });
+      if (request !== state.styleRequestId) return;
+      clearTimeout(state.timer); state.timer = null; state.requestId += 1;
+      localStorage.removeItem(storageKey);
+      const model = result.session_model || result.session || result;
+      initializeSession(model, true);
+      await preview();
+      setStyleFeedback('Style applied. Text and formatting preserved.');
+    } catch (error) { if (request === state.styleRequestId) setStyleFeedback(error.message, true); }
+    finally { if (request === state.styleRequestId) { state.applyingStyle = false; renderSavedStyles(); } }
   };
 
   const renderAltTextState = () => {
@@ -862,27 +1049,34 @@
       .join(' · ');
   };
 
+  const styleChoiceForDraft = (draft = state.draft) => {
+    if (draft.presentation.graphic_mode === 'hidden') return 'plain';
+    const match = Object.entries(STYLE_OPTIONS).find(([, option]) => (
+      !option.hidden && option.direction === draft.direction && option.variant === draft.presentation.graphic_variant
+    ));
+    return match?.[0] || 'legacy';
+  };
+
   const renderGraphicControl = () => {
-    const control = $('#graphic-control');
-    const help = $('#graphic-help');
-    const direction = state.draft.direction;
-    const config = GRAPHIC_VARIANTS[direction] || GRAPHIC_VARIANTS.editorial;
-    const variant = normalizeGraphicVariant(direction, state.draft.presentation.graphic_variant);
-    state.draft.presentation.graphic_variant = variant;
-    state.graphicVariants[direction] = variant;
-    ['default', 'alternate'].forEach((choice) => {
-      const button = control.querySelector(`[data-graphic-choice="${choice}"]`);
-      const option = config[choice];
-      button.querySelector('.motif-label').textContent = option.label;
-      button.querySelector('.motif-swatch').innerHTML = MOTIF_ICONS[option.icon];
-      button.setAttribute('aria-label', `${config.style}: ${option.label}`);
+    const control = els.stylePicker;
+    if (!control || !state.draft) return;
+    const choice = styleChoiceForDraft();
+    const legacy = control.querySelector('[data-style-choice="legacy"]');
+    legacy.hidden = choice !== 'legacy';
+    control.querySelectorAll('[data-style-choice]').forEach((button) => {
+      const option = STYLE_OPTIONS[button.dataset.styleChoice];
+      if (option?.icon) button.querySelector('.style-thumb').innerHTML = STYLE_THUMBS[option.icon] || '';
+      button.classList.toggle('is-active', button.dataset.styleChoice === choice);
+      button.setAttribute('aria-pressed', String(button.dataset.styleChoice === choice));
     });
-    const activeChoice = state.draft.presentation.graphic_mode === 'hidden'
-      ? 'hidden'
-      : variant === config.alternate.value ? 'alternate' : 'default';
-    activate(control, 'graphicChoice', activeChoice);
-    control.setAttribute('aria-label', `Motivo per ${config.style}`);
-    help.textContent = `${config.style}: scegli il motivo oppure nascondilo.`;
+    const option = STYLE_OPTIONS[choice];
+    els.stylePicker.setAttribute('aria-label', 'Choose a visual style');
+    $('#graphic-help').textContent = choice === 'legacy'
+      ? 'Legacy source style preserved.'
+      : `${option?.label || 'Style'} selected.`;
+    $('#cover-variation').hidden = choice === 'plain' || choice === 'legacy';
+    $('#cover-seed').textContent = `Seed ${state.draft.presentation.graphic_seed}`;
+    $('#cover-previous').disabled = state.draft.presentation.graphic_seed === 0;
   };
 
   const renderDraftControls = () => {
@@ -894,11 +1088,7 @@
     renderGraphicControl();
     activate($('#output-control'), 'output', draft.presentation.output_mode || 'all');
     syncPreviewToSelectedOutput(false);
-    $$('.directions button').forEach((button) => {
-      const active = button.dataset.direction === draft.direction;
-      button.classList.toggle('is-active', active);
-      button.setAttribute('aria-pressed', String(active));
-    });
+    renderGraphicControl();
     syncFormatControls();
     renderDeclarationState();
     storeDraft();
@@ -911,10 +1101,14 @@
     state.returnUrl = /^codex:\/\/threads\/[0-9a-f-]+$/i.test(manifest.return_url || '')
       ? manifest.return_url
       : '';
-    renderCardColors();
+    state.paletteInitial = paletteFrom(manifest);
     state.baseline = initialDraft(manifest);
+    // The whole-draft reset follows the current revision. Only the palette
+    // reset uses paletteInitial, which survives applying saved styles.
     state.baseRevision = manifest.revision;
     state.draft = loadSavedDraft(manifest);
+    renderCardColors();
+    syncPaletteInputs(true);
     state.graphicVariants[state.draft.direction] = state.draft.presentation.graphic_variant;
     state.activeFormat = preserveFormat && manifest.formats.some((item) => item.id === previousFormat)
       ? previousFormat
@@ -934,6 +1128,7 @@
   const validateDraft = () => {
     updateActiveFormat();
     const errors = [];
+    if (!paletteInputsValid()) errors.push('Correggi i codici colore nel formato #RRGGBB.');
     const sourceText = normalize(state.draft.text);
     state.draft.formats.forEach((format) => {
       if (!Array.isArray(format.lines) || format.lines.length < 1 || format.lines.length > state.maxLines || !format.lines.some((line) => normalize(line))) {
@@ -953,6 +1148,9 @@
     if (!['VERBATIM', 'EDITED', 'PARAPHRASE', 'AI_GENERATED'].includes(state.draft.transformation)) errors.push('Scegli un trattamento valido.');
     if (!['VERIFIED', 'USER_SUPPLIED', 'UNVERIFIED', 'CONFLICT'].includes(state.draft.evidence_status)) errors.push('Scegli uno stato della prova valido.');
     if (!['all', '4x5', '1x1', '9x16'].includes(state.draft.presentation?.output_mode)) errors.push('Scegli i formati del pacchetto finale.');
+    PALETTE_KEYS.forEach((key) => {
+      if (!HEX_PATTERN.test(String(state.draft.palette?.[key] || ''))) errors.push(`Colore ${CARD_COLOR_META[key].label.toLowerCase()}: usa il formato #RRGGBB.`);
+    });
     if (normalizeGraphicVariant(state.draft.direction, state.draft.presentation?.graphic_variant) !== state.draft.presentation?.graphic_variant) {
       errors.push('Scegli un motivo disponibile per lo stile corrente.');
     }
@@ -968,6 +1166,7 @@
       evidence_status: state.draft.evidence_status,
       attribution: clone(state.draft.attribution),
       alt_text: state.draft.alt_text || '',
+      palette: clone(state.draft.palette || {}),
       styles: clone(state.draft.styles),
       styles_customized: Boolean(state.draft.styles_customized),
       direction: state.draft.direction,
@@ -1084,10 +1283,10 @@
       const searchable = `${code} ${message}`.toLowerCase();
       let action = { target: '#visual-text-editor', label: 'Correggi testo', category: 'Testo' };
       if (/output|formati del pacchetto/.test(searchable)) action = { target: '#output-control', label: 'Scegli formato', category: 'Output' };
-      else if (/decoration|motivo|graphic/.test(searchable)) action = { target: '#graphic-control', label: 'Cambia motivo', category: 'Motivo' };
+      else if (/decoration|motivo|graphic/.test(searchable)) action = { target: '#style-picker', label: 'Choose a style', category: 'Style' };
       else if (/safe_area|attribuzione|attribution/.test(searchable)) action = { target: '#position-control', label: 'Cambia posizione', category: 'Spazi' };
       else if (/text_fit|text_outside|outline_too_small|scala|massimo sicuro/.test(searchable)) action = { target: '#scale', label: 'Regola scala', category: 'Ingombro' };
-      else if (/contrast|contrasto/.test(searchable)) action = { target: '.directions', label: 'Cambia stile', category: 'Contrasto' };
+      else if (/contrast|contrasto/.test(searchable)) action = { target: '#style-picker', label: 'Choose a style', category: 'Style' };
       else if (/svg_|geometria svg|anteprima svg/.test(searchable)) action = { target: 'preview', label: 'Riprova', category: 'Anteprima' };
 
       const item = document.createElement('li');
@@ -1418,6 +1617,7 @@
     state.draft = clone(recovery.draft);
     state.activeFormat = recovery.activeFormat;
     clearGeneratedOutputs();
+    syncPaletteInputs(true);
     setGenerateState('idle');
     setFormat(state.activeFormat, false);
     renderDraftControls();
@@ -1445,6 +1645,7 @@
     state.draft = clone(state.baseline);
     localStorage.removeItem(storageKey);
     clearGeneratedOutputs();
+    syncPaletteInputs();
     setGenerateState('idle');
     renderDraftControls();
     resetHistory();
@@ -1457,7 +1658,7 @@
     try {
       initializeSession(await api('/session'), false);
       setZoom(state.zoom);
-      await Promise.all([preview(), refreshStatus(), loadProfiles()]);
+      await Promise.all([preview(), refreshStatus(), loadProfiles(), loadStyles()]);
     } catch (error) {
       els.session.textContent = 'Sessione non disponibile';
       els.dot.classList.add('is-error');
@@ -1482,21 +1683,18 @@
     const label = { '4x5': '4:5', '1x1': '1:1', '9x16': '9:16' }[format] || format;
     setMessage(`Anteprima ${label}. Output: tutti i formati.`);
   }));
-  $$('.directions button').forEach((button) => button.addEventListener('click', () => {
-    state.graphicVariants[state.draft.direction] = normalizeGraphicVariant(
-      state.draft.direction,
-      state.draft.presentation.graphic_variant,
-    );
-    state.draft.direction = button.dataset.direction;
-    state.draft.presentation.graphic_variant = normalizeGraphicVariant(
-      state.draft.direction,
-      state.graphicVariants[state.draft.direction] || 'default',
-    );
+  els.stylePicker.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-style-choice]');
+    if (!button || button.dataset.styleChoice === 'legacy') return;
+    const option = STYLE_OPTIONS[button.dataset.styleChoice];
+    if (!option) return;
+    state.draft.direction = option.direction;
+    state.draft.presentation.graphic_variant = option.variant;
+    state.draft.presentation.graphic_mode = option.hidden ? 'hidden' : 'auto';
+    state.graphicVariants[state.draft.direction] = option.variant;
     sanitizeDirectionStyles(state.draft);
-    activate($('.directions'), 'direction', state.draft.direction);
-    renderGraphicControl();
-    schedulePreview();
-  }));
+    renderGraphicControl(); schedulePreview();
+  });
   // Keep the caret where it is: a toolbar press must not steal the selection
   // the treatment is about to be applied to.
   els.formatToolbar.addEventListener('pointerdown', (event) => {
@@ -1563,24 +1761,58 @@
     if (input === els.altTextLabel) renderAltTextState();
     schedulePreview();
   }));
-  [$('#position-control'), $('#logo-control'), $('#graphic-control'), $('#output-control')].forEach((group) => group.addEventListener('click', (event) => {
+  els.colors.addEventListener('input', (event) => {
+    const input = event.target.closest('[data-palette-key]');
+    if (!input || !state.draft) return;
+    const key = input.dataset.paletteKey;
+    const value = input.type === 'color' ? input.value.toUpperCase() : input.value.trim();
+    if (HEX_PATTERN.test(value)) {
+      state.draft.palette = state.draft.palette || currentPaletteFrom(state.manifest);
+      state.draft.palette[key] = value;
+      input.setAttribute('aria-invalid', 'false');
+      const error = input.closest('.brand-color')?.querySelector('.palette-field-error');
+      if (error) error.textContent = '';
+      syncPaletteInputs();
+      renderProfileState();
+      schedulePreview();
+    } else {
+      input.setAttribute('aria-invalid', 'true');
+      const error = input.closest('.brand-color')?.querySelector('.palette-field-error');
+      if (error) error.textContent = 'Usa #RRGGBB';
+      storeDraft(); renderPaletteContrast(); renderProfileState();
+    }
+  });
+  els.palettePreset.addEventListener('change', () => {
+    const preset = PALETTE_PRESETS.find((item) => item.id === els.palettePreset.value);
+    if (!preset || !state.draft) return;
+    state.draft.palette = clone(preset.source === 'initial' ? (state.paletteInitial || paletteFrom(state.manifest)) : preset.palette);
+    syncPaletteInputs(true);
+    renderProfileState();
+    schedulePreview();
+  });
+  els.paletteReset.addEventListener('click', () => {
+    if (!state.draft) return;
+    state.draft.palette = clone(state.paletteInitial || paletteFrom(state.manifest));
+    els.palettePreset.value = 'initial';
+    syncPaletteInputs(true);
+    renderProfileState();
+    schedulePreview();
+    setMessage('Colori iniziali di questa sessione ripristinati.');
+  });
+  ['cover-next', 'cover-previous'].forEach((id) => {
+    $(`#${id}`).addEventListener('click', () => {
+      state.draft.presentation.graphic_seed = (state.draft.presentation.graphic_seed + (id === 'cover-next' ? 1 : -1) + 1000000) % 1000000;
+      renderGraphicControl();
+      schedulePreview();
+    });
+  });
+  [$('#position-control'), $('#logo-control'), $('#output-control')].forEach((group) => group.addEventListener('click', (event) => {
     const button = event.target.closest('button');
     if (!button) return;
     if (group.id === 'position-control') activate(group, 'position', button.dataset.position);
     else if (group.id === 'logo-control') {
       activate(group, 'logo', button.dataset.logo);
       state.draft.presentation.logo_mode = button.dataset.logo;
-    } else if (group.id === 'graphic-control') {
-      const config = GRAPHIC_VARIANTS[state.draft.direction] || GRAPHIC_VARIANTS.editorial;
-      const choice = button.dataset.graphicChoice;
-      if (choice === 'hidden') {
-        state.draft.presentation.graphic_mode = 'hidden';
-      } else {
-        state.draft.presentation.graphic_mode = 'auto';
-        state.draft.presentation.graphic_variant = config[choice].value;
-        state.graphicVariants[state.draft.direction] = config[choice].value;
-      }
-      renderGraphicControl();
     } else {
       activate(group, 'output', button.dataset.output);
       state.draft.presentation.output_mode = button.dataset.output;
@@ -1652,6 +1884,14 @@
   els.profileSaveForm.addEventListener('submit', (event) => {
     event.preventDefault();
     saveCurrentProfile();
+  });
+  els.styleSaveConfirm.addEventListener('click', saveCurrentStyle);
+  els.styleName.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); saveCurrentStyle(); }
+  });
+  els.savedStyles.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-style-id]');
+    if (button) applySavedStyle(button.dataset.styleId);
   });
   $('#zoom-in').addEventListener('click', () => setZoom(state.zoom + 10));
   $('#zoom-out').addEventListener('click', () => setZoom(state.zoom - 10));

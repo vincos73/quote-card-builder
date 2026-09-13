@@ -188,11 +188,20 @@ def vertical_limits(
     upper_limit = safe
 
     if direction == "editorial":
+        cover = proof.cover_layout(height) if proof.cover_enabled(direction, presentation) else None
+        cutouts = proof.cutouts_layout(height) if proof.cutouts_enabled(direction, presentation) else None
+        if cover:
+            upper_limit = max(upper_limit, cover["text_top"])
+        if cutouts:
+            upper_limit = max(upper_limit, cutouts["text_top"])
         if presentation.get("logo_mode", "auto") != "hidden":
             logo = proof.logo_data(data["brand"], manifest_dir, light=False)
             if logo:
-                upper_limit = max(upper_limit, height * 0.075 + width * 0.20 / logo[1] + height * 0.025)
-        lower_limit = height * 0.82
+                logo_y = cover["logo_y"] if cover else height * 0.21 if cutouts else height * 0.075
+                logo_width = proof.cover_logo_width(width, height, logo[1]) if (cover or cutouts) else width * 0.21
+                logo_bottom = logo_y + logo_width / logo[1]
+                upper_limit = max(upper_limit, logo_bottom + height * 0.025)
+        lower_limit = cover["text_bottom"] if cover else cutouts["text_bottom"] if cutouts else height * 0.82
     elif direction == "statement":
         if presentation.get("logo_mode", "auto") != "hidden":
             logo = proof.logo_data(data["brand"], manifest_dir, light=True)
@@ -200,11 +209,13 @@ def vertical_limits(
                 upper_limit = max(upper_limit, height * 0.055 + width * 0.20 / logo[1] + height * 0.03)
         lower_limit = height * 0.82
     else:
+        if presentation.get("graphic_variant") == "constellations":
+            upper_limit = max(upper_limit, height * 0.34)
         if presentation.get("logo_mode", "auto") != "hidden":
             logo = proof.logo_data(data["brand"], manifest_dir, light=False)
             if logo:
                 upper_limit = max(upper_limit, height * 0.10 + width * 0.20 / logo[1] + height * 0.03)
-        lower_limit = height * 0.82
+        lower_limit = height * 0.72 if presentation.get("graphic_variant") == "constellations" else height * 0.82
     return upper_limit, lower_limit
 
 
@@ -376,6 +387,18 @@ def render_pack(
     inspected: list[str] = []
     png_failures: list[str] = []
     png_backends: set[str] = set()
+    presentation = data.get("presentation") or {}
+    gradient_safety: dict[str, Any] | None = None
+    if (direction == "editorial" and presentation.get("graphic_variant") == "gradient"
+            and presentation.get("graphic_mode", "auto") != "hidden"):
+        gradient_safety = proof.gradient_render_safety(
+            data["brand"], manifest_path.parent,
+            logo_mode=presentation.get("logo_mode", "auto"),
+        )
+        if not gradient_safety["passed"]:
+            raise RuntimeError(
+                "Gradient: contrasto non verificabile su logo o insufficiente sull'intera superficie."
+            )
 
     for item in data["formats"]:
         adapted = proof_manifest_for_format(data, item)
@@ -385,12 +408,12 @@ def render_pack(
             item["lines"], adapted, manifest_path.parent, direction,
             item["width"], item["height"], text_scale, item.get("vertical_position", "center"),
         )
-        presentation = data.get("presentation") or {}
         render_options = {
             "vertical_position": item.get("vertical_position", "center"),
             "logo_mode": presentation.get("logo_mode", "auto"),
             "graphic_mode": presentation.get("graphic_mode", "auto"),
             "graphic_variant": presentation.get("graphic_variant", "default"),
+            "graphic_seed": presentation.get("graphic_seed", 0),
         }
         stem = f"{basename}-{direction}-{item['id']}"
         svg_path = output_dir / f"{stem}.svg"
@@ -454,6 +477,7 @@ def render_pack(
                 "vertical_position": render_options["vertical_position"],
                 "graphic_mode": render_options["graphic_mode"],
                 "graphic_variant": render_options["graphic_variant"],
+                "graphic_seed": render_options["graphic_seed"],
                 "png_backend": png_backend,
                 "svg": svg_record,
                 "png": {"path": png_path.name, "sha256": sha256_file(png_path)} if png_path else None,
@@ -489,6 +513,7 @@ def render_pack(
                 "background_on_primary": round(proof.contrast_ratio(colors["background"], colors["primary"]), 2),
                 "accent_on_primary": round(proof.contrast_ratio(colors["accent"], colors["primary"]), 2),
             },
+            "gradient_contrast": gradient_safety,
             # Geometry and contrast are verified on the rendered SVG of
             # every format (see inspect_render), so nobody has to catch
             # overflow or colliding marks by eye. The flag below stays True

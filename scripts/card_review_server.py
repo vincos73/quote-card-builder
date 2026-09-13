@@ -31,6 +31,7 @@ import render_quote_card_pack as pack
 import inspect_render as inspector
 import apply_card_review as review_applier
 import brand_profiles
+import saved_styles
 from quote_card_contract import MAX_LINES
 
 MAX_BODY_BYTES = 250_000
@@ -44,6 +45,8 @@ LOGO_MODES = {"auto", "hidden"}
 GRAPHIC_MODES = {"auto", "hidden"}
 OUTPUT_MODES = {"all", "4x5", "1x1", "9x16"}
 SESSION_STATES = {"candidato_selezionato", "contenuto_approvato"}
+PALETTE_KEYS = ("primary", "accent", "background", "text")
+HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 CHATBOT_TIMEOUT_SECONDS = 300
 CODEX_CLI_DEFAULT = Path("/Applications/ChatGPT.app/Contents/Resources/codex")
 MIME_TYPES = {
@@ -140,6 +143,7 @@ def approval_feedback(draft: dict[str, Any], base_revision: int, overall_note: s
             "styles_customized": draft["content"].get("styles_customized", False), "declared_by": "user",
         },
         "direction": draft["direction"], "emphasis": draft["content"]["emphasis"], "presentation": draft["presentation"],
+        "brand": {"colors": normalize_palette(draft["brand"]["colors"])},
         "formats": [{"id": item["id"], "lines": item["lines"], "text_scale": item["text_scale"], "vertical_position": item["vertical_position"]} for item in draft["formats"]],
         "overall_note": overall_note,
     }
@@ -263,10 +267,9 @@ def validate_manifest(data: Any) -> list[str]:
         not isinstance(presentation, dict)
         or presentation.get("logo_mode") not in LOGO_MODES
         or presentation.get("graphic_mode", "auto") not in GRAPHIC_MODES
-        or not proof.graphic_variant_allowed(
-            data.get("direction"), presentation.get("graphic_variant", "default")
-        )
+        or presentation.get("graphic_variant", "default") not in review_applier.GRAPHIC_VARIANTS.get(data.get("direction"), set())
         or presentation.get("output_mode", "all") not in OUTPUT_MODES
+        or not proof.graphic_seed_allowed(presentation.get("graphic_seed", 0))
     ): error(errors, "presentation non valida")
     formats = data.get("formats")
     if not isinstance(formats, list) or not (1 <= len(formats) <= MAX_FORMATS): return errors + ["formats deve contenere da 1 a 3 formati"]
@@ -287,6 +290,11 @@ def validate_manifest(data: Any) -> list[str]:
         if item.get("vertical_position") not in POSITIONS: error(errors, f"{field}.vertical_position non valida")
     for key in ("brand", "source", "output"):
         if not isinstance(data.get(key), dict): error(errors, f"{key} deve essere un oggetto")
+    if "palette_initial" in data:
+        try:
+            normalize_palette(data["palette_initial"])
+        except ValueError as exc:
+            error(errors, f"palette_initial non valida: {exc}")
     return errors
 
 
@@ -345,14 +353,38 @@ def session_model(
     """Return the selected candidate plus the values reviewable in the editor."""
     model = {key: copy.deepcopy(manifest[key]) for key in ("schema_version", "state", "revision", "content", "direction", "presentation", "formats", "brand", "source", "output")}
     model["font_capabilities"] = font_capabilities(manifest, manifest_dir or Path.cwd())
+    # Legacy manifests acquire this field only when a palette mutation is
+    # persisted.  The editor can nevertheless always expose a reset target.
+    model["palette_initial"] = copy.deepcopy(manifest.get("palette_initial", manifest["brand"]["colors"]))
     model["limits"] = {"max_lines": MAX_LINES}
     model["return_url"] = return_url
     return model
 
 
+def normalize_palette(value: Any) -> dict[str, str]:
+    """Accept exactly the four editor colours and canonicalise their hex form."""
+    if not isinstance(value, dict) or set(value) != set(PALETTE_KEYS):
+        raise ValueError("palette deve contenere soltanto primary, accent, background e text")
+    palette: dict[str, str] = {}
+    for key in PALETTE_KEYS:
+        color = value[key]
+        if not isinstance(color, str) or not HEX_COLOR.fullmatch(color):
+            raise ValueError(f"palette.{key} deve essere un colore #RRGGBB")
+        palette[key] = color.upper()
+    return palette
+
+
+def with_palette_initial(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Snapshot the session's original colours once, immediately before write."""
+    candidate = copy.deepcopy(manifest)
+    if "palette_initial" not in candidate:
+        candidate["palette_initial"] = normalize_palette(candidate["brand"]["colors"])
+    return candidate
+
+
 def validate_draft(payload: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict): raise ValueError("Il draft deve essere un oggetto JSON")
-    allowed = {"base_revision", "text", "transformation", "evidence_status", "attribution", "direction", "emphasis", "styles", "styles_customized", "presentation", "formats", "action", "overall_note", "alt_text"}
+    allowed = {"base_revision", "text", "transformation", "evidence_status", "attribution", "direction", "emphasis", "styles", "styles_customized", "presentation", "formats", "action", "overall_note", "alt_text", "palette"}
     if set(payload) - allowed: raise ValueError("Il draft contiene campi non modificabili")
     if payload.get("base_revision") != manifest["revision"]: raise RuntimeError("La revisione di base non coincide con il manifest")
     candidate = copy.deepcopy(manifest)
@@ -378,6 +410,8 @@ def validate_draft(payload: Any, manifest: dict[str, Any]) -> dict[str, Any]:
             elif key == "presentation":
                 candidate[key] = copy.deepcopy(payload[key])
             else: candidate[key] = payload[key]
+    if "palette" in payload:
+        candidate["brand"]["colors"] = normalize_palette(payload["palette"])
     errors = validate_manifest(candidate)
     if errors: raise ValueError("; ".join(errors))
     return candidate
@@ -503,6 +537,13 @@ def preview_score(manifest: dict[str, Any], previews: list[dict[str, Any]], qa: 
         proof.contrast_ratio(colors["background"], colors["primary"]),
         proof.contrast_ratio(colors["accent"], colors["primary"]),
     ]
+    # Gradient uses derived surfaces. Read the exact stops from each preview
+    # rather than scoring the brand's unused raw accent/background pair.
+    gradient_checks = [inspector.gradient_contrast_summary(preview.get("svg", "")) for preview in previews]
+    gradient_ratios = [check["minimum"] if check["passed"] else 0.0
+                       for check in gradient_checks if check["present"]]
+    if gradient_ratios:
+        ratios = gradient_ratios
     contrast_score = round(min(100.0, min(ratios) / CONTRAST_SCORE_CEILING * 100))
 
     # auto_fitted means the format's chosen scale/position asked for more
@@ -676,6 +717,7 @@ def create_server(
     node: Path | None = None, node_modules: Path | None = None,
     return_thread_id: str | None = None,
     profile_store: Path | None = None,
+    style_store: Path | None = None,
 ) -> tuple[ThreadingHTTPServer, str]:
     manifest_path, session_dir = manifest_path.resolve(), session_dir.resolve()
     manifest = read_json(manifest_path)
@@ -692,6 +734,7 @@ def create_server(
     assets = SCRIPT_DIR.parent / "assets" / "card-editor"
     production_dir = session_dir / "production"
     profile_store = (profile_store or brand_profiles.default_store_path()).expanduser().resolve()
+    style_store = (style_store or saved_styles.default_store_path()).expanduser().resolve()
     node = node.resolve() if node else None
     node_modules = node_modules.resolve() if node_modules else None
     lock = threading.Lock()
@@ -861,6 +904,12 @@ def create_server(
                 except (OSError, ValueError) as exc:
                     self.send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(exc)})
                 return
+            if parsed.path == "/api/styles":
+                try:
+                    self.send_json(HTTPStatus.OK, {"styles": saved_styles.list_styles(style_store)})
+                except (OSError, ValueError) as exc:
+                    self.send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(exc)})
+                return
             if parsed.path == "/api/status":
                 current = read_json(state_path); latest = read_json(manifest_path)
                 last_generation = copy.deepcopy(current.get("last_generation"))
@@ -876,21 +925,50 @@ def create_server(
         def do_POST(self) -> None:  # noqa: N802
             parsed, query = urlparse(self.path), parse_qs(urlparse(self.path).query)
             if not self.local_host() or not self.authorized(query): self.send_json(HTTPStatus.FORBIDDEN, {"error": "Sessione non autorizzata"}); return
-            if parsed.path not in {"/api/preview", "/api/generate", "/api/profiles"}: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Risorsa non trovata"}); return
+            if parsed.path not in {"/api/preview", "/api/generate", "/api/profiles", "/api/styles", "/api/styles/apply"}: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Risorsa non trovata"}); return
             try:
                 payload, current = self.request_json(), read_json(manifest_path)
                 if parsed.path == "/api/profiles":
-                    if not isinstance(payload, dict) or set(payload) != {"name"}:
-                        raise ValueError("Indica soltanto il nome del profilo")
+                    if not isinstance(payload, dict) or set(payload) != {"name", "draft"} or not isinstance(payload["draft"], dict):
+                        raise ValueError("Indica name e draft del profilo")
+                    draft = validate_draft(payload["draft"], current)
                     saved = brand_profiles.save_profile(
                         payload["name"],
-                        brand_profiles.resolve_brand_assets(current["brand"], manifest_path.parent),
+                        brand_profiles.resolve_brand_assets(draft["brand"], manifest_path.parent),
                         profile_store,
                     )
                     self.send_json(HTTPStatus.CREATED, {
                         "profile": brand_profiles.profile_summary(saved),
                         "profiles": brand_profiles.list_profiles(profile_store),
                     }); return
+                if parsed.path == "/api/styles":
+                    if not isinstance(payload, dict) or set(payload) != {"name", "draft"} or not isinstance(payload["draft"], dict):
+                        raise ValueError("Indica name e draft dello stile")
+                    draft = validate_draft(payload["draft"], current)
+                    saved = saved_styles.save_style(payload["name"], draft, path=style_store, base_dir=manifest_path.parent)
+                    self.send_json(HTTPStatus.CREATED, {"styles": saved_styles.list_styles(style_store), "saved_style_id": saved["id"]}); return
+                if parsed.path == "/api/styles/apply":
+                    if not isinstance(payload, dict) or set(payload) != {"id", "draft"} or not isinstance(payload["draft"], dict):
+                        raise ValueError("Indica id e draft dello stile")
+                    with lock:
+                        latest = read_json(manifest_path)
+                        # Snapshot the session's original palette before the
+                        # draft or the saved style can replace brand.colors.
+                        latest = with_palette_initial(latest)
+                        draft = validate_draft(payload["draft"], latest)
+                        applied = saved_styles.apply_style(payload["id"], draft, latest, style_store, manifest_path.parent)
+                        # Style application changes the active visual seed and
+                        # must become the new editor base for subsequent
+                        # preview/save requests. Persist the manifest while
+                        # holding the same session lock used by generation.
+                        applied["revision"] = latest["revision"] + 1
+                        errors = validate_manifest(applied)
+                        if errors: raise ValueError("; ".join(errors))
+                        atomic_write_json(manifest_path, applied)
+                        current_state = read_json(state_path)
+                        current_state["manifest_revision"] = applied["revision"]
+                        atomic_write_json(state_path, current_state)
+                    self.send_json(HTTPStatus.OK, session_model(applied, manifest_path.parent, return_url)); return
                 if parsed.path == "/api/preview":
                     draft = validate_draft(payload, current)
                     previews = render_preview(draft, manifest_path.parent)
@@ -932,8 +1010,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--node-modules", type=Path)
     parser.add_argument("--return-thread-id", help="Task Codex a cui tornare dopo la generazione")
     parser.add_argument("--profile-store", type=Path, help="Archivio locale alternativo dei profili di brand")
+    parser.add_argument("--style-store", type=Path, help="Archivio locale alternativo degli stili")
     args = parser.parse_args(argv)
-    try: server, token = create_server(args.manifest, args.session_dir, args.port, args.node, args.node_modules, args.return_thread_id, args.profile_store)
+    try: server, token = create_server(args.manifest, args.session_dir, args.port, args.node, args.node_modules, args.return_thread_id, args.profile_store, args.style_store)
     except (OSError, ValueError, json.JSONDecodeError) as exc: print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr); return 2
     url = f"http://127.0.0.1:{server.server_address[1]}/?token={token}"
     print(json.dumps({"status": "ready", "url": url, "session_dir": str(args.session_dir.resolve()), "manifest": str(args.manifest.resolve())}, ensure_ascii=False), flush=True)

@@ -105,7 +105,7 @@ class VisualManifestTests(unittest.TestCase):
         manifest = valid_visual_manifest()
         self.assertEqual([], RENDERER.validate_visual_manifest(manifest, Path.cwd()))
 
-    def test_rejects_seven_hard_lines(self):
+    def test_accepts_more_than_six_hard_lines(self):
         manifest = valid_visual_manifest()
         lines = [f"Riga {index}" for index in range(7)]
         manifest["content"].update(
@@ -116,12 +116,11 @@ class VisualManifestTests(unittest.TestCase):
             }
         )
 
-        errors = RENDERER.validate_visual_manifest(manifest, Path.cwd())
+        self.assertEqual([], RENDERER.validate_visual_manifest(manifest, Path.cwd()))
 
-        self.assertIn(
-            ("content.lines", "lines"),
-            {(error["path"], error["code"]) for error in errors},
-        )
+        svg = RENDERER.render_svg(manifest, Path.cwd(), manifest["direction"])
+        for line in lines:
+            self.assertIn(line, svg)
 
     def test_statement_visual_lines_preserves_eight_hard_rows(self):
         lines = [f"Riga {index}" for index in range(8)]
@@ -215,7 +214,7 @@ class VisualManifestTests(unittest.TestCase):
         self.assertNotIn('class="source-bar"', contextual)
         self.assertNotIn("ESTRATTO VERIFICATO", contextual)
 
-    def test_untreated_first_preview_has_one_distinct_typographic_cue_per_direction(self):
+    def test_untreated_first_preview_keeps_statement_neutral(self):
         manifest = valid_visual_manifest()
         manifest["content"].update({
             "text": "Prima riga. Seconda riga. Terza riga.",
@@ -230,11 +229,22 @@ class VisualManifestTests(unittest.TestCase):
             [{"start": 20, "end": 37, "type": "bold"}],
             RENDERER.initial_direction_styles(manifest["content"]["text"], "editorial"),
         )
+        self.assertEqual(
+            [],
+            RENDERER.initial_direction_styles(manifest["content"]["text"], "statement"),
+        )
         editorial = RENDERER.render_svg(manifest, Path.cwd(), "editorial")
         statement = RENDERER.render_svg(manifest, Path.cwd(), "statement")
         contextual = RENDERER.render_svg(manifest, Path.cwd(), "contextual")
         self.assertIn('<tspan font-weight="700">Terza riga.</tspan>', editorial)
-        self.assertIn('fill="#E3F4FF"', statement)
+        statement_root = ET.fromstring(statement)
+        statement_quote = statement_root.find(
+            ".//{http://www.w3.org/2000/svg}text[@data-layout='statement-poster']"
+        )
+        self.assertIsNotNone(statement_quote)
+        self.assertFalse(
+            any(node.attrib.get("fill") == "#E3F4FF" for node in statement_quote.iter())
+        )
         self.assertIn('class="highlight-marker"', contextual)
 
     def test_arial_neutral_baseline_uses_the_cross_platform_stack(self):
@@ -272,6 +282,36 @@ class VisualManifestTests(unittest.TestCase):
                 )
                 self.assertIn(expected, svg)
                 self.assertNotIn(legacy, svg)
+
+    def test_contextual_route_map_uses_one_corner_design_rotated_into_the_opposite_corner(self):
+        for width, height in ((1440, 1800), (1440, 1440)):
+            with self.subTest(canvas=(width, height)):
+                manifest = valid_visual_manifest()
+                manifest["canvas"] = {"width": width, "height": height}
+                svg = RENDERER.render_svg(
+                    manifest,
+                    Path.cwd(),
+                    "contextual",
+                    render_options={"graphic_mode": "auto", "graphic_variant": "route_map"},
+                )
+                root = ET.fromstring(svg)
+                namespace = {"svg": "http://www.w3.org/2000/svg"}
+                top = root.find(".//svg:g[@class='route-corner route-corner--top']", namespace)
+                bottom = root.find(".//svg:g[@class='route-corner route-corner--bottom']", namespace)
+                self.assertIsNotNone(top)
+                self.assertIsNotNone(bottom)
+                self.assertEqual(
+                    f"rotate(180 {width / 2:.1f} {height / 2:.1f})",
+                    bottom.attrib.get("transform"),
+                )
+                self.assertEqual(
+                    [path.attrib["d"] for path in top.findall("svg:path", namespace)],
+                    [path.attrib["d"] for path in bottom.findall("svg:path", namespace)],
+                )
+                self.assertEqual(
+                    [node.attrib for node in top.findall(".//svg:circle", namespace)],
+                    [node.attrib for node in bottom.findall(".//svg:circle", namespace)],
+                )
 
     def test_visual_manifest_rejects_a_motif_from_another_direction(self):
         manifest = valid_visual_manifest()
@@ -315,9 +355,8 @@ class VisualManifestTests(unittest.TestCase):
         self.assertIsNotNone(quote)
         rows = list(quote)
         self.assertEqual(3, len(rows))
-        accent_rows = [row for row in rows if row.attrib.get("fill") == "#E3F4FF"]
-        self.assertEqual(1, len(accent_rows))
-        self.assertGreater(float(accent_rows[0].attrib["font-size"]), float(rows[0].attrib["font-size"]))
+        self.assertFalse(any(row.attrib.get("fill") == "#E3F4FF" for row in rows))
+        self.assertGreater(float(rows[-1].attrib["font-size"]), float(rows[0].attrib["font-size"]))
         self.assertIn("IL PASSAGGIO NON È", svg)
         self.assertIn("Il passaggio non è da uomo a macchina.", svg)
 
@@ -355,6 +394,11 @@ class VisualManifestTests(unittest.TestCase):
             self.assertIsNotNone(field)
             self.assertEqual("end", field.attrib.get("text-anchor"))
             self.assertAlmostEqual(expected_x, float(field.attrib["x"]))
+            self.assertAlmostEqual(
+                1440 * RENDERER.ATTRIBUTION_FONT_SIZE_RATIO,
+                float(field.attrib["font-size"]),
+                places=1,
+            )
 
     def test_statement_source_field_is_always_right_aligned(self):
         manifest = valid_visual_manifest()
@@ -364,7 +408,46 @@ class VisualManifestTests(unittest.TestCase):
         self.assertIsNotNone(field)
         self.assertEqual("end", field.attrib.get("text-anchor"))
         self.assertAlmostEqual(1440 * 0.945, float(field.attrib["x"]))
+        self.assertAlmostEqual(
+            1440 * RENDERER.ATTRIBUTION_FONT_SIZE_RATIO,
+            float(field.attrib["font-size"]),
+            places=1,
+        )
         self.assertNotIn('class="data source-note"', svg)
+
+    def test_attribution_is_legible_in_four_by_five_and_square_outputs(self):
+        for width, height in ((1440, 1800), (1440, 1440)):
+            manifest = valid_visual_manifest()
+            manifest["canvas"] = {"width": width, "height": height}
+            for direction in RENDERER.DIRECTIONS:
+                root = ET.fromstring(RENDERER.render_svg(manifest, Path.cwd(), direction))
+                field = root.find(
+                    ".//{http://www.w3.org/2000/svg}text[@class='meta attribution source-field']"
+                )
+                self.assertIsNotNone(field)
+                self.assertGreaterEqual(float(field.attrib["font-size"]), 90.0)
+
+    def test_long_attribution_fits_its_direction_lane(self):
+        label = "Vincenzo Cosenza — Research, strategy and editorial design"
+        lanes = {
+            "editorial": 1440 * 0.82,
+            "statement": 1440 * 0.89,
+            "contextual": 1440 * (1 - 0.17 - 0.12),
+        }
+        manifest = valid_visual_manifest()
+        manifest["content"]["attribution"] = {"label": label, "role": "author"}
+        for direction, available_width in lanes.items():
+            root = ET.fromstring(RENDERER.render_svg(manifest, Path.cwd(), direction))
+            field = root.find(
+                ".//{http://www.w3.org/2000/svg}text[@class='meta attribution source-field']"
+            )
+            self.assertIsNotNone(field)
+            rendered_width = RENDERER.measured_text_width(
+                label,
+                float(field.attrib["font-size"]),
+                letter_spacing_em=RENDERER.ATTRIBUTION_TRACKING_EM,
+            )
+            self.assertLessEqual(rendered_width, available_width + 1.0)
 
     def test_multiword_emphasis_can_cross_a_manual_line_break(self):
         manifest = valid_visual_manifest()

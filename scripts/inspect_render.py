@@ -19,6 +19,7 @@ inside CI without a browser or a rasteriser.
 from __future__ import annotations
 
 import sys
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -241,6 +242,32 @@ def decoration_boxes(root: ET.Element) -> list[dict[str, Any]]:
     boxes: list[dict[str, Any]] = []
     for element in root.iter():
         classes = _classes(element)
+        if "cover-band" in classes:
+            x, y = float(element.attrib["x"]), float(element.attrib["y"])
+            boxes.append({"kind": "decoration", "classes": classes, "stroke": "",
+                          "box": (x, y, x + float(element.attrib["width"]),
+                                  y + float(element.attrib["height"]))})
+            continue
+        if classes & {"cutout", "constellation-line", "constellation-node"}:
+            if "constellation-node" in classes:
+                cx, cy, radius = (float(element.attrib[key]) for key in ("cx", "cy", "r"))
+                box = (cx - radius, cy - radius, cx + radius, cy + radius)
+            elif "cutout" in classes:
+                values = [float(value) for value in re.findall(r"-?\d+(?:\.\d+)?", element.attrib.get("points", ""))]
+                points = list(zip(values[::2], values[1::2]))
+                if not points:
+                    continue
+                xs, ys = zip(*points)
+                box = (min(xs), min(ys), max(xs), max(ys))
+            else:
+                points = _path_points(element.attrib.get("d", ""))
+                if not points:
+                    continue
+                xs, ys = zip(*points)
+                box = (min(xs), min(ys), max(xs), max(ys))
+            boxes.append({"kind": "decoration", "classes": classes,
+                          "stroke": element.attrib.get("stroke", ""), "box": box})
+            continue
         if not classes & {"quote-corner-mark"}:
             continue
         points = _path_points(element.attrib.get("d", ""))
@@ -289,6 +316,59 @@ def ground_for(box: tuple[float, ...], grounds: list[tuple[tuple[float, ...], st
     return found
 
 
+def _gradient_contrast_summary_root(root: ET.Element) -> dict[str, Any]:
+    """Audit Gradient's actual SVG inks against every possible field mix."""
+    results: list[dict[str, Any]] = []
+    graphics = [node for node in root.iter() if "direction-graphic--gradient" in _classes(node)]
+    if not graphics:
+        return {"present": False, "passed": True, "minimum": None, "checks": []}
+    texts = text_boxes(root)
+    field_inks = {
+        item["stroke"] if item["fill"] == "none" and item["stroke"] else item["fill"]
+        for item in texts
+        if {"quote", "attribution"} & item["classes"]
+        and proof.HEX_COLOR.fullmatch(item["stroke"] if item["fill"] == "none" and item["stroke"] else item["fill"])
+    }
+    for graphic in graphics:
+        declared = {colour for colour in graphic.attrib.get("data-gradient-inks", "").split(",")
+                    if proof.HEX_COLOR.fullmatch(colour)}
+        stops = [node.attrib.get("stop-color", "") for node in graphic.iter()
+                 if _tag(node) == "stop" and proof.HEX_COLOR.fullmatch(node.attrib.get("stop-color", ""))]
+        try:
+            standard_floor = float(graphic.attrib.get("data-gradient-floor", TEXT_CONTRAST))
+        except ValueError:
+            standard_floor = TEXT_CONTRAST
+        if not stops:
+            results.append({"kind": "surface", "passed": False, "minimum": 0.0,
+                            "floor": standard_floor, "message": "stop mancanti"})
+            continue
+        # Declared inks cover the actual quote/attribution and vector logo;
+        # parsed text inks additionally catch a hand-written accent/outline.
+        for ink in sorted(declared | field_inks):
+            bound = proof._gradient_contrast_bound(stops, [ink])
+            outlined = any(item["fill"] == "none" and item["stroke"] == ink for item in texts)
+            floor = OUTLINE_CONTRAST if outlined else standard_floor
+            results.append({"kind": "outline" if outlined else "ink", "ink": ink,
+                            "minimum": bound["minimum"], "floor": floor,
+                            "passed": bound["minimum"] >= floor})
+        status = graphic.attrib.get("data-gradient-logo-status", "not_present")
+        if status.startswith("unverifiable_"):
+            results.append({"kind": "logo", "minimum": 0.0, "floor": standard_floor,
+                            "passed": False, "message": status})
+    minimum = min((item["minimum"] for item in results), default=None)
+    return {"present": True, "passed": all(item["passed"] for item in results),
+            "minimum": minimum, "checks": results}
+
+
+def gradient_contrast_summary(svg: str) -> dict[str, Any]:
+    """Public lightweight summary for preview-score and production callers."""
+    try:
+        return _gradient_contrast_summary_root(ET.fromstring(svg))
+    except ET.ParseError as error:
+        return {"present": True, "passed": False, "minimum": 0.0,
+                "checks": [{"kind": "svg", "passed": False, "message": str(error)}]}
+
+
 def inspect_render(
     svg: str, direction: str, width: int, height: int,
     *, vertical_position: str = "center",
@@ -313,6 +393,16 @@ def inspect_render(
 
     quotes = [item for item in texts if "quote" in item["classes"]]
     attributions = [item for item in texts if "attribution" in item["classes"]]
+    gradient_present = any("direction-graphic--gradient" in _classes(node) for node in root.iter())
+    gradient_markers: list[tuple[float, float, float, float]] = []
+    if gradient_present:
+        for rect in root.iter(f"{SVG_NS}rect"):
+            if "highlight-marker" not in _classes(rect):
+                continue
+            x = _float(rect, "x", 0.0) or 0.0
+            y = _float(rect, "y", 0.0) or 0.0
+            gradient_markers.append((x, y, x + (_float(rect, "width", 0.0) or 0.0),
+                                     y + (_float(rect, "height", 0.0) or 0.0)))
 
     # 1. The quote must stay inside the margin the user sees as the guide.
     for item in quotes:
@@ -359,6 +449,16 @@ def inspect_render(
     #    accent-on-background stroke slipped through at 1.07:1.
     for item in texts:
         ground = ground_for(item["box"], grounds)
+        check_flat_contrast = True
+        if gradient_present:
+            centre = ((item["box"][0] + item["box"][2]) / 2, (item["box"][1] + item["box"][3]) / 2)
+            # ``ground_for`` can only understand flat rects and would return
+            # the raw page rectangle under a gradient.  The dedicated bound
+            # below audits the real field for these runs; retain this loop
+            # solely where a highlight marker is a genuinely flat overlay.
+            if not any(box[0] <= centre[0] <= box[2] and box[1] <= centre[1] <= box[3]
+                       for box in gradient_markers):
+                check_flat_contrast = False
         # An outlined span carries no fill: its ink is the stroke, and it is
         # held to a higher floor because a hairline traces far less of the
         # letterform than a solid glyph of the same colour.
@@ -368,7 +468,7 @@ def inspect_render(
             continue
         minimum = OUTLINE_CONTRAST if outlined else TEXT_CONTRAST
         ratio = proof.contrast_ratio(ink, ground)
-        if ratio < minimum:
+        if check_flat_contrast and ratio < minimum:
             report(
                 "outline_contrast" if outlined else "text_contrast",
                 f"{direction}: «{item['text'][:40]}» rende {ratio:.2f}:1 su "
@@ -393,6 +493,21 @@ def inspect_render(
                 "decoration_contrast",
                 f"{direction}: un segno decorativo rende {ratio:.2f}:1 su "
                 f"{ground} (minimo {NON_TEXT_CONTRAST}:1).",
+            )
+
+    # 4. Editorial/Gradient has no local reading panel. Its stop colours are
+    # composited as overlapping soft fields, so test their full channel-wise
+    # envelope against the ink declared by the renderer. This is stricter
+    # than sampling a few gradient coordinates and remains valid for every
+    # rasterisation of the SVG.
+    gradient_summary = _gradient_contrast_summary_root(root)
+    for check in gradient_summary["checks"]:
+        if not check["passed"]:
+            code = "gradient_logo_contrast_unverifiable" if check.get("kind") == "logo" else "gradient_contrast"
+            report(
+                code,
+                f"editorial: {check.get('ink', check.get('message', 'gradiente'))} rende "
+                f"{check['minimum']:.2f}:1 (minimo {check['floor']:.1f}:1).",
             )
 
     return findings
