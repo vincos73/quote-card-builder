@@ -21,7 +21,7 @@ class PluginPackageTests(unittest.TestCase):
         manifest = json.loads(
             (ROOT / "plugin" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(manifest["version"], "1.7.12")
+        self.assertEqual(manifest["version"], "1.7.13")
         self.assertEqual(manifest["interface"]["capabilities"], ["Interactive", "Read"])
         self.assertIn("quote card", manifest["interface"]["shortDescription"].lower())
         self.assertIn("guided editor", manifest["interface"]["shortDescription"].lower())

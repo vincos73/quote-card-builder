@@ -6,8 +6,8 @@ import base64
 from pathlib import Path
 
 
-QUOTE_CARD_APP_VERSION = "v1.35"
-QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.35.html"
+QUOTE_CARD_APP_VERSION = "v1.36"
+QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.36.html"
 QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.26.html",
     "ui://quote-card-builder/preview/v1.27.html",
@@ -18,6 +18,7 @@ QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.32.html",
     "ui://quote-card-builder/preview/v1.33.html",
     "ui://quote-card-builder/preview/v1.34.html",
+    "ui://quote-card-builder/preview/v1.35.html",
 )
 QUOTE_CARD_PREVIEW_MIME_TYPE = "text/html;profile=mcp-app"
 QUOTE_CARD_PREVIEW_DOMAIN = "https://quote-card-builder-mcp-960066178304.europe-west8.run.app"
@@ -189,9 +190,7 @@ def quote_card_preview_html() -> str:
             <button type="button" data-direction="contextual" aria-pressed="false">Frame<small>Contextual</small></button>
           </div>
           <div class="segmented motif-grid" id="motifs" role="group" aria-label="Graphic motif">
-            <button type="button" data-motif="default" aria-pressed="true">Original</button>
-            <button type="button" data-motif="alternate" aria-pressed="false">Alternate</button>
-            <button type="button" data-motif="cover" aria-pressed="false">Blocks</button>
+            <button type="button" data-motif="cover" aria-pressed="true">Blocks</button>
             <button type="button" data-motif="cutouts" aria-pressed="false">Cutouts</button>
             <button type="button" data-motif="constellations" aria-pressed="false">Constellations</button>
             <button type="button" data-motif="gradient" aria-pressed="false">Gradient</button>
@@ -238,9 +237,10 @@ def quote_card_preview_html() -> str:
       const submit = $("submit"), produce = $("produce"), status = $("status"), image = $("image"), meta = $("meta"), errors = $("errors"), toolbarStatus = $("toolbarStatus");
       const delivery = $("delivery"), deliveryName = $("deliveryName"), download = $("download");
       let styles = []; let lastTextValue = ""; let resizeFrame = 0; let deliveryUrl = ""; let deliveryFileId = ""; let deliveryFilename = ""; let previewTimer = 0; let previewSequence = 0;
-      const variants = { editorial: ["default", "rhythm_lines", "cover", "cutouts", "gradient"], statement: ["default", "modules"], contextual: ["default", "route_map", "constellations"] };
+      const variants = { editorial: ["cover", "cutouts", "gradient"], statement: [], contextual: ["constellations"] };
+      const motifDefaults = { editorial: "cover", statement: "hidden", contextual: "constellations" };
       const labels = { editorial: "Editorial", statement: "Poster", contextual: "Frame" };
-      const variantLabels = { default: "Original", rhythm_lines: "Alternate", modules: "Alternate", route_map: "Alternate", cover: "Blocks", cutouts: "Cutouts", constellations: "Constellations", gradient: "Gradient" };
+      const variantLabels = { cover: "Blocks", cutouts: "Cutouts", constellations: "Constellations", gradient: "Gradient" };
       const directionLabels = { editorial: "Editorial · Contours", statement: "Poster · Statement", contextual: "Frame · Contextual" };
       function pointLength(value) { return Array.from(String(value || "")).length; }
       function cpOffset(value, utf16Index) { return pointLength(String(value || "").slice(0, utf16Index)); }
@@ -457,10 +457,11 @@ def quote_card_preview_html() -> str:
       function currentSignature() { return JSON.stringify(currentArguments()); }
       function syncPaletteVisibility() { const custom = paletteMode.value === "custom"; palette.hidden = !custom; paletteNameRow.hidden = !custom; }
       function clearProduction() { if (deliveryUrl && deliveryUrl.startsWith("blob:")) URL.revokeObjectURL(deliveryUrl); deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; download.disabled = true; delivery.hidden = true; }
-      function selectedMotif() { return document.querySelector('[data-motif][aria-pressed="true"]')?.dataset.motif || "default"; }
-      function currentVariant() { const value = document.querySelector('[data-motif][aria-pressed="true"]')?.dataset.motif || "default"; return value === "alternate" ? (variants[direction.value]?.[1] || "default") : value; }
-      function updateMotifHint() { const motif = selectedMotif(); const label = motif === "hidden" ? "None" : variantLabels[currentVariant()] || "Original"; $("motifHint").textContent = `${labels[direction.value]} · selected motif: ${label}.`; }
-      function setDirection(value) { if (!labels[value]) return; direction.value = value; if (!variants[value].includes(currentVariant())) setMotif("default"); document.querySelectorAll("[data-direction]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.direction === value))); updateMotifHint(); }
+      function selectedMotif() { return document.querySelector('[data-motif][aria-pressed="true"]')?.dataset.motif || motifDefaults[direction.value] || "cover"; }
+      function currentVariant() { return selectedMotif(); }
+      function normalizedMotif(value, graphicVariant, graphicMode) { if (graphicMode === "hidden") return "hidden"; return variants[value]?.includes(graphicVariant) ? graphicVariant : motifDefaults[value]; }
+      function updateMotifHint() { const motif = selectedMotif(); const label = motif === "hidden" ? "None" : variantLabels[currentVariant()]; $("motifHint").textContent = `${labels[direction.value]} · selected motif: ${label}.`; }
+      function setDirection(value) { if (!labels[value]) return; direction.value = value; if (![...variants[value], "hidden"].includes(currentVariant())) setMotif(motifDefaults[value]); document.querySelectorAll("[data-direction]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.direction === value))); updateMotifHint(); }
       function setMotif(value) { document.querySelectorAll("[data-motif]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.motif === value))); updateMotifHint(); }
       function request(method, params) { const id = nextId++; window.parent.postMessage({ jsonrpc:"2.0", id, method, params }, "*"); return new Promise((resolve, reject) => pending.set(id, { resolve, reject })); }
       function schedulePreview(delay = 160) { window.clearTimeout(previewTimer); previewTimer = window.setTimeout(() => updatePreview(), delay); }
@@ -469,7 +470,7 @@ def quote_card_preview_html() -> str:
       function extractStructuredContent(message) { const payload = extractPayload(message); if (!payload) return null; if (payload.structuredContent) return payload.structuredContent; if (Array.isArray(payload.content)) { const first = payload.content.find((item) => item && item.type === "text"); if (first?.text) { try { return JSON.parse(first.text); } catch (_) { return null; } } } return null; }
       function safeInlineSvg(svgText) { if (typeof svgText !== "string" || !svgText.trim()) return null; const parsed = new DOMParser().parseFromString(svgText, "image/svg+xml"); const root = parsed.documentElement; if (!root || root.nodeName.toLowerCase() !== "svg" || parsed.querySelector("parsererror")) return null; root.querySelectorAll("script, foreignObject").forEach((node) => node.remove()); root.querySelectorAll("*").forEach((node) => [...node.attributes].forEach((attribute) => { const name = attribute.name.toLowerCase(); const value = attribute.value.trim().toLowerCase(); if (name.startsWith("on") || ((name === "href" || name === "xlink:href") && !value.startsWith("#"))) node.removeAttribute(attribute.name); })); return document.importNode(root, true); }
       function render(result) { if (!result) return; if (result.editor_state) applyInput(result.editor_state); hasRendered = true; showErrors(result.errors); const svgNode = result.valid && result.rendered ? safeInlineSvg(result.svg) : null; if (!svgNode) { image.replaceChildren(); image.hidden = true; meta.textContent = "The preview is unavailable."; status.textContent = "Review the errors and try again."; scheduleResize(); return; } if (result.format) format.value = result.format; image.replaceChildren(svgNode); image.setAttribute("aria-label", result.alt_text || "Quote card preview"); image.hidden = false; meta.textContent = `${result.profile} · ${directionLabels[result.direction] || directionLabels.editorial} · ${result.format} · ${Math.round((result.text_scale || Number(scale.value) / 100) * 100)}% · ${result.vertical_position || position.value}`; status.textContent = result.produced ? "Quote card generated by the canonical renderer." : "Preview validated by the canonical renderer."; scheduleResize(); }
-      function applyInput(params) { const input = params?.arguments || params; if (!input) return; if (Array.isArray(input.styles)) styles = normalizeStyles(input.styles); if (typeof input.text === "string") setTextValue(input.text); else renderEditor(); if (["4x5", "1x1"].includes(input.format)) format.value = input.format; if (typeof input.attribution === "string") attribution.value = input.attribution; if (typeof input.direction === "string") setDirection(input.direction); if (typeof input.graphic_mode === "string") setMotif(input.graphic_mode === "hidden" ? "hidden" : "default"); if (typeof input.graphic_variant === "string") setMotif(input.graphic_variant); if (input.profile_mode === "neutral") paletteMode.value = "neutral"; if (input.profile_mode === "custom") paletteMode.value = "custom"; if (input.palette?.colors) { paletteMode.value = "custom"; if (typeof input.palette.name === "string") paletteName.value = input.palette.name; Object.entries(input.palette.colors).forEach(([key, value]) => { const target = key === "text" ? $("textColor") : $(key); if (target && typeof value === "string") target.value = value; }); } if (typeof input.text_scale === "number") { scale.value = String(Math.round(input.text_scale * 100)); scaleValue.textContent = `${scale.value}%`; } if (typeof input.vertical_position === "string") position.value = input.vertical_position; syncPaletteVisibility(); scheduleResize(); }
+      function applyInput(params) { const input = params?.arguments || params; if (!input) return; if (Array.isArray(input.styles)) styles = normalizeStyles(input.styles); if (typeof input.text === "string") setTextValue(input.text); else renderEditor(); if (["4x5", "1x1"].includes(input.format)) format.value = input.format; if (typeof input.attribution === "string") attribution.value = input.attribution; if (typeof input.direction === "string") setDirection(input.direction); setMotif(normalizedMotif(direction.value, input.graphic_variant, input.graphic_mode)); if (input.profile_mode === "neutral") paletteMode.value = "neutral"; if (input.profile_mode === "custom") paletteMode.value = "custom"; if (input.palette?.colors) { paletteMode.value = "custom"; if (typeof input.palette.name === "string") paletteName.value = input.palette.name; Object.entries(input.palette.colors).forEach(([key, value]) => { const target = key === "text" ? $("textColor") : $(key); if (target && typeof value === "string") target.value = value; }); } if (typeof input.text_scale === "number") { scale.value = String(Math.round(input.text_scale * 100)); scaleValue.textContent = `${scale.value}%`; } if (typeof input.vertical_position === "string") position.value = input.vertical_position; syncPaletteVisibility(); scheduleResize(); }
       async function svgToPngFile(svgText, filename) {
         const parsed = new DOMParser().parseFromString(svgText, "image/svg+xml");
         const root = parsed.documentElement;
