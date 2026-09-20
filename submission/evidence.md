@@ -2,6 +2,45 @@
 
 Evidence date: 2026-09-20, Europe/Rome.
 
+## Current v1.45 hosted-download correction
+
+This section supersedes the v1.41 candidate below.
+
+- Frozen correction commit: `86b5e2b` (`Fall back to local PNG download`) on branch
+  `codex/qcb-remote-v1.45`.
+- Plugin/server version: `1.7.21`; current UI resource:
+  `ui://quote-card-builder/preview/v1.45.html`.
+- Delivery correction: the editor first uploads the browser-rendered PNG with ChatGPT's
+  `uploadFile` bridge. If the temporary file URL uses an explicitly approved redirect origin,
+  **Download PNG** opens it through the host; if ChatGPT returns another regional Azure origin,
+  the editor uses a local `blob:` download from the PNG already in memory. The chat attachment
+  path is optional and no longer the primary delivery path.
+- Full test suite: `Ran 297 tests in 9.521s` and `OK`, with no skipped tests. The regression tests
+  cover both an approved temporary URL and an unknown regional origin falling back to one local
+  download without calling `openExternal`.
+- Official skill validator: `Skill is valid!`.
+- Cloud Run revision: `quote-card-builder-mcp-00097-qax`, canary tag `v150`, receiving 100% of
+  canonical service traffic and reporting `Ready=True`.
+- Deployed image digest:
+  `sha256:3d92d083193c40b448c586e809cd46d006a668408bf2f0a1221d64ea7dd6c56f`.
+- Frozen source archive: `/private/tmp/quote-card-builder-cloudrun-v1.45-86b5e2b.tar.gz`, SHA-256
+  `6e0cfb655485d246ab8f8ab7a44520bfc574df81463c885fa1124480178754d9`.
+- Plugin package: `/private/tmp/quote-card-builder-plugin-v1.7.21.zip`, SHA-256
+  `918fb9dcbd4fa2cdee27e23d49a26d3c059cc6c356b65886f4706b5585ad0744`; `unzip -t` reported no
+  errors.
+- Canonical MCP verification returned server version `1.7.21`, the 212,236-byte v1.45 resource,
+  the visible v1.45 badge, the local Blob fallback, `isError=false`, `valid=true`, and
+  `rendered=true`.
+- ChatGPT developer-mode **Aggiorna / Scan Tools** completed after promotion and resolved the
+  template to `ui://quote-card-builder/preview/v1.45.html`.
+- Hosted ChatGPT end-to-end verification succeeded on 2026-09-20: the existing editor refreshed
+  through its compatibility URI but displayed `V1.45`; **Generate PNG** produced
+  `quote-card-14d6163f.png`; **Download PNG** opened the temporary image in a new browser tab; and
+  the resulting card rendered at 1440 by 1800 pixels with the expected quote and attribution.
+- The local plugin cache and standalone skill are installed at `1.7.21` / UI v1.45. Both were
+  compared with `diff -qr` against the verified expanded package with no differences. Older cache
+  versions remain available for rollback.
+
 ## Current v1.41 visual-regression correction
 
 This section supersedes the v1.40 candidate below.
