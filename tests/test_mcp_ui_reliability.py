@@ -82,7 +82,7 @@ const status = { textContent:"" };
 const errors = { textContent:"", hidden:true };
 const scheduleResize = () => {};
 const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){}, remove(){} }) };
-const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprnortheu.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
 const window = { openai:{
   uploadFile:async () => ({ fileId:"should-not-upload" }),
   getFileDownloadUrl:async () => ({ downloadUrl:"https://oaisdmntpritalynorth.blob.core.windows.net/files/stale.png" }),
@@ -131,7 +131,7 @@ const status = { textContent:"" };
 const errors = { textContent:"", hidden:true };
 const scheduleResize = () => {};
 const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){}, remove(){} }) };
-const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprnortheu.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
 let releaseUpload;
 const uploadGate = new Promise((resolve) => { releaseUpload = resolve; });
 const window = { openai:{
@@ -181,7 +181,7 @@ const status = { textContent:"" };
 const errors = { textContent:"", hidden:true };
 const scheduleResize = () => {};
 const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){}, remove(){} }) };
-const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprnortheu.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
 let releaseUrl;
 const urlGate = new Promise((resolve) => { releaseUrl = resolve; });
 let getUrlCount = 0;
@@ -233,7 +233,7 @@ const status = { textContent:"" };
 const errors = { textContent:"", hidden:true };
 const scheduleResize = () => {};
 const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){}, remove(){} }) };
-const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprnortheu.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
 const window = { openai:undefined };
 const clearProduction = (invalidate = true) => {
   if (invalidate) { editRevision += 1; actionSequence += 1; }
@@ -279,7 +279,7 @@ const status = { textContent:"PNG ready." };
 const errors = { textContent:"", hidden:true };
 const scheduleResize = () => {};
 const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){}, remove(){} }) };
-const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprnortheu.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
 let releaseOpen;
 const openGate = new Promise((resolve) => { releaseOpen = resolve; });
 const window = { openai:{ openExternal:async () => { await openGate; return {}; } } };
