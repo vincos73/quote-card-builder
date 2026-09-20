@@ -23,7 +23,7 @@ class PluginPackageTests(unittest.TestCase):
         def changed_project(path, *args, **kwargs):
             content = original_read(path, *args, **kwargs)
             if path == ROOT / "pyproject.toml":
-                return content.replace('version = "1.7.20"', 'version = "0.0.0"')
+                return content.replace('version = "1.7.21"', 'version = "0.0.0"')
             return content
 
         with patch.object(Path, "read_text", changed_project):
@@ -35,7 +35,7 @@ class PluginPackageTests(unittest.TestCase):
         manifest = json.loads(
             (ROOT / "plugin" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(manifest["version"], "1.7.20")
+        self.assertEqual(manifest["version"], "1.7.21")
         self.assertEqual(manifest["interface"]["capabilities"], ["Interactive", "Read"])
         self.assertIn("quote card", manifest["interface"]["shortDescription"].lower())
         self.assertIn("guided editor", manifest["interface"]["shortDescription"].lower())

@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 
 
-QUOTE_CARD_APP_VERSION = "v1.44"
-QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.44.html"
+QUOTE_CARD_APP_VERSION = "v1.45"
+QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.45.html"
 QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.26.html",
     "ui://quote-card-builder/preview/v1.27.html",
@@ -28,6 +28,7 @@ QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.41.html",
     "ui://quote-card-builder/preview/v1.42.html",
     "ui://quote-card-builder/preview/v1.43.html",
+    "ui://quote-card-builder/preview/v1.44.html",
 )
 QUOTE_CARD_PREVIEW_MIME_TYPE = "text/html;profile=mcp-app"
 QUOTE_CARD_PREVIEW_DOMAIN = "https://quote-card-builder-mcp-960066178304.europe-west8.run.app"
@@ -714,11 +715,16 @@ def quote_card_preview_html() -> str:
             deliveryUrl = validatedDownloadUrl(resolved?.downloadUrl || "");
           } catch (error) {
             if (!isCurrentAction(sequence, revision)) return false;
+            if (String(error?.message || "").includes("unauthorized PNG host")) {
+              deliveryFileId = "";
+              deliveryUrl = URL.createObjectURL(file);
+            } else {
             errors.textContent = error?.message || "Unable to prepare the PNG in ChatGPT.";
             errors.hidden = false;
             status.textContent = "PNG unavailable: try again.";
             scheduleResize();
             return;
+            }
           }
         } else if (!canHostDownload() && !canSendImageToChat()) {
           deliveryUrl = URL.createObjectURL(file);
@@ -728,13 +734,16 @@ def quote_card_preview_html() -> str:
         const hostCanSendImage = canSendImageToChat();
         const bridgeCanOpen = Boolean(deliveryFileId && window.openai?.openExternal);
         const bridgeCanHandoff = canHandoffToChat();
-        download.textContent = hostCanDownload ? "Download PNG" : bridgeCanOpen ? "Download PNG" : bridgeCanHandoff ? "Send download to chat" : hostCanSendImage ? "Send PNG to chat" : "Save PNG";
+        const localDownload = deliveryUrl.startsWith("blob:");
+        download.textContent = hostCanDownload || bridgeCanOpen || localDownload ? "Download PNG" : bridgeCanHandoff ? "Send download to chat" : hostCanSendImage ? "Send PNG to chat" : "Save PNG";
         handoff.hidden = !(bridgeCanOpen && bridgeCanHandoff);
         download.disabled = false; deliveryName.textContent = downloadableName; delivery.hidden = false; scheduleResize();
         status.textContent = hostCanDownload
           ? "PNG ready. Download it through the host save dialog."
           : bridgeCanOpen
           ? "PNG ready. Download the ChatGPT file, or send its link to the chat."
+          : localDownload
+          ? "PNG ready. Download it from this editor."
           : bridgeCanHandoff
             ? "PNG ready. Send its temporary download link to the chat."
           : hostCanSendImage
@@ -746,7 +755,7 @@ def quote_card_preview_html() -> str:
         const snapshot = currentDeliverySnapshot();
         if (!snapshot.file && !snapshot.url && !snapshot.fileId) return;
         download.disabled = true;
-        status.textContent = canHostDownload(snapshot) ? "Opening the save dialog…" : snapshot.fileId && window.openai?.openExternal ? "Starting the PNG download…" : canHandoffToChat(snapshot) ? "Sending the PNG link to chat…" : canSendImageToChat(snapshot) ? "Sending the PNG to chat…" : "Opening PNG…";
+        status.textContent = canHostDownload(snapshot) ? "Opening the save dialog…" : snapshot.fileId && window.openai?.openExternal ? "Starting the PNG download…" : snapshot.url.startsWith("blob:") ? "Starting the PNG download…" : canHandoffToChat(snapshot) ? "Sending the PNG link to chat…" : canSendImageToChat(snapshot) ? "Sending the PNG to chat…" : "Opening PNG…";
         scheduleResize();
         try {
           const bridge = window.openai;
@@ -760,16 +769,16 @@ def quote_card_preview_html() -> str:
             );
             if (!isCurrentDelivery(snapshot)) return;
             status.textContent = "PNG download opened. If no tab appeared, send the download link to chat.";
-          } else if (canHandoffToChat(snapshot)) {
-            await handoffPreparedDownload(snapshot);
-          } else if (canSendImageToChat(snapshot)) {
-            await sendPreparedImageToChat(snapshot);
           } else if (snapshot.url.startsWith("blob:")) {
             const link = document.createElement("a");
             link.href = snapshot.url; link.download = snapshot.filename || "quote-card.png";
             link.style.display = "none"; document.body.append(link); link.click(); link.remove();
             if (!isCurrentDelivery(snapshot)) return;
-            status.textContent = "Save request sent to this host.";
+            status.textContent = "PNG download started.";
+          } else if (canHandoffToChat(snapshot)) {
+            await handoffPreparedDownload(snapshot);
+          } else if (canSendImageToChat(snapshot)) {
+            await sendPreparedImageToChat(snapshot);
           } else {
             throw new Error("This host cannot open the PNG or send it to the chat.");
           }

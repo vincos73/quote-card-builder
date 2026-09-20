@@ -483,6 +483,7 @@ let uploadCount = 0;
 let downloadUrlCount = 0;
 let externalOpenCount = 0;
 let downloadClickCount = 0;
+let resolvedDownloadUrl = "https://oaisdmntprnortheu.blob.core.windows.net/files/quote-card-test.png?sig=test";
 const download = { disabled:true };
 download.textContent = "";
 const handoff = { hidden:true, disabled:false };
@@ -498,7 +499,7 @@ URL.revokeObjectURL = () => {};
 const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprnortheu.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
 const window = { openai:{
   uploadFile:async (file, options) => { uploadCount += 1; if (file.name !== "quote-card-test.png" || options.library !== false) throw new Error("unexpected upload"); return { fileId:"file_qcb" }; },
-  getFileDownloadUrl:async ({fileId}) => { downloadUrlCount += 1; if (fileId !== "file_qcb") throw new Error("wrong file id"); return { downloadUrl:"https://oaisdmntprnortheu.blob.core.windows.net/files/quote-card-test.png?sig=test" }; },
+  getFileDownloadUrl:async ({fileId}) => { downloadUrlCount += 1; if (fileId !== "file_qcb") throw new Error("wrong file id"); return { downloadUrl:resolvedDownloadUrl }; },
   openExternal:async ({href, redirectUrl}) => { externalOpenCount += 1; if (href !== "https://oaisdmntprnortheu.blob.core.windows.net/files/quote-card-test.png?sig=test" || redirectUrl !== false) throw new Error("wrong external request"); }
 } };
 const scheduleResize = () => {};
@@ -523,6 +524,16 @@ await openPreparedDownload();
 if (downloadUrlCount !== 1) throw new Error(`download URL was fetched again after the click: ${downloadUrlCount}`);
 if (externalOpenCount !== 1) throw new Error(`host download did not start: ${externalOpenCount}`);
 if (status.textContent !== "PNG download opened. If no tab appeared, send the download link to chat.") throw new Error(`unexpected status: ${status.textContent}`);
+clearProduction();
+resolvedDownloadUrl = "https://oaisdmntprdenmarkeast.blob.core.windows.net/files/quote-card-test.png?sig=test";
+await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-test.svg" });
+if (!deliveryUrl.startsWith("blob:local/")) throw new Error(`regional fallback URL missing: ${deliveryUrl}`);
+if (deliveryFileId) throw new Error(`regional fallback kept an external file id: ${deliveryFileId}`);
+if (download.textContent !== "Download PNG") throw new Error(`unexpected fallback action: ${download.textContent}`);
+await openPreparedDownload();
+if (externalOpenCount !== 1) throw new Error(`regional fallback opened an external host: ${externalOpenCount}`);
+if (downloadClickCount !== 1) throw new Error(`regional fallback did not start a local download: ${downloadClickCount}`);
+if (status.textContent !== "PNG download started.") throw new Error(`unexpected fallback status: ${status.textContent}`);
 '''
         completed = subprocess.run(
             ["node", "--input-type=module", "-e", delivery_functions + assertions],
