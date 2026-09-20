@@ -30,11 +30,13 @@ is recommended before submission.
 
 - **PASS** `/health` responds successfully over HTTPS.
 - **PASS** Streamable HTTP `initialize` succeeds with protocol `2025-06-18`.
-- **PASS** Three tools are exposed with explicit input and structured output schemas.
+- **PASS** Four server tools are exposed with explicit input and structured output schemas.
 - **PASS** Every tool declares `readOnlyHint=true`, `destructiveHint=false`, and
   `openWorldHint=false`; the operations validate/render in memory and do not change external
   state.
-- **PASS** Only `quote_card_builder_open_editor` is model-visible and linked to the UI resource.
+- **PASS** `quote_card_builder_open_editor` and the explicit
+  `quote_card_builder_headless` fallback are model-visible; only the editor is linked to the UI
+  resource.
 - **PASS** `preview_quote_card` and `produce_quote_card` are app-private and do not open duplicate
   components.
 - **PASS** The UI resource is `text/html;profile=mcp-app`, declares its domain, and has empty exact
@@ -43,23 +45,25 @@ is recommended before submission.
   returns `404` while no token is configured.
 - **BLOCKED** Domain verification cannot be completed until the portal issues its token and the
   route is deployed with `OPENAI_APPS_CHALLENGE_TOKEN`.
-- **PORTAL** Run **Scan Tools** against the final frozen server and resolve all reported issues.
+- **PASS** ChatGPT developer-mode **Aggiorna / Scan Tools** completed against the frozen v1.40
+  server on 2026-09-20. It discovered the two public tools, the optional Style preselection, and
+  `ui://quote-card-builder/preview/v1.40.html` without reporting an issue.
 
 ## UI and behavior
 
-- **PASS** Remote `resources/read` serves the deployed v1.34 resource and exposes the ChatGPT host
+- **PASS** Remote `resources/read` serves the deployed v1.40 resource and exposes the ChatGPT host
   file delivery path (`uploadFile` plus `getFileDownloadUrl`).
 - **PASS** The inline editor has two main actions: **Update preview** and **Generate PNG**, with
   clear supporting labels and distinct primary/secondary hierarchy.
 - **PASS** Quote, attribution, neutral/custom palette, direction, 4:5/1:1 format, authored line
   breaks, formatting ranges, scale, position, and motif are represented in editor state.
 - **PASS** Generate revalidates through the canonical renderer and prepares a PNG in the browser.
-- **PASS** Deployed v1.34 embeds Orbitron in a self-contained SVG wordmark with tightened optical
+- **PASS** Deployed v1.40 embeds Orbitron in a self-contained SVG wordmark with tightened optical
   spacing and uses ChatGPT's host file APIs for PNG delivery when available.
 - **PASS** A hosted v1.33 test confirmed the title rendering and showed that ChatGPT opens the
-  temporary PNG URL rather than forcing a browser download. Deployed v1.34 labels this behavior
+  temporary PNG URL rather than forcing a browser download. Deployed v1.40 labels this behavior
   accurately as **Open PNG** and tells the user to save the image from the browser.
-- **PASS** The deployed v1.34 production badge has no `TEST` suffix.
+- **PASS** The deployed v1.40 production badge has no `TEST` suffix.
 - **PASS** The deployed editor grows with its contents and no longer creates an internal
   `overflow:auto` scroll area.
 - **FIX** Capture desktop and narrow-width visual evidence from the final production resource.
@@ -73,8 +77,10 @@ is recommended before submission.
 - **PASS** No database or bucket is used by the application, and generated SVG data is returned in
   the response rather than retained by the application.
 - **PASS** The component sanitizes inline SVG before inserting it into the DOM.
-- **BLOCKED** Decide and document the production authentication posture. Current code is no-auth;
-  older project documentation also says public beta access should be replaced before real use.
+- **PASS** The current test-phase authentication posture is explicitly no-auth. The service is
+  stateless and in-memory and neither reads user-specific records nor changes external data.
+- **BLOCKED** Before adding user-specific data or external writes, implement and document OAuth
+  2.1 and re-run the authentication review.
 - **BLOCKED** Privacy copy must cover infrastructure/request logs even though the application does
   not persist quote-card content itself.
 - **PASS** The local Dockerfile copies only the MCP server, adapter, application resource, canonical
@@ -84,23 +90,29 @@ is recommended before submission.
 
 ## Release integrity
 
-- **PASS** Local plugin manifest and canonical skill are `1.7.11`; local and deployed UI are v1.34.
-- **PASS** The local plugin ZIP for 1.7.11 was rebuilt, archive-tested, and hashed.
+- **PASS** Local plugin manifest, canonical skill, and remote server are `1.7.16`; local and
+  deployed UI are v1.40.
+- **PASS** Historical plugin ZIP evidence for 1.7.11 remains recorded; the current v1.40 Cloud Run
+  source archive is hashed below.
 - **PASS** The project suite passes when socket and headless-browser tests are allowed.
-- **PASS** Remote resource `ui://quote-card-builder/preview/v1.34.html` is readable from the deployed MCP server.
+- **PASS** Remote resource `ui://quote-card-builder/preview/v1.40.html` is readable from the
+  deployed MCP server.
 - **PASS** Local v1.27 source packages have deterministic recorded SHA-256 hashes and clean archive
   listings.
-- **PASS** The clean v1.34 source archive was built by Cloud Build and deployed as revision
-  `quote-card-builder-mcp-00064-raf`; the image digest, 100% traffic split, health, MCP handshake,
-  and resource descriptor are recorded in `submission/evidence.md`.
-- **FIX** The worktree is detached and dirty; freeze the approved candidate in a clean, traceable
-  commit before submission.
-- **PASS** Deployment evidence for v1.34 is recorded after the corrective deploy.
-- **PASS** The local v1.34 candidate retains v1.26 through v1.33 compatibility resources.
+- **PASS** The clean v1.40 source archive has SHA-256
+  `90ac3d731240b8d429359e9631dbdfeec37cce75f9f41ae518ff461a2e6679cf` and was deployed as
+  revision `quote-card-builder-mcp-00086-cuq` with image digest
+  `sha256:3956efce9775476c94b6342a8a3d0073ed1b0cd7d481e535cf28b941ac008f85`; the 100% traffic split,
+  health, MCP handshake, and resource descriptor are recorded in `submission/evidence.md`.
+- **PASS** The v1.40 candidate is frozen in clean commit
+  `8255bc998dd056f7454735a72e5dcae1fdd8bec6` on branch
+  `codex/qcb-remote-v1.40`.
+- **PASS** Deployment and ChatGPT Scan Tools evidence for v1.40 is recorded after promotion.
+- **PASS** The local v1.40 candidate retains v1.26 through v1.39 compatibility resources.
 - **PASS** `pytest.ini` restricts default discovery to `tests/` and excludes `work/`.
 
 ## Final gate
 
-Do not submit until every **BLOCKED** item is resolved, **Scan Tools** passes, the final UI is
+Do not submit until every **BLOCKED** item is resolved, the final UI is
 visually checked in ChatGPT, and the exact frozen commit, package hashes, Cloud Run revision, image
 digest, and reviewer test results are recorded together.

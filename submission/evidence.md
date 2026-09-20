@@ -1,6 +1,45 @@
 # Candidate evidence
 
-Evidence date: 2026-08-25, Europe/Rome.
+Evidence date: 2026-09-20, Europe/Rome.
+
+## Current frozen v1.40 candidate
+
+This section supersedes the historical v1.34 evidence below.
+
+- Frozen source commit: `8255bc998dd056f7454735a72e5dcae1fdd8bec6`
+  (`Prepare Quote Card Builder remote UI v1.40`).
+- Clean branch and worktree: `codex/qcb-remote-v1.40` in
+  `/Users/vincos/.codex/worktrees/qcb-remote-v1-40/Quote Builder`.
+- Plugin/server version: `1.7.16`.
+- Current UI resource: `ui://quote-card-builder/preview/v1.40.html`.
+- Cloud Run revision: `quote-card-builder-mcp-00086-cuq` in project
+  `quote-card-builder-mcp`, region `europe-west8`.
+- Deployed image:
+  `europe-west8-docker.pkg.dev/quote-card-builder-mcp/cloud-run-source-deploy/quote-card-builder-mcp@sha256:3956efce9775476c94b6342a8a3d0073ed1b0cd7d481e535cf28b941ac008f85`.
+- Canary tag: `v145`; the canonical service now sends 100% of traffic to revision `00086-cuq`.
+- Public MCP URL:
+  `https://quote-card-builder-mcp-960066178304.europe-west8.run.app/mcp`.
+- Source archive: `/private/tmp/quote-card-builder-cloudrun-v1.40-8255bc9.tar.gz`.
+- Source archive SHA-256:
+  `90ac3d731240b8d429359e9631dbdfeec37cce75f9f41ae518ff461a2e6679cf`.
+- Candidate test suite: `Ran 297 tests in 11.333s` and `OK`, with no skipped tests.
+- Official skill validator: `Skill is valid!`; `git diff --check` passed.
+- Remote MCP `initialize` returned protocol `2025-06-18` and server version `1.7.16`.
+- Remote `resources/read` returned the v1.40 HTML resource (97,517 bytes), including
+  `setWidgetState`, `ui/download-file`, and `ui/update-model-context` integration.
+- Remote `quote_card_builder_open_editor` returned `isError=false`, `valid=true`, and
+  `rendered=true` with a neutral 4:5 diagnostic card.
+- ChatGPT developer-mode **Aggiorna / Scan Tools** completed successfully on 2026-09-20. The
+  refreshed surface exposes `quote_card_builder_open_editor` and
+  `quote_card_builder_headless` as public tools, keeps `preview_quote_card` and
+  `produce_quote_card` app-private, requires Quote, Attribution, and Palette for the editor,
+  treats Style as an optional preselection, and points at the v1.40 UI resource.
+- Authentication remains intentionally disabled for the current test phase. The service renders
+  stateless, in-memory output and does not access user-specific records or change external data.
+  OAuth 2.1 must be introduced before any future user-specific data access or external writes.
+
+The ChatGPT Apps Management entry remains in `development` status. Public submission and listing
+have not been performed.
 
 ## Local production candidate
 
