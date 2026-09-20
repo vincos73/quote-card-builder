@@ -18,9 +18,10 @@ those choices. `preview_quote_card` is the data tool called by the UI to refresh
 preview without opening another component. `produce_quote_card` is called only by the
 **Generate PNG** button and prepares a capability-based delivery action. It prefers the standard
 MCP Apps **Download PNG** request (`ui/download-file`), which lets the host save an embedded PNG
-from its sandbox. If native download is unavailable but the host accepts image messages, the UI
-offers **Send PNG to chat** through `ui/message`. ChatGPT-specific file URLs and external opening
-remain compatibility fallbacks; non-sandboxed hosts can retain the local Blob fallback.
+from its sandbox. In ChatGPT it next uploads a real file with `window.openai.uploadFile`, resolves
+its temporary URL with `getFileDownloadUrl`, and exposes a direct **Download PNG** action. Image
+messages through `ui/message` remain a fallback only for hosts without file APIs; non-sandboxed
+hosts can retain the local Blob fallback.
 The application server does not persist the generated card. The UI exposes Blocks, Cutouts,
 Constellations, and Gradient, with deterministic pattern variations and an explicit editable
 palette in addition to the neutral profile.

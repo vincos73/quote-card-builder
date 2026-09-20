@@ -355,7 +355,7 @@ class McpAdapterTests(unittest.TestCase):
         self.assertIn("getFileDownloadUrl", html)
         self.assertIn("openExternal", html)
         self.assertIn("notifyIntrinsicHeight", html)
-        self.assertIn('"Opening PNG…"', html)
+        self.assertIn('"Starting the PNG download…"', html)
         self.assertIn("withTimeout", html)
         self.assertIn("ChatGPT did not respond to the open request.", html)
         self.assertIn("uploadFile", html)
@@ -371,7 +371,7 @@ class McpAdapterTests(unittest.TestCase):
         self.assertNotIn('directDownload.click()', html)
         self.assertNotIn('link.target = "_blank"', html)
         self.assertIn("PNG ready. Send its temporary download link to the chat.", html)
-        self.assertIn('Open PNG', html)
+        self.assertIn('Download PNG', html)
         self.assertIn('id="handoff"', html)
         self.assertIn("validatedDownloadUrl", html)
         self.assertIn("unauthorized PNG host", html)
@@ -477,7 +477,7 @@ let deliveryUrl = "";
 let deliveryFileId = "";
 let deliveryFilename = "";
 let deliveryFile = null;
-let hostCapabilities = {};
+let hostCapabilities = { message:{ image:{} } };
 let blobCount = 0;
 let uploadCount = 0;
 let downloadUrlCount = 0;
@@ -516,13 +516,13 @@ if (download.disabled) throw new Error("download button remained disabled");
 if (blobCount !== 0) throw new Error(`unexpected local Blob: ${blobCount}`);
 if (uploadCount !== 1) throw new Error(`upload missing: ${uploadCount}`);
 if (downloadUrlCount !== 1) throw new Error(`download URL was not prepared before the click: ${downloadUrlCount}`);
-if (download.textContent !== "Open PNG") throw new Error(`unexpected primary action: ${download.textContent}`);
+if (download.textContent !== "Download PNG") throw new Error(`unexpected primary action: ${download.textContent}`);
 if (!handoff.hidden) throw new Error("chat handoff should be hidden without sendFollowUpMessage");
 if (delivery.hidden) throw new Error("download action remained hidden");
 await openPreparedDownload();
 if (downloadUrlCount !== 1) throw new Error(`download URL was fetched again after the click: ${downloadUrlCount}`);
 if (externalOpenCount !== 1) throw new Error(`host download did not start: ${externalOpenCount}`);
-if (status.textContent !== "Open request sent. If no tab appeared, send the link to chat.") throw new Error(`unexpected status: ${status.textContent}`);
+if (status.textContent !== "PNG download opened. If no tab appeared, send the download link to chat.") throw new Error(`unexpected status: ${status.textContent}`);
 '''
         completed = subprocess.run(
             ["node", "--input-type=module", "-e", delivery_functions + assertions],
@@ -547,7 +547,7 @@ let deliveryUrl = "";
 let deliveryFileId = "";
 let deliveryFilename = "";
 let deliveryFile = null;
-let hostCapabilities = {};
+let hostCapabilities = { message:{ image:{} } };
 let sentMessage = null;
 let widgetState = null;
 const download = { disabled:true, textContent:"" };
@@ -572,7 +572,7 @@ const scheduleResize = () => {};
 const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; };
 const svgToPngFile = async () => ({ name:"quote-card-chat.png", type:"image/png" });
 await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-chat.svg" });
-if (download.textContent !== "Send link to chat") throw new Error(`wrong desktop action: ${download.textContent}`);
+if (download.textContent !== "Send download to chat") throw new Error(`wrong desktop action: ${download.textContent}`);
 if (!handoff.hidden) throw new Error("secondary handoff should remain hidden when it is the primary action");
 await openPreparedDownload();
 if (!sentMessage?.prompt.includes(deliveryUrl) || sentMessage.scrollToBottom !== true) throw new Error("temporary URL was not sent to chat");
@@ -1147,7 +1147,7 @@ class McpProtocolTests(unittest.TestCase):
 
         resources = asyncio.run(mcp_server.mcp.list_resources())
         resources_by_uri = {str(item.uri): item for item in resources}
-        for version in range(26, 40):
+        for version in range(26, 42):
             uri = f"ui://quote-card-builder/preview/v1.{version}.html"
             self.assertIn(uri, resources_by_uri)
             self.assertEqual("text/html;profile=mcp-app", resources_by_uri[uri].mime_type)

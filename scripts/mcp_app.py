@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 
 
-QUOTE_CARD_APP_VERSION = "v1.41"
-QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.41.html"
+QUOTE_CARD_APP_VERSION = "v1.42"
+QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.42.html"
 QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.26.html",
     "ui://quote-card-builder/preview/v1.27.html",
@@ -25,6 +25,7 @@ QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.38.html",
     "ui://quote-card-builder/preview/v1.39.html",
     "ui://quote-card-builder/preview/v1.40.html",
+    "ui://quote-card-builder/preview/v1.41.html",
 )
 QUOTE_CARD_PREVIEW_MIME_TYPE = "text/html;profile=mcp-app"
 QUOTE_CARD_PREVIEW_DOMAIN = "https://quote-card-builder-mcp-960066178304.europe-west8.run.app"
@@ -697,7 +698,7 @@ def quote_card_preview_html() -> str:
         deliveryFile = file;
         deliveryFilename = downloadableName;
         const bridge = window.openai;
-        if (!canHostDownload() && !canSendImageToChat() && bridge?.uploadFile && bridge?.getFileDownloadUrl) {
+        if (!canHostDownload() && bridge?.uploadFile && bridge?.getFileDownloadUrl) {
           try {
             status.textContent = "Preparing the PNG…";
             const uploaded = await withTimeout(bridge.uploadFile(file, { library:false }), 30000, "ChatGPT did not finish preparing the PNG.");
@@ -723,17 +724,17 @@ def quote_card_preview_html() -> str:
         const hostCanSendImage = canSendImageToChat();
         const bridgeCanOpen = Boolean(deliveryFileId && window.openai?.openExternal);
         const bridgeCanHandoff = canHandoffToChat();
-        download.textContent = hostCanDownload ? "Download PNG" : hostCanSendImage ? "Send PNG to chat" : bridgeCanOpen ? "Open PNG" : bridgeCanHandoff ? "Send link to chat" : "Save PNG";
+        download.textContent = hostCanDownload ? "Download PNG" : bridgeCanOpen ? "Download PNG" : bridgeCanHandoff ? "Send download to chat" : hostCanSendImage ? "Send PNG to chat" : "Save PNG";
         handoff.hidden = !(bridgeCanOpen && bridgeCanHandoff);
         download.disabled = false; deliveryName.textContent = downloadableName; delivery.hidden = false; scheduleResize();
         status.textContent = hostCanDownload
           ? "PNG ready. Download it through the host save dialog."
-          : hostCanSendImage
-            ? "PNG ready. Send the image to the conversation."
           : bridgeCanOpen
-          ? "PNG ready. Open it, or send its link to the chat."
+          ? "PNG ready. Download the ChatGPT file, or send its link to the chat."
           : bridgeCanHandoff
             ? "PNG ready. Send its temporary download link to the chat."
+          : hostCanSendImage
+            ? "PNG ready. Send the image to the conversation."
             : "PNG ready. Save it from this host.";
         return true;
       }
@@ -741,14 +742,12 @@ def quote_card_preview_html() -> str:
         const snapshot = currentDeliverySnapshot();
         if (!snapshot.file && !snapshot.url && !snapshot.fileId) return;
         download.disabled = true;
-        status.textContent = canHostDownload(snapshot) ? "Opening the save dialog…" : canSendImageToChat(snapshot) ? "Sending the PNG to chat…" : canHandoffToChat(snapshot) && !window.openai?.openExternal ? "Sending the PNG link to chat…" : "Opening PNG…";
+        status.textContent = canHostDownload(snapshot) ? "Opening the save dialog…" : snapshot.fileId && window.openai?.openExternal ? "Starting the PNG download…" : canHandoffToChat(snapshot) ? "Sending the PNG link to chat…" : canSendImageToChat(snapshot) ? "Sending the PNG to chat…" : "Opening PNG…";
         scheduleResize();
         try {
           const bridge = window.openai;
           if (canHostDownload(snapshot)) {
             await requestNativeDownload(snapshot);
-          } else if (canSendImageToChat(snapshot)) {
-            await sendPreparedImageToChat(snapshot);
           } else if (snapshot.fileId && bridge?.openExternal) {
             await withTimeout(
               bridge.openExternal({ href:snapshot.url, redirectUrl:false }),
@@ -756,9 +755,11 @@ def quote_card_preview_html() -> str:
               "ChatGPT did not respond to the open request.",
             );
             if (!isCurrentDelivery(snapshot)) return;
-            status.textContent = "Open request sent. If no tab appeared, send the link to chat.";
+            status.textContent = "PNG download opened. If no tab appeared, send the download link to chat.";
           } else if (canHandoffToChat(snapshot)) {
             await handoffPreparedDownload(snapshot);
+          } else if (canSendImageToChat(snapshot)) {
+            await sendPreparedImageToChat(snapshot);
           } else if (snapshot.url.startsWith("blob:")) {
             const link = document.createElement("a");
             link.href = snapshot.url; link.download = snapshot.filename || "quote-card.png";
