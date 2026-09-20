@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 
 
-QUOTE_CARD_APP_VERSION = "v1.42"
-QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.42.html"
+QUOTE_CARD_APP_VERSION = "v1.43"
+QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.43.html"
 QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.26.html",
     "ui://quote-card-builder/preview/v1.27.html",
@@ -26,11 +26,13 @@ QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.39.html",
     "ui://quote-card-builder/preview/v1.40.html",
     "ui://quote-card-builder/preview/v1.41.html",
+    "ui://quote-card-builder/preview/v1.42.html",
 )
 QUOTE_CARD_PREVIEW_MIME_TYPE = "text/html;profile=mcp-app"
 QUOTE_CARD_PREVIEW_DOMAIN = "https://quote-card-builder-mcp-960066178304.europe-west8.run.app"
 QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS = (
     "https://oaisdmntpritalynorth.blob.core.windows.net",
+    "https://oaisdmntprpolandcentral.blob.core.windows.net",
 )
 ASSET_DIR = Path(__file__).resolve().parents[1] / "assets" / "mcp-editor"
 BRAND_ASSET_DIR = Path(__file__).resolve().parents[1] / "assets" / "card-editor"

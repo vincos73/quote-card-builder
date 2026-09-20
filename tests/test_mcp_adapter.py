@@ -495,11 +495,11 @@ const NativeURL = globalThis.URL;
 class URL extends NativeURL {}
 URL.createObjectURL = (file) => { blobCount += 1; return `blob:local/${file.name}`; };
 URL.revokeObjectURL = () => {};
-const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net"]);
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
 const window = { openai:{
   uploadFile:async (file, options) => { uploadCount += 1; if (file.name !== "quote-card-test.png" || options.library !== false) throw new Error("unexpected upload"); return { fileId:"file_qcb" }; },
-  getFileDownloadUrl:async ({fileId}) => { downloadUrlCount += 1; if (fileId !== "file_qcb") throw new Error("wrong file id"); return { downloadUrl:"https://oaisdmntpritalynorth.blob.core.windows.net/files/quote-card-test.png?sig=test" }; },
-  openExternal:async ({href, redirectUrl}) => { externalOpenCount += 1; if (href !== "https://oaisdmntpritalynorth.blob.core.windows.net/files/quote-card-test.png?sig=test" || redirectUrl !== false) throw new Error("wrong external request"); }
+  getFileDownloadUrl:async ({fileId}) => { downloadUrlCount += 1; if (fileId !== "file_qcb") throw new Error("wrong file id"); return { downloadUrl:"https://oaisdmntprpolandcentral.blob.core.windows.net/files/quote-card-test.png?sig=test" }; },
+  openExternal:async ({href, redirectUrl}) => { externalOpenCount += 1; if (href !== "https://oaisdmntprpolandcentral.blob.core.windows.net/files/quote-card-test.png?sig=test" || redirectUrl !== false) throw new Error("wrong external request"); }
 } };
 const scheduleResize = () => {};
 const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; };
@@ -509,7 +509,7 @@ try { validatedDownloadUrl("https://unexpected.example/quote-card.png"); }
 catch (error) { unauthorizedRejected = String(error.message).includes("unauthorized PNG host"); }
 if (!unauthorizedRejected) throw new Error("unauthorized host was accepted");
 await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-test.svg" });
-if (deliveryUrl !== "https://oaisdmntpritalynorth.blob.core.windows.net/files/quote-card-test.png?sig=test") throw new Error(`host URL was not prepared: ${deliveryUrl}`);
+if (deliveryUrl !== "https://oaisdmntprpolandcentral.blob.core.windows.net/files/quote-card-test.png?sig=test") throw new Error(`host URL was not prepared: ${deliveryUrl}`);
 if (deliveryFileId !== "file_qcb") throw new Error("host file was not prepared");
 if (deliveryFilename !== "quote-card-test.png") throw new Error("filename missing");
 if (download.disabled) throw new Error("download button remained disabled");
@@ -561,7 +561,7 @@ const NativeURL = globalThis.URL;
 class URL extends NativeURL {}
 URL.createObjectURL = () => { throw new Error("unexpected Blob fallback"); };
 URL.revokeObjectURL = () => {};
-const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net"]);
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
 const window = { openai:{
   uploadFile:async () => ({ fileId:"file_qcb_chat" }),
   getFileDownloadUrl:async () => ({ downloadUrl:"https://oaisdmntpritalynorth.blob.core.windows.net/files/quote-card-chat.png?sig=test" }),
@@ -616,7 +616,7 @@ const NativeURL = globalThis.URL;
 class URL extends NativeURL {}
 URL.createObjectURL = () => { throw new Error("unexpected Blob fallback"); };
 URL.revokeObjectURL = () => {};
-const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net"]);
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
 const window = { openai:undefined };
 const scheduleResize = () => {};
 const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; };
@@ -675,7 +675,7 @@ const NativeURL = globalThis.URL;
 class URL extends NativeURL {}
 URL.createObjectURL = () => { throw new Error("unexpected Blob fallback"); };
 URL.revokeObjectURL = () => {};
-const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net"]);
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net", "https://oaisdmntprpolandcentral.blob.core.windows.net"]);
 const window = { openai:undefined };
 const scheduleResize = () => {};
 const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; };
@@ -1065,6 +1065,10 @@ class McpProtocolTests(unittest.TestCase):
         )
         self.assertEqual(resource.meta["ui"]["csp"]["connectDomains"], [])
         self.assertEqual(resource.meta["ui"]["csp"]["resourceDomains"], [])
+        self.assertEqual(
+            resource.meta["openai/widgetCSP"]["redirect_domains"],
+            list(mcp_app.QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS),
+        )
         self.assertEqual("text/html;profile=mcp-app", resource.mime_type)
         self.assertTrue(resource.meta["ui"]["prefersBorder"])
 

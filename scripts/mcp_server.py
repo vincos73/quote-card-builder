@@ -14,7 +14,7 @@ from typing import Annotated, Literal
 
 try:
     from mcp.server import MCPServer
-    from mcp.server.apps import Apps, ResourceCsp
+    from mcp.server.apps import Apps, ResourceCsp, TextResource
     from mcp.server.transport_security import TransportSecuritySettings
     from mcp_types import (
         CallToolResult,
@@ -38,7 +38,9 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from mcp_quote_card import preview_quote_card as render_preview
 from mcp_app import (
+    QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS,
     QUOTE_CARD_LEGACY_PREVIEW_RESOURCES,
+    QUOTE_CARD_PREVIEW_MIME_TYPE,
     QUOTE_CARD_PREVIEW_DOMAIN,
     QUOTE_CARD_PREVIEW_RESOURCE,
     quote_card_preview_html,
@@ -218,19 +220,36 @@ _EDITOR_CSP = ResourceCsp(
 
 def _add_preview_resource(uri: str, *, legacy: bool = False) -> None:
     """Register the current editor under its canonical or cached Apps URI."""
-    apps.add_html_resource(
-        uri,
-        quote_card_preview_html(),
-        name=("quote-card-preview-compatibility" if legacy else "quote-card-preview-ui"),
-        title=("Quote Card Builder preview (compatibility alias)" if legacy else "Quote Card Builder preview"),
-        description=(
-            "Compatibility alias that serves the current editor version."
-            if legacy
-            else "Inline editor for viewing and updating a validated quote card."
-        ),
-        csp=_EDITOR_CSP,
-        domain=QUOTE_CARD_PREVIEW_DOMAIN,
-        prefers_border=True,
+    ui_meta = {
+        "csp": _EDITOR_CSP.model_dump(by_alias=True, exclude_none=True),
+        "domain": QUOTE_CARD_PREVIEW_DOMAIN,
+        "prefersBorder": True,
+    }
+    apps.add_resource(
+        TextResource(
+            uri=uri,
+            text=quote_card_preview_html(),
+            name=("quote-card-preview-compatibility" if legacy else "quote-card-preview-ui"),
+            title=(
+                "Quote Card Builder preview (compatibility alias)"
+                if legacy
+                else "Quote Card Builder preview"
+            ),
+            description=(
+                "Compatibility alias that serves the current editor version."
+                if legacy
+                else "Inline editor for viewing and updating a validated quote card."
+            ),
+            mime_type=QUOTE_CARD_PREVIEW_MIME_TYPE,
+            meta={
+                "ui": ui_meta,
+                "openai/widgetCSP": {
+                    "connect_domains": [],
+                    "resource_domains": [],
+                    "redirect_domains": list(QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS),
+                },
+            },
+        )
     )
 
 
