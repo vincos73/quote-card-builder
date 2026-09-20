@@ -151,7 +151,7 @@ class HostThemeAssetTests(unittest.TestCase):
             self.assertIn(token, css)
         self.assertIn("@media (prefers-color-scheme: dark)", css)
         self.assertIn("font-family: var(--qcb-font-sans)", css)
-        self.assertIn(".app-header", css)
+        self.assertNotIn("display: none !important", css)
         self.assertIn("button.primary", css)
         self.assertIn("var(--qcb-accent)", css)
 

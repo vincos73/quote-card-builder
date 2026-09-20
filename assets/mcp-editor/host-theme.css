@@ -89,15 +89,6 @@ textarea {
   font-family: var(--qcb-font-sans);
 }
 
-/* The old self-contained resource has an editorial masthead.  In a host
- * iframe the title and brand lockup add chrome without helping the task. */
-.app-header,
-.product-title,
-.product-byline,
-.version-badge {
-  display: none !important;
-}
-
 .shell,
 .form,
 fieldset,

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 
 
-QUOTE_CARD_APP_VERSION = "v1.40"
-QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.40.html"
+QUOTE_CARD_APP_VERSION = "v1.41"
+QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.41.html"
 QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.26.html",
     "ui://quote-card-builder/preview/v1.27.html",
@@ -23,6 +24,7 @@ QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.37.html",
     "ui://quote-card-builder/preview/v1.38.html",
     "ui://quote-card-builder/preview/v1.39.html",
+    "ui://quote-card-builder/preview/v1.40.html",
 )
 QUOTE_CARD_PREVIEW_MIME_TYPE = "text/html;profile=mcp-app"
 QUOTE_CARD_PREVIEW_DOMAIN = "https://quote-card-builder-mcp-960066178304.europe-west8.run.app"
@@ -30,6 +32,23 @@ QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS = (
     "https://oaisdmntpritalynorth.blob.core.windows.net",
 )
 ASSET_DIR = Path(__file__).resolve().parents[1] / "assets" / "mcp-editor"
+BRAND_ASSET_DIR = Path(__file__).resolve().parents[1] / "assets" / "card-editor"
+
+
+def _brand_data_uri(filename: str, mime_type: str) -> str:
+    """Return one approved brand asset as a self-contained data URI."""
+    payload = (BRAND_ASSET_DIR / filename).read_bytes()
+    return f"data:{mime_type};base64," + base64.b64encode(payload).decode("ascii")
+
+
+def _embedded_font_faces() -> str:
+    """Embed the canonical Quote Card Builder interface typography."""
+    return "\n".join(
+        (
+            f'@font-face{{font-family:"QCB Barlow";src:url("{_brand_data_uri("fonts/Barlow-Regular-latin.woff2", "font/woff2")}") format("woff2");font-style:normal;font-weight:400;font-display:swap}}',
+            f'@font-face{{font-family:"QCB Barlow";src:url("{_brand_data_uri("fonts/Barlow-Bold-latin.woff2", "font/woff2")}") format("woff2");font-style:normal;font-weight:700;font-display:swap}}',
+        )
+    )
 
 
 def quote_card_preview_html() -> str:
@@ -41,6 +60,19 @@ def quote_card_preview_html() -> str:
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Quote Card Builder</title>
     <style>
+      __QCB_FONT_FACES__
+      __QCB_HOST_THEME__
+      :root {
+        --chrome:#2b1830; --deep:#1b121f; --raised:#35203b; --concrete:#cdd5cf;
+        --concrete-light:#e7e9e5; --signal:#b9d936; --signal-dark:#6f8217;
+        --lavender:#9b86ad; --lavender-light:#d8cedb; --ink:#171619;
+        --paper:#252328; --danger:#ff8b77; --seam:rgba(216,206,219,.24);
+        --seam-strong:rgba(216,206,219,.48); --line:rgba(23,22,25,.22);
+        --ui:"QCB Barlow","Helvetica Neue",system-ui,sans-serif;
+        --mono:"IBM Plex Mono","SFMono-Regular","Cascadia Mono","Roboto Mono",Consolas,monospace;
+        color-scheme:dark; background:var(--deep); color:var(--lavender-light);
+        font-family:var(--ui); font-synthesis:none;
+      }
       * { box-sizing:border-box; }
       html { min-width:320px; background:var(--deep); scrollbar-color:var(--lavender) var(--deep); }
       body { min-width:320px; margin:0; padding:0; background:var(--deep); color:var(--lavender-light); font-size:14px; line-height:1.4; }
@@ -138,11 +170,14 @@ def quote_card_preview_html() -> str:
         .product-title { width:min(300px,70vw); }
         .version-badge { font-size:8px; }
       }
-      __QCB_HOST_THEME__
     </style>
   </head>
   <body>
-    <main class="shell" aria-label="Quote card editor" data-version="__QCB_APP_VERSION__">
+    <main class="shell" aria-labelledby="title" data-version="__QCB_APP_VERSION__">
+      <header class="app-header">
+        <div class="product-heading"><img class="product-title" id="title" src="__QCB_PRODUCT_WORDMARK__" alt="Quote Card Builder"><div class="product-byline"><span>by</span><img src="__QCB_VINCOS_LOCKUP__" alt="Vincos"></div></div>
+        <div class="version-badge" aria-label="Quote Card Builder version __QCB_APP_VERSION__">__QCB_APP_VERSION__</div>
+      </header>
       <form class="form" id="form">
         <fieldset>
           <legend>Content &amp; formatting</legend>
@@ -791,7 +826,7 @@ def quote_card_preview_html() -> str:
       request("ui/initialize", {
         protocolVersion:"2026-01-26",
         appCapabilities:{},
-        appInfo:{ name:"quote-card-builder-ui", version:"0.3.0" },
+        appInfo:{ name:"quote-card-builder-ui", version:"0.3.1" },
       }).then((result) => {
         hostCapabilities = result?.hostCapabilities || {};
         hostState.applyHostContext(result?.hostContext || {});
@@ -806,9 +841,12 @@ def quote_card_preview_html() -> str:
   </body>
 </html>'''
     return (
-        html.replace("__QCB_HOST_THEME__", (ASSET_DIR / "host-theme.css").read_text(encoding="utf-8"))
+        html.replace("__QCB_FONT_FACES__", _embedded_font_faces())
+        .replace("__QCB_HOST_THEME__", (ASSET_DIR / "host-theme.css").read_text(encoding="utf-8"))
         .replace("__QCB_HOST_CONTEXT__", (ASSET_DIR / "host-context.js").read_text(encoding="utf-8"))
         .replace("__QCB_TOOL_RESULTS__", (ASSET_DIR / "tool-results.js").read_text(encoding="utf-8"))
+        .replace("__QCB_PRODUCT_WORDMARK__", _brand_data_uri("quote-card-builder-wordmark.svg", "image/svg+xml"))
+        .replace("__QCB_VINCOS_LOCKUP__", _brand_data_uri("vincos-lockup-white.svg", "image/svg+xml"))
         .replace("__QCB_APP_VERSION__", QUOTE_CARD_APP_VERSION)
         .replace("__QCB_REDIRECT_ORIGINS__", json.dumps(QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS))
     )

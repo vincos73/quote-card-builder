@@ -79,7 +79,7 @@ di inizializzazione, così il connettore remoto non deve inventare valori predef
 
 ### Regressione di routing v1.22
 
-La candidata v1.7.16 rende esplicito anche il contratto di selezione del tool. Il tool pubblico
+La candidata v1.7.17 rende esplicito anche il contratto di selezione del tool. Il tool pubblico
 principale si chiama `quote_card_builder_open_editor`, segue la forma dominio + azione e accetta un input
 ridotto a frase, attribuzione, modalità palette, formato iniziale ed eventuali colori
 personalizzati. I tre campi obbligatori hanno titoli numerati identici al questionario; lo stile
