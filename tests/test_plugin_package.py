@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -16,17 +17,39 @@ SPEC.loader.exec_module(BUILD_PLUGIN)
 
 
 class PluginPackageTests(unittest.TestCase):
+    def test_package_rejects_mismatched_server_version(self):
+        original_read = Path.read_text
+
+        def changed_project(path, *args, **kwargs):
+            content = original_read(path, *args, **kwargs)
+            if path == ROOT / "pyproject.toml":
+                return content.replace('version = "1.7.16"', 'version = "0.0.0"')
+            return content
+
+        with patch.object(Path, "read_text", changed_project):
+            with self.assertRaisesRegex(ValueError, "versione del runtime MCP"):
+                BUILD_PLUGIN.validate_template()
+
     def test_template_is_valid_and_marketplace_ready_in_english(self):
         BUILD_PLUGIN.validate_template()
         manifest = json.loads(
             (ROOT / "plugin" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(manifest["version"], "1.7.15")
+        self.assertEqual(manifest["version"], "1.7.16")
         self.assertEqual(manifest["interface"]["capabilities"], ["Interactive", "Read"])
         self.assertIn("quote card", manifest["interface"]["shortDescription"].lower())
         self.assertIn("guided editor", manifest["interface"]["shortDescription"].lower())
         self.assertEqual(len(manifest["interface"]["defaultPrompt"]), 3)
         self.assertEqual(manifest["mcpServers"], "./.mcp.json")
+
+    def test_package_pins_the_mcp_apps_2x_runtime(self):
+        requirement = (ROOT / "requirements-mcp.txt").read_text(encoding="utf-8")
+        self.assertRegex(requirement, r"(?m)^mcp\[cli\]==2\.1\.1\s*$")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            plugin_root = BUILD_PLUGIN.build_directory(Path(temporary))
+            bundled = plugin_root / "skills" / "quote-card-builder" / "requirements-mcp.txt"
+            self.assertEqual(requirement, bundled.read_text(encoding="utf-8"))
 
     def test_build_keeps_canonical_runtime_files_in_sync(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -44,6 +67,8 @@ class PluginPackageTests(unittest.TestCase):
             self.assertTrue((skill_root / "assets" / "card-editor" / "fonts" / "Barlow-Regular-latin.woff2").is_file())
             self.assertTrue((skill_root / "assets" / "card-editor" / "fonts" / "Orbitron-Variable-latin.woff2").is_file())
             self.assertTrue((skill_root / "assets" / "card-editor" / "vincos-lockup-white.svg").is_file())
+            self.assertTrue((skill_root / "assets" / "mcp-editor" / "host-context.js").is_file())
+            self.assertTrue((skill_root / "assets" / "mcp-editor" / "host-theme.css").is_file())
             wordmark = skill_root / "assets" / "card-editor" / "quote-card-builder-wordmark.svg"
             self.assertTrue(wordmark.is_file())
             wordmark_svg = wordmark.read_text(encoding="utf-8")
@@ -57,8 +82,9 @@ class PluginPackageTests(unittest.TestCase):
             self.assertIn("quote_card_builder_open_editor", skill_text)
             self.assertIn("produce_quote_card", skill_text)
             self.assertIn("La sola apertura", skill_text)
-            self.assertIn("Il terzo dato non è mai tono o mood", skill_text)
-            self.assertIn("non sostituire mai l'app con generazione immagini", skill_text)
+            self.assertIn("La palette non è mai tono o mood", skill_text)
+            self.assertIn("quote_card_builder_headless", skill_text)
+            self.assertIn("approved_preview_sha256", skill_text)
             self.assertFalse(any(skill_root.rglob("__pycache__")))
 
     def test_zip_has_required_plugin_layout(self):
@@ -72,6 +98,7 @@ class PluginPackageTests(unittest.TestCase):
             self.assertIn(prefix + ".mcp.json", names)
             self.assertIn(prefix + "skills/quote-card-builder/scripts/mcp_server.py", names)
             self.assertIn(prefix + "skills/quote-card-builder/scripts/mcp_app.py", names)
+            self.assertIn(prefix + "skills/quote-card-builder/requirements-mcp.txt", names)
             self.assertIn(prefix + "skills/quote-card-builder/SKILL.md", names)
             self.assertIn(prefix + "skills/quote-card-builder/assets/card-editor/index.html", names)
             self.assertIn(prefix + "skills/quote-card-builder/assets/card-editor/fonts/Barlow-Regular.ttf", names)

@@ -8,6 +8,7 @@ import json
 import re
 import shutil
 import tempfile
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -15,7 +16,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_TEMPLATE = ROOT / "plugin"
 PLUGIN_NAME = "quote-card-builder"
-SKILL_FILES = ("SKILL.md", "README.md", "PRODUCT.md", "DESIGN.md", "requirements-mcp.txt")
+SKILL_FILES = (
+    "SKILL.md",
+    "README.md",
+    "PRODUCT.md",
+    "DESIGN.md",
+    "requirements-mcp.txt",
+    "pyproject.toml",
+    "uv.lock",
+)
 SKILL_DIRECTORIES = ("agents", "assets", "references", "scripts")
 IGNORED_NAMES = {".DS_Store", "__pycache__", "build_plugin_package.py"}
 
@@ -53,10 +62,18 @@ def validate_template() -> None:
     mcp_config = json.loads(mcp_path.read_text(encoding="utf-8"))
     servers = mcp_config.get("mcpServers")
     server = servers.get(PLUGIN_NAME) if isinstance(servers, dict) else None
-    if not isinstance(server, dict) or server.get("command") != "python3":
-        raise ValueError(".mcp.json deve dichiarare il server locale Python del plugin")
-    if server.get("args") != ["skills/quote-card-builder/scripts/mcp_server.py"]:
-        raise ValueError(".mcp.json deve puntare al server MCP incluso nella skill")
+    if not isinstance(server, dict) or server.get("command") != "uv":
+        raise ValueError(".mcp.json deve dichiarare il runtime uv del plugin")
+    if server.get("args") != ["run", "--frozen", "python", "scripts/mcp_server.py"]:
+        raise ValueError(".mcp.json deve avviare il server MCP dal lockfile incluso")
+    if server.get("cwd") != "skills/quote-card-builder":
+        raise ValueError(".mcp.json deve avviare uv dalla skill inclusa")
+    for filename in ("pyproject.toml", "uv.lock"):
+        if not (ROOT / filename).is_file():
+            raise ValueError(f"Manca il runtime riproducibile: {filename}")
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    if project.get("project", {}).get("version") != manifest["version"]:
+        raise ValueError("La versione del runtime MCP non coincide con il plugin e la skill")
     if (PLUGIN_TEMPLATE / "skills").exists():
         raise ValueError("La copia generata della skill non deve essere salvata nel template")
 
@@ -85,7 +102,12 @@ def build_zip(output: Path) -> Path:
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for path in sorted(plugin_root.rglob("*")):
                 if path.is_file():
-                    archive.write(path, path.relative_to(plugin_root.parent))
+                    entry = zipfile.ZipInfo(path.relative_to(plugin_root.parent).as_posix())
+                    entry.date_time = (1980, 1, 1, 0, 0, 0)
+                    entry.compress_type = zipfile.ZIP_DEFLATED
+                    entry.create_system = 3
+                    entry.external_attr = 0o100644 << 16
+                    archive.writestr(entry, path.read_bytes())
     return output
 
 

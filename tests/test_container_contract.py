@@ -33,7 +33,9 @@ class ContainerContractTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn("COPY assets/card-editor/fonts/ ./assets/card-editor/fonts/", dockerfile)
+        self.assertIn("COPY assets/mcp-editor/ ./assets/mcp-editor/", dockerfile)
         self.assertIn("PORT=8080", dockerfile)
+        self.assertIn("COPY pyproject.toml ./", dockerfile)
 
     def test_build_context_excludes_session_artifacts(self):
         ignored = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()

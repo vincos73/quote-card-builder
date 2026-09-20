@@ -1,0 +1,293 @@
+/*
+ * Host-aware surface for the MCP Apps iframe.
+ *
+ * The host supplies --color-* and typography variables through
+ * hostContext.styles.variables.  The fallbacks below keep the editor useful
+ * in a plain browser and in hosts that have not implemented them yet.
+ */
+:root {
+  --qcb-font-sans: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  --qcb-font-mono: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  --qcb-bg: var(--color-background-primary, #ffffff);
+  --qcb-bg-subtle: var(--color-background-secondary, #f5f5f5);
+  --qcb-bg-raised: var(--color-background-tertiary, #eeeeee);
+  --qcb-text: var(--color-text-primary, #202020);
+  --qcb-text-muted: var(--color-text-secondary, #666666);
+  --qcb-border: var(--color-border-light, #d7d7d7);
+  --qcb-border-strong: var(--color-border-primary, #b8b8b8);
+  --qcb-accent: var(--color-accent-primary, #5b5bd6);
+  --qcb-accent-contrast: var(--color-text-on-accent, #ffffff);
+  --qcb-danger: var(--color-text-danger, #b42318);
+  --qcb-radius-sm: var(--border-radius-sm, 6px);
+  --qcb-radius-md: var(--border-radius-md, 8px);
+  --ui: var(--qcb-font-sans);
+  --mono: var(--qcb-font-mono);
+  --chrome: var(--qcb-bg);
+  --deep: var(--qcb-bg);
+  --raised: var(--qcb-bg-raised);
+  --concrete: var(--qcb-bg-subtle);
+  --concrete-light: var(--qcb-bg-raised);
+  --signal: var(--qcb-accent);
+  --signal-dark: var(--qcb-accent);
+  --lavender: var(--qcb-text-muted);
+  --lavender-light: var(--qcb-text);
+  --ink: var(--qcb-accent-contrast);
+  --paper: var(--qcb-text);
+  --danger: var(--qcb-danger);
+  --seam: var(--qcb-border);
+  --seam-strong: var(--qcb-border-strong);
+  --line: var(--qcb-border);
+  color-scheme: light dark;
+  font-family: var(--qcb-font-sans);
+  color: var(--qcb-text);
+  background: var(--qcb-bg);
+}
+
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --qcb-bg: var(--color-background-primary, #202020);
+  --qcb-bg-subtle: var(--color-background-secondary, #2a2a2a);
+  --qcb-bg-raised: var(--color-background-tertiary, #333333);
+  --qcb-text: var(--color-text-primary, #f4f4f4);
+  --qcb-text-muted: var(--color-text-secondary, #b8b8b8);
+  --qcb-border: var(--color-border-light, #494949);
+  --qcb-border-strong: var(--color-border-primary, #666666);
+  --qcb-accent-contrast: var(--color-text-on-accent, #ffffff);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --qcb-bg: var(--color-background-primary, #202020);
+    --qcb-bg-subtle: var(--color-background-secondary, #2a2a2a);
+    --qcb-bg-raised: var(--color-background-tertiary, #333333);
+    --qcb-text: var(--color-text-primary, #f4f4f4);
+    --qcb-text-muted: var(--color-text-secondary, #b8b8b8);
+    --qcb-border: var(--color-border-light, #494949);
+    --qcb-border-strong: var(--color-border-primary, #666666);
+    --qcb-accent-contrast: var(--color-text-on-accent, #ffffff);
+  }
+}
+
+html,
+body {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  background: var(--qcb-bg);
+  color: var(--qcb-text);
+  font-family: var(--qcb-font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: var(--qcb-font-sans);
+}
+
+/* The old self-contained resource has an editorial masthead.  In a host
+ * iframe the title and brand lockup add chrome without helping the task. */
+.app-header,
+.product-title,
+.product-byline,
+.version-badge {
+  display: none !important;
+}
+
+.shell,
+.form,
+fieldset,
+.actions,
+.status,
+.delivery,
+.errors {
+  background: var(--qcb-bg);
+  color: var(--qcb-text);
+  border-color: var(--qcb-border);
+}
+
+.shell {
+  display: block;
+  min-width: 0;
+  border: 0;
+}
+
+fieldset {
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid var(--qcb-border);
+}
+
+legend,
+label,
+.palette-row > span {
+  color: var(--qcb-text-muted);
+  font-family: var(--qcb-font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+input,
+select,
+.editor,
+.toolbar,
+.palette-row,
+.style-picker button,
+.palette-actions button,
+.variation button,
+button.secondary {
+  border: 1px solid var(--qcb-border);
+  border-radius: var(--qcb-radius-sm);
+  background: var(--qcb-bg);
+  color: var(--qcb-text);
+}
+
+.action-title,
+.action-detail,
+.style-picker button,
+.palette-actions button,
+.variation button,
+.palette-row input[type="text"],
+.toolbar-status,
+.meta,
+.delivery strong,
+.direct-download,
+legend,
+label {
+  font-family: var(--qcb-font-sans);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.style-picker button,
+.palette-actions button,
+.variation button,
+.palette-row input[type="text"] {
+  font-size: 13px;
+}
+
+.editor-label button {
+  font-family: var(--qcb-font-sans);
+  font-size: 12px;
+  text-transform: none;
+}
+
+.toolbar-status,
+.action-detail,
+.meta,
+.status,
+.direct-download,
+.delivery strong {
+  font-size: 12px;
+}
+
+input,
+select,
+.editor {
+  min-height: 40px;
+  padding: 9px 10px;
+}
+
+.editor {
+  font-size: 16px;
+  caret-color: var(--qcb-accent);
+}
+
+input::placeholder,
+.editor:empty::before,
+.hint,
+.palette-help,
+.toolbar-status,
+.action-detail,
+.status,
+.meta,
+.direct-download,
+.product-byline {
+  color: var(--qcb-text-muted);
+}
+
+input:focus,
+select:focus,
+.editor:focus,
+button:focus-visible {
+  border-color: var(--qcb-accent);
+  outline: 2px solid color-mix(in srgb, var(--qcb-accent) 38%, transparent);
+  outline-offset: 2px;
+}
+
+button {
+  min-height: 40px;
+  border-radius: var(--qcb-radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.toolbar {
+  border-bottom: 0;
+  background: var(--qcb-bg-subtle);
+}
+
+.toolbar button,
+.toolbar button:hover,
+.toolbar button[aria-pressed="true"] {
+  min-width: 40px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--qcb-text);
+}
+
+.toolbar button:hover,
+.toolbar button[aria-pressed="true"],
+.style-picker button:hover,
+.palette-actions button:hover,
+.variation button:hover,
+button.secondary:hover {
+  border-color: var(--qcb-accent);
+  background: var(--qcb-bg-raised);
+  color: var(--qcb-text);
+}
+
+.style-picker button[aria-pressed="true"] {
+  border-color: var(--qcb-accent);
+  background: var(--qcb-bg-raised);
+  color: var(--qcb-text);
+}
+
+button.primary,
+.download {
+  border: 1px solid var(--qcb-accent);
+  border-radius: var(--qcb-radius-sm);
+  background: var(--qcb-accent);
+  color: var(--qcb-accent-contrast);
+}
+
+button.primary:hover,
+.download:hover {
+  filter: brightness(.96);
+}
+
+output {
+  color: var(--qcb-accent);
+  font-family: var(--qcb-font-mono);
+}
+
+.preview {
+  background: var(--qcb-bg-subtle);
+  color: var(--qcb-text);
+}
+
+.errors {
+  border-top-color: var(--qcb-danger);
+  color: var(--qcb-danger);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--qcb-accent) 28%, transparent);
+  color: var(--qcb-text);
+}

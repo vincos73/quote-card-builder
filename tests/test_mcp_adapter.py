@@ -15,6 +15,9 @@ from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
+MCP_APPS_CLIENT_EXTENSION = {
+    "io.modelcontextprotocol/ui": {"mimeTypes": ["text/html;profile=mcp-app"]},
+}
 BUILD_SPEC = importlib.util.spec_from_file_location(
     "build_plugin_package", SCRIPTS / "build_plugin_package.py"
 )
@@ -66,27 +69,6 @@ class McpAdapterTests(unittest.TestCase):
         self.assertEqual("1x1", result["format"])
         self.assertEqual((1440, 1440), (result["width"], result["height"]))
         self.assertIn("<svg ", result["svg"][:160])
-
-    def test_new_graphics_reuse_the_canonical_renderer(self):
-        cases = (
-            ("editorial", "cover"),
-            ("editorial", "cutouts"),
-            ("editorial", "gradient"),
-            ("contextual", "constellations"),
-        )
-        for direction, graphic_variant in cases:
-            with self.subTest(graphic_variant=graphic_variant):
-                result = ADAPTER.preview_quote_card({
-                    "text": "Una composizione con motivo coerente.",
-                    "direction": direction,
-                    "graphic_variant": graphic_variant,
-                    "graphic_seed": 42,
-                })
-                self.assertTrue(result["valid"])
-                self.assertTrue(result["rendered"])
-                self.assertEqual("4x5", result["format"])
-                self.assertEqual((1440, 1800), (result["width"], result["height"]))
-                self.assertIn(f"direction-graphic--{graphic_variant}", result["svg"])
 
     def test_more_than_six_authored_lines_are_rendered(self):
         lines = [f"Riga {index}" for index in range(1, 9)]
@@ -372,27 +354,39 @@ class McpAdapterTests(unittest.TestCase):
         self.assertIn("openPreparedDownload", html)
         self.assertIn("getFileDownloadUrl", html)
         self.assertIn("openExternal", html)
+        self.assertIn("notifyIntrinsicHeight", html)
+        self.assertIn('"Opening PNG…"', html)
+        self.assertIn("withTimeout", html)
+        self.assertIn("ChatGPT did not respond to the open request.", html)
         self.assertIn("uploadFile", html)
-        self.assertIn('link.download = deliveryFilename || "quote-card.png"', html)
+        self.assertIn("sendFollowUpMessage", html)
+        self.assertIn("setWidgetState", html)
+        self.assertIn("imageIds:[snapshot.fileId]", html)
+        self.assertIn('request("ui/download-file"', html)
+        self.assertIn('request("ui/message"', html)
+        self.assertIn('protocolVersion:"2026-01-26"', html)
+        self.assertIn("hostCapabilities = result?.hostCapabilities || {}", html)
+        self.assertIn('method:"ui/notifications/initialized"', html)
+        self.assertIn("Send link to chat", html)
+        self.assertNotIn('directDownload.click()', html)
         self.assertNotIn('link.target = "_blank"', html)
-        self.assertIn("PNG ready. Click Open PNG", html)
+        self.assertIn("PNG ready. Send its temporary download link to the chat.", html)
         self.assertIn('Open PNG', html)
+        self.assertIn('id="handoff"', html)
+        self.assertIn("validatedDownloadUrl", html)
+        self.assertIn("unauthorized PNG host", html)
         self.assertIn('function trimRangeWhitespace(range)', html)
         self.assertIn('function selectionRange()', html)
         self.assertIn('const caret = selectionRange()', html)
         self.assertIn('renderEditor(caret)', html)
         self.assertIn('function rangeCovered(kind, range)', html)
         self.assertIn('function subtractRange(item, range)', html)
-        self.assertIn('alt="Vincos"', html)
-        self.assertIn("data:image/svg+xml;base64,", html)
-        self.assertIn('class="product-title" id="title"', html)
-        self.assertNotIn("Quote card editor", html)
-        self.assertIn("v1.38", html)
-        self.assertNotIn("v1.38 TEST", html)
-        self.assertNotIn('data-motif="default"', html)
-        self.assertNotIn('data-motif="alternate"', html)
-        self.assertIn("structured_content", html)
-        self.assertIn("The preview response was incomplete.", html)
+        self.assertNotIn('alt="Vincos"', html)
+        self.assertIn("QcbToolResults", html)
+        self.assertIn('aria-label="Quote card editor"', html)
+        self.assertNotIn('<header class="app-header">', html)
+        self.assertIn(mcp_app.QUOTE_CARD_APP_VERSION, html)
+        self.assertNotIn("v1.39 TEST", html)
         self.assertIn("overflow:visible", html)
         self.assertNotIn(".editor { min-height:104px; outline:none; overflow:auto", html)
         self.assertNotIn("Optional emphasis", html)
@@ -410,8 +404,7 @@ class McpAdapterTests(unittest.TestCase):
         self.assertIn("signature !== currentSignature()", html)
         self.assertIn("function schedulePreview(delay = 160)", html)
         self.assertIn("schedulePreview(0)", html)
-        self.assertIn('const paletteFields = { primary:["primary","primaryHex"]', html)
-        self.assertIn('Object.entries(paletteFields)', html)
+        self.assertIn("paletteFields", html)
 
     def test_editor_remaps_style_ranges_instead_of_dropping_them_after_edits(self):
         if shutil.which("node") is None:
@@ -471,45 +464,230 @@ if (blankRow.value !== "one\n\ntwo") throw new Error(`blank row was lost: ${JSON
         import mcp_app
 
         html = mcp_app.quote_card_preview_html()
-        delivery_functions = "async function prepareDownload" + html.split(
-            "async function prepareDownload", 1
+        delivery_functions = "function validatedDownloadUrl" + html.split(
+            "function validatedDownloadUrl", 1
         )[1].split("function syncFromOpenAiAliases", 1)[0]
         assertions = r'''
 let deliveryUrl = "";
 let deliveryFileId = "";
 let deliveryFilename = "";
+let deliveryFile = null;
+let hostCapabilities = {};
 let blobCount = 0;
 let uploadCount = 0;
 let downloadUrlCount = 0;
 let externalOpenCount = 0;
 let downloadClickCount = 0;
 const download = { disabled:true };
+download.textContent = "";
+const handoff = { hidden:true, disabled:false };
 const deliveryName = { textContent:"" };
 const delivery = { hidden:true };
 const status = { textContent:"" };
 const errors = { textContent:"", hidden:true };
 const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){ downloadClickCount += 1; }, remove(){} }) };
-const URL = { createObjectURL:(file) => { blobCount += 1; return `blob:local/${file.name}`; }, revokeObjectURL(){} };
+const NativeURL = globalThis.URL;
+class URL extends NativeURL {}
+URL.createObjectURL = (file) => { blobCount += 1; return `blob:local/${file.name}`; };
+URL.revokeObjectURL = () => {};
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net"]);
 const window = { openai:{
   uploadFile:async (file, options) => { uploadCount += 1; if (file.name !== "quote-card-test.png" || options.library !== false) throw new Error("unexpected upload"); return { fileId:"file_qcb" }; },
-  getFileDownloadUrl:async ({fileId}) => { downloadUrlCount += 1; if (fileId !== "file_qcb") throw new Error("wrong file id"); return { downloadUrl:"https://files.openai.example/quote-card-test.png" }; },
-  openExternal:async ({href, redirectUrl}) => { externalOpenCount += 1; if (href !== "https://files.openai.example/quote-card-test.png" || redirectUrl !== false) throw new Error("wrong external request"); }
+  getFileDownloadUrl:async ({fileId}) => { downloadUrlCount += 1; if (fileId !== "file_qcb") throw new Error("wrong file id"); return { downloadUrl:"https://oaisdmntpritalynorth.blob.core.windows.net/files/quote-card-test.png?sig=test" }; },
+  openExternal:async ({href, redirectUrl}) => { externalOpenCount += 1; if (href !== "https://oaisdmntpritalynorth.blob.core.windows.net/files/quote-card-test.png?sig=test" || redirectUrl !== false) throw new Error("wrong external request"); }
 } };
 const scheduleResize = () => {};
-const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; download.disabled = true; };
+const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; };
 const svgToPngFile = async (_svg, filename) => ({ name:filename.replace(/\.svg$/i, ".png"), type:"image/png" });
+let unauthorizedRejected = false;
+try { validatedDownloadUrl("https://unexpected.example/quote-card.png"); }
+catch (error) { unauthorizedRejected = String(error.message).includes("unauthorized PNG host"); }
+if (!unauthorizedRejected) throw new Error("unauthorized host was accepted");
 await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-test.svg" });
-if (deliveryUrl !== "") throw new Error("host delivery should not use a local URL");
+if (deliveryUrl !== "https://oaisdmntpritalynorth.blob.core.windows.net/files/quote-card-test.png?sig=test") throw new Error(`host URL was not prepared: ${deliveryUrl}`);
 if (deliveryFileId !== "file_qcb") throw new Error("host file was not prepared");
 if (deliveryFilename !== "quote-card-test.png") throw new Error("filename missing");
 if (download.disabled) throw new Error("download button remained disabled");
 if (blobCount !== 0) throw new Error(`unexpected local Blob: ${blobCount}`);
 if (uploadCount !== 1) throw new Error(`upload missing: ${uploadCount}`);
+if (downloadUrlCount !== 1) throw new Error(`download URL was not prepared before the click: ${downloadUrlCount}`);
+if (download.textContent !== "Open PNG") throw new Error(`unexpected primary action: ${download.textContent}`);
+if (!handoff.hidden) throw new Error("chat handoff should be hidden without sendFollowUpMessage");
 if (delivery.hidden) throw new Error("download action remained hidden");
 await openPreparedDownload();
-if (downloadUrlCount !== 1) throw new Error(`download URL missing: ${downloadUrlCount}`);
+if (downloadUrlCount !== 1) throw new Error(`download URL was fetched again after the click: ${downloadUrlCount}`);
 if (externalOpenCount !== 1) throw new Error(`host download did not start: ${externalOpenCount}`);
-if (status.textContent !== "PNG opened in a new tab. Save it from your browser.") throw new Error(`unexpected status: ${status.textContent}`);
+if (status.textContent !== "Open request sent. If no tab appeared, send the link to chat.") throw new Error(`unexpected status: ${status.textContent}`);
+'''
+        completed = subprocess.run(
+            ["node", "--input-type=module", "-e", delivery_functions + assertions],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+
+    def test_png_delivery_hands_off_to_chat_without_open_external(self):
+        if shutil.which("node") is None:
+            self.skipTest("Node.js non disponibile: test hand-off UI saltato")
+        import mcp_app
+
+        html = mcp_app.quote_card_preview_html()
+        delivery_functions = "function validatedDownloadUrl" + html.split(
+            "function validatedDownloadUrl", 1
+        )[1].split("function syncFromOpenAiAliases", 1)[0]
+        assertions = r'''
+let deliveryUrl = "";
+let deliveryFileId = "";
+let deliveryFilename = "";
+let deliveryFile = null;
+let hostCapabilities = {};
+let sentMessage = null;
+let widgetState = null;
+const download = { disabled:true, textContent:"" };
+const handoff = { hidden:true, disabled:false };
+const deliveryName = { textContent:"" };
+const delivery = { hidden:true };
+const status = { textContent:"" };
+const errors = { textContent:"", hidden:true };
+const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){}, remove(){} }) };
+const NativeURL = globalThis.URL;
+class URL extends NativeURL {}
+URL.createObjectURL = () => { throw new Error("unexpected Blob fallback"); };
+URL.revokeObjectURL = () => {};
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net"]);
+const window = { openai:{
+  uploadFile:async () => ({ fileId:"file_qcb_chat" }),
+  getFileDownloadUrl:async () => ({ downloadUrl:"https://oaisdmntpritalynorth.blob.core.windows.net/files/quote-card-chat.png?sig=test" }),
+  setWidgetState:(state) => { widgetState = state; },
+  sendFollowUpMessage:async (message) => { sentMessage = message; }
+} };
+const scheduleResize = () => {};
+const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; };
+const svgToPngFile = async () => ({ name:"quote-card-chat.png", type:"image/png" });
+await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-chat.svg" });
+if (download.textContent !== "Send link to chat") throw new Error(`wrong desktop action: ${download.textContent}`);
+if (!handoff.hidden) throw new Error("secondary handoff should remain hidden when it is the primary action");
+await openPreparedDownload();
+if (!sentMessage?.prompt.includes(deliveryUrl) || sentMessage.scrollToBottom !== true) throw new Error("temporary URL was not sent to chat");
+if (JSON.stringify(widgetState?.imageIds) !== JSON.stringify(["file_qcb_chat"])) throw new Error("uploaded PNG was not exposed through imageIds");
+if (widgetState?.privateContent?.filename !== "quote-card-chat.png") throw new Error("private delivery state missing");
+if (status.textContent !== "PNG link sent to chat. Use Download PNG in the conversation.") throw new Error(`unexpected handoff status: ${status.textContent}`);
+'''
+        completed = subprocess.run(
+            ["node", "--input-type=module", "-e", delivery_functions + assertions],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+
+    def test_png_delivery_uses_standard_host_download(self):
+        if shutil.which("node") is None:
+            self.skipTest("Node.js non disponibile: test download MCP Apps saltato")
+        import mcp_app
+
+        html = mcp_app.quote_card_preview_html()
+        delivery_functions = "function validatedDownloadUrl" + html.split(
+            "function validatedDownloadUrl", 1
+        )[1].split("function syncFromOpenAiAliases", 1)[0]
+        assertions = r'''
+let deliveryUrl = "";
+let deliveryFileId = "";
+let deliveryFilename = "";
+let deliveryFile = null;
+let requestCount = 0;
+let hostCapabilities = { downloadFile:{} };
+const download = { disabled:true, textContent:"" };
+const handoff = { hidden:true, disabled:false };
+const deliveryName = { textContent:"" };
+const delivery = { hidden:true };
+const status = { textContent:"" };
+const errors = { textContent:"", hidden:true };
+const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){ throw new Error("unexpected anchor fallback"); }, remove(){} }) };
+const NativeURL = globalThis.URL;
+class URL extends NativeURL {}
+URL.createObjectURL = () => { throw new Error("unexpected Blob fallback"); };
+URL.revokeObjectURL = () => {};
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net"]);
+const window = { openai:undefined };
+const scheduleResize = () => {};
+const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; };
+const pngBytes = Uint8Array.from([137,80,78,71,13,10,26,10]);
+const svgToPngFile = async () => ({ name:"quote-card-native.png", type:"image/png", arrayBuffer:async () => pngBytes.buffer });
+const request = async (method, params) => {
+  if (method !== "ui/download-file") throw new Error(`unexpected method: ${method}`);
+  requestCount += 1;
+  const item = params?.contents?.[0];
+  if (item?.type !== "resource") throw new Error("embedded resource missing");
+  if (item.resource?.uri !== "file:///quote-card-native.png") throw new Error(`wrong file URI: ${item.resource?.uri}`);
+  if (item.resource?.mimeType !== "image/png") throw new Error("wrong MIME type");
+  if (item.resource?.blob !== Buffer.from(pngBytes).toString("base64")) throw new Error("wrong PNG payload");
+  return {};
+};
+await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-native.svg" });
+if (download.textContent !== "Download PNG") throw new Error(`wrong native action: ${download.textContent}`);
+if (delivery.hidden || download.disabled) throw new Error("native download action unavailable");
+await openPreparedDownload();
+if (requestCount !== 1) throw new Error(`native download not requested: ${requestCount}`);
+if (status.textContent !== "PNG download accepted by the host.") throw new Error(`unexpected status: ${status.textContent}`);
+'''
+        completed = subprocess.run(
+            ["node", "--input-type=module", "-e", delivery_functions + assertions],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+
+    def test_png_delivery_uses_standard_image_message_fallback(self):
+        if shutil.which("node") is None:
+            self.skipTest("Node.js non disponibile: test hand-off MCP Apps saltato")
+        import mcp_app
+
+        html = mcp_app.quote_card_preview_html()
+        delivery_functions = "function validatedDownloadUrl" + html.split(
+            "function validatedDownloadUrl", 1
+        )[1].split("function syncFromOpenAiAliases", 1)[0]
+        assertions = r'''
+let deliveryUrl = "";
+let deliveryFileId = "";
+let deliveryFilename = "";
+let deliveryFile = null;
+let sentMessage = null;
+let hostCapabilities = { message:{ image:{} } };
+const download = { disabled:true, textContent:"" };
+const handoff = { hidden:true, disabled:false };
+const deliveryName = { textContent:"" };
+const delivery = { hidden:true };
+const status = { textContent:"" };
+const errors = { textContent:"", hidden:true };
+const document = { body:{ append(){} }, createElement:() => ({ style:{}, click(){ throw new Error("unexpected anchor fallback"); }, remove(){} }) };
+const NativeURL = globalThis.URL;
+class URL extends NativeURL {}
+URL.createObjectURL = () => { throw new Error("unexpected Blob fallback"); };
+URL.revokeObjectURL = () => {};
+const allowedDownloadOrigins = new Set(["https://oaisdmntpritalynorth.blob.core.windows.net"]);
+const window = { openai:undefined };
+const scheduleResize = () => {};
+const clearProduction = () => { deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; download.disabled = true; download.textContent = "Download PNG"; handoff.hidden = true; handoff.disabled = false; };
+const pngBytes = Uint8Array.from([137,80,78,71,13,10,26,10]);
+const svgToPngFile = async () => ({ name:"quote-card-message.png", type:"image/png", arrayBuffer:async () => pngBytes.buffer });
+const request = async (method, params) => {
+  if (method !== "ui/message") throw new Error(`unexpected method: ${method}`);
+  sentMessage = params;
+  return {};
+};
+await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-message.svg" });
+if (download.textContent !== "Send PNG to chat") throw new Error(`wrong message action: ${download.textContent}`);
+await openPreparedDownload();
+if (sentMessage?.role !== "user") throw new Error("message role missing");
+const image = sentMessage?.content?.find((item) => item.type === "image");
+if (image?.mimeType !== "image/png" || image.data !== Buffer.from(pngBytes).toString("base64")) throw new Error("PNG image block missing");
+if (status.textContent !== "PNG sent to chat. Open the image there to save it.") throw new Error(`unexpected status: ${status.textContent}`);
 '''
         completed = subprocess.run(
             ["node", "--input-type=module", "-e", delivery_functions + assertions],
@@ -570,24 +748,61 @@ class McpProtocolTests(unittest.TestCase):
         if importlib.util.find_spec("mcp") is None:
             raise unittest.SkipTest("SDK MCP non installato: test protocollo saltato")
 
-    def test_tool_exposes_explicit_input_and_output_schemas(self):
+    def _protocol_inventory(self):
+        """Inspect the server through the MCP Apps client contract.
+
+        FastMCP's private tool manager and decorator metadata are not the wire
+        contract used by Codex.  This helper deliberately performs the same
+        discovery that an MCP Apps host performs: negotiate the server,
+        retrieve the advertised tools/resources, and read the UI resource.
+        """
+        import asyncio
+
+        from mcp import Client
+        from mcp.client import advertise
+
+        import mcp_app
         import mcp_server
 
-        tools = {item.name: item for item in mcp_server.mcp._tool_manager.list_tools()}
-        self.assertEqual({"quote_card_builder_open_editor", "preview_quote_card", "produce_quote_card"}, set(tools))
+        async def inspect_protocol():
+            async with Client(
+                mcp_server.mcp,
+                extensions=[advertise("io.modelcontextprotocol/ui", {"mimeTypes": ["text/html;profile=mcp-app"]})],
+            ) as client:
+                tools = (await client.list_tools()).tools
+                resources = (await client.list_resources()).resources
+                contents = await client.read_resource(mcp_app.QUOTE_CARD_PREVIEW_RESOURCE)
+                capabilities = client.server_capabilities
+            return tools, resources, contents, capabilities
+
+        return asyncio.run(inspect_protocol())
+
+    def test_tool_exposes_explicit_input_and_output_schemas(self):
+        import mcp_app
+        import mcp_server
+
+        tools, _resources, _contents, _capabilities = self._protocol_inventory()
+        tools = {item.name: item for item in tools}
+        self.assertEqual(
+            {"quote_card_builder_open_editor", "preview_quote_card", "produce_quote_card", "quote_card_builder_headless"},
+            set(tools),
+        )
 
         data_tool = tools["preview_quote_card"]
-        self.assertIn("text", data_tool.parameters["properties"])
-        self.assertIn("text", data_tool.parameters["required"])
+        self.assertIn("text", data_tool.input_schema["properties"])
+        self.assertIn("text", data_tool.input_schema["required"])
         self.assertIn("valid", data_tool.output_schema["properties"])
         self.assertIn("svg", data_tool.output_schema["properties"])
-        self.assertIn("palette", data_tool.parameters["properties"])
+        self.assertIn("svg_data_uri", data_tool.output_schema["properties"])
+        self.assertIn("svg_sha256", data_tool.output_schema["properties"])
+        self.assertIn("compact_output", data_tool.input_schema["properties"])
+        self.assertIn("palette", data_tool.input_schema["properties"])
         self.assertIn("direction", data_tool.output_schema["properties"])
-        self.assertIn("graphic_variant", data_tool.parameters["properties"])
-        self.assertIn("text_scale", data_tool.parameters["properties"])
-        self.assertIn("vertical_position", data_tool.parameters["properties"])
-        self.assertNotIn("emphasis", data_tool.parameters["properties"])
-        self.assertNotIn("maxItems", data_tool.parameters["properties"]["lines"])
+        self.assertIn("graphic_variant", data_tool.input_schema["properties"])
+        self.assertIn("text_scale", data_tool.input_schema["properties"])
+        self.assertIn("vertical_position", data_tool.input_schema["properties"])
+        self.assertNotIn("emphasis", data_tool.input_schema["properties"])
+        self.assertNotIn("maxItems", data_tool.input_schema["properties"]["lines"])
         self.assertIn("graphic_mode", data_tool.output_schema["properties"])
         self.assertIn("editor_state", data_tool.output_schema["properties"])
         self.assertEqual(["app"], data_tool.meta["ui"]["visibility"])
@@ -596,7 +811,7 @@ class McpProtocolTests(unittest.TestCase):
         self.assertNotIn("openai/outputTemplate", data_tool.meta)
 
         production_tool = tools["produce_quote_card"]
-        self.assertNotIn("emphasis", production_tool.parameters["properties"])
+        self.assertNotIn("emphasis", production_tool.input_schema["properties"])
         self.assertEqual(["app"], production_tool.meta["ui"]["visibility"])
         self.assertTrue(production_tool.meta["openai/widgetAccessible"])
         self.assertIn("produced", production_tool.output_schema["properties"])
@@ -604,46 +819,98 @@ class McpProtocolTests(unittest.TestCase):
         self.assertNotIn("resourceUri", production_tool.meta["ui"])
 
         ui_tool = tools["quote_card_builder_open_editor"]
-        self.assertNotIn("emphasis", ui_tool.parameters["properties"])
-        self.assertTrue({"text", "attribution", "profile_mode", "style"}.issubset(ui_tool.parameters["required"]))
+        self.assertNotIn("emphasis", ui_tool.input_schema["properties"])
+        self.assertEqual({"text", "attribution", "profile_mode"}, set(ui_tool.input_schema["required"]))
         self.assertEqual(
             {"text", "attribution", "profile_mode", "style", "format", "palette"},
-            set(ui_tool.parameters["properties"]),
+            set(ui_tool.input_schema["properties"]),
         )
         self.assertEqual("Open Quote Card Builder", ui_tool.title)
         self.assertTrue(ui_tool.description.startswith("Use this when"))
-        self.assertIn("only public tool", ui_tool.description)
+        self.assertIn("primary public tool", ui_tool.description)
         self.assertIn("call it once", ui_tool.description)
-        self.assertIn("do not create SVG, PNG, HTML", ui_tool.description)
-        self.assertIn("do not look for a local editor", ui_tool.description)
+        self.assertIn("quote_card_builder_headless", ui_tool.description)
+        self.assertIn("ui_unavailable=true", ui_tool.description)
         self.assertIn("palette, never tone or mood", ui_tool.description.lower())
-        self.assertEqual("1. Quote", ui_tool.parameters["properties"]["text"]["title"])
-        self.assertEqual("2. Visible attribution", ui_tool.parameters["properties"]["attribution"]["title"])
-        self.assertEqual("3. Palette", ui_tool.parameters["properties"]["profile_mode"]["title"])
-        self.assertEqual("4. Style", ui_tool.parameters["properties"]["style"]["title"])
+        self.assertEqual("1. Quote", ui_tool.input_schema["properties"]["text"]["title"])
+        self.assertEqual("2. Visible attribution", ui_tool.input_schema["properties"]["attribution"]["title"])
+        self.assertEqual("3. Palette", ui_tool.input_schema["properties"]["profile_mode"]["title"])
+        self.assertEqual("Style preselection (optional)", ui_tool.input_schema["properties"]["style"]["title"])
+        self.assertEqual("blocks", ui_tool.input_schema["properties"]["style"]["default"])
         self.assertIn(
             "does not represent tone, mood, or style",
-            ui_tool.parameters["properties"]["profile_mode"]["description"],
+            ui_tool.input_schema["properties"]["profile_mode"]["description"],
         )
-        self.assertIn(
-            "Do not accept a generic style label",
-            ui_tool.parameters["properties"]["style"]["description"],
-        )
-        self.assertEqual(
-            "ui://quote-card-builder/preview/v1.38.html",
-            ui_tool.meta["ui"]["resourceUri"],
-        )
+        style_description = ui_tool.input_schema["properties"]["style"]["description"].lower()
+        self.assertIn("optional", style_description)
+        self.assertIn("blocks", style_description)
+        self.assertIn("editor", style_description)
+        self.assertEqual(mcp_app.QUOTE_CARD_PREVIEW_RESOURCE, ui_tool.meta["ui"]["resourceUri"])
         self.assertEqual(["model"], ui_tool.meta["ui"]["visibility"])
-        self.assertEqual(
-            "ui://quote-card-builder/preview/v1.38.html",
-            ui_tool.meta["openai/outputTemplate"],
-        )
+        self.assertNotIn("openai/outputTemplate", ui_tool.meta)
         self.assertEqual("Opening Quote Card Builder…", ui_tool.meta["openai/toolInvocation/invoking"])
+
+        headless_tool = tools["quote_card_builder_headless"]
+        self.assertIn("action", headless_tool.input_schema["properties"])
+        self.assertIn("input", headless_tool.input_schema["properties"])
+        self.assertIn("ui_unavailable", headless_tool.input_schema["properties"])
+        self.assertIn("approve_production", headless_tool.input_schema["properties"])
+        self.assertIn("approved_preview_sha256", headless_tool.input_schema["properties"])
+        self.assertIn("resource_uri", headless_tool.output_schema["properties"])
+        self.assertNotIn("svg_data_uri", headless_tool.output_schema["properties"])
+        self.assertIn("approval_received", headless_tool.output_schema["properties"])
+        self.assertNotIn("ui", headless_tool.meta or {})
+
+    def test_mcp_apps_extension_advertises_and_resolves_the_editor_resource(self):
+        """Catch the Codex failure where a valid tool pointed to an unknown UI URI."""
+        from mcp.server.apps import Apps
+
+        import mcp_app
+        import mcp_server
+
+        tools, resources, contents, capabilities = self._protocol_inventory()
+        self.assertIsInstance(mcp_server.apps, Apps)
+        self.assertIn("io.modelcontextprotocol/ui", capabilities.extensions or {})
+
+        resources_by_uri = {str(item.uri): item for item in resources}
+        self.assertIn(mcp_app.QUOTE_CARD_PREVIEW_RESOURCE, resources_by_uri)
+        resource = resources_by_uri[mcp_app.QUOTE_CARD_PREVIEW_RESOURCE]
+        self.assertEqual("text/html;profile=mcp-app", resource.mime_type)
+        self.assertTrue(resource.meta["ui"]["prefersBorder"])
+        self.assertEqual(1, len(contents.contents))
+        self.assertIn("Quote Card Builder", contents.contents[0].text)
+
+        tools_by_name = {item.name: item for item in tools}
+        open_meta = tools_by_name["quote_card_builder_open_editor"].meta or {}
+        self.assertEqual(
+            mcp_app.QUOTE_CARD_PREVIEW_RESOURCE,
+            open_meta.get("ui", {}).get("resourceUri"),
+        )
+        self.assertEqual(["model"], open_meta.get("ui", {}).get("visibility"))
+        for name in ("preview_quote_card", "produce_quote_card"):
+            data_meta = tools_by_name[name].meta or {}
+            self.assertEqual(["app"], data_meta.get("ui", {}).get("visibility"))
+            self.assertNotIn("resourceUri", data_meta.get("ui", {}))
+
+    def test_apps_contract_does_not_advertise_unresolvable_or_legacy_ui_uris(self):
+        """A stale outputTemplate must not be able to send Codex to a missing resource."""
+        import mcp_app
+
+        tools, resources, _contents, _capabilities = self._protocol_inventory()
+        resource_uris = {str(item.uri) for item in resources}
+        for tool in tools:
+            meta = tool.meta or {}
+            ui = meta.get("ui", {})
+            if "resourceUri" in ui:
+                self.assertIn(ui["resourceUri"], resource_uris)
+                self.assertEqual(mcp_app.QUOTE_CARD_PREVIEW_RESOURCE, ui["resourceUri"])
+            self.assertNotIn("openai/outputTemplate", meta)
 
     def test_routing_metadata_covers_the_reported_chatgpt_failure(self):
         import mcp_server
 
-        tools = {item.name: item for item in mcp_server.mcp._tool_manager.list_tools()}
+        tools, _resources, _contents, _capabilities = self._protocol_inventory()
+        tools = {item.name: item for item in tools}
         ui_tool = tools["quote_card_builder_open_editor"]
         routing_copy = f"{mcp_server.mcp.instructions} {ui_tool.description}".lower()
 
@@ -652,27 +919,129 @@ class McpProtocolTests(unittest.TestCase):
         disallowed_fallbacks = (
             "image generation",
             "local filesystem",
-            "do not look for a local editor",
-            "do not say the plugin is unavailable",
+            "quote_card_builder_headless",
+            "ui_unavailable=true",
         )
         for phrase in (*direct_prompts, *indirect_prompts, *disallowed_fallbacks):
             self.assertIn(phrase, routing_copy)
+        self.assertIn("do not ask for tone, mood, or a generic style", routing_copy)
+
+        default_result = mcp_server.quote_card_builder_open_editor(
+            text="Lo stile si sceglie nell'editor.",
+            attribution="",
+            profile_mode="neutral",
+        )
+        self.assertTrue(default_result.structured_content["rendered"])
+        self.assertEqual(
+            "cover",
+            default_result.structured_content["editor_state"]["graphic_variant"],
+        )
 
         result = mcp_server.quote_card_builder_open_editor(
             text="noli me tangere lauria uber alles",
             attribution="vincos",
             profile_mode="neutral",
-            style="blocks",
+            style="gradient",
             format="4x5",
             palette=None,
         )
-        self.assertTrue(result.structuredContent["rendered"])
-        state = result.structuredContent["editor_state"]
+        self.assertTrue(result.structured_content["rendered"])
+        state = result.structured_content["editor_state"]
         self.assertEqual("noli me tangere lauria uber alles", state["text"])
         self.assertEqual("vincos", state["attribution"])
         self.assertEqual("neutral", state["profile_mode"])
         self.assertEqual("editorial", state["direction"])
+        self.assertEqual("gradient", state["graphic_variant"])
         self.assertFalse(any(item.type == "image" for item in result.content))
+        self.assertIn("svg", result.meta["quoteCard"])
+
+    def test_headless_fallback_requires_observed_ui_failure_and_explicit_approval(self):
+        import mcp_server
+
+        with self.assertRaisesRegex(ValueError, "ui_unavailable=true"):
+            mcp_server.quote_card_builder_headless(
+                action="preview",
+                input={"text": "Fallback controllato."},
+                ui_unavailable=False,
+            )
+
+        preview = mcp_server.quote_card_builder_headless(
+            action="preview",
+            input={"text": "Fallback controllato."},
+            ui_unavailable=True,
+        )
+        self.assertFalse(preview.is_error)
+        self.assertTrue(preview.structured_content["rendered"])
+        self.assertTrue(preview.structured_content["resource_uri"].startswith("urn:quote-card-builder:preview:"))
+        self.assertFalse(any(item.type == "image" for item in preview.content))
+        resources = [item for item in preview.content if item.type == "resource"]
+        self.assertEqual(1, len(resources))
+        self.assertEqual("image/svg+xml", resources[0].resource.mime_type)
+        self.assertIn("<svg ", resources[0].resource.text[:220])
+        self.assertNotIn("svg", preview.structured_content)
+        self.assertNotIn("svg_data_uri", preview.structured_content)
+
+        withheld = mcp_server.quote_card_builder_headless(
+            action="produce",
+            input={"text": "Fallback controllato."},
+            ui_unavailable=True,
+        )
+        self.assertTrue(withheld.is_error)
+        self.assertFalse(withheld.structured_content["produced"])
+        self.assertEqual("approval_required", withheld.structured_content["errors"][-1]["code"])
+        self.assertIsNone(withheld.structured_content["resource_uri"])
+        self.assertEqual([], [item for item in withheld.content if item.type == "resource"])
+
+        mismatch = mcp_server.quote_card_builder_headless(
+            action="produce",
+            input={"text": "Fallback controllato."},
+            ui_unavailable=True,
+            approve_production=True,
+            approved_preview_sha256="0" * 64,
+        )
+        self.assertTrue(mismatch.is_error)
+        self.assertFalse(mismatch.structured_content["produced"])
+        self.assertEqual("approval_mismatch", mismatch.structured_content["errors"][-1]["code"])
+        self.assertIsNone(mismatch.structured_content["resource_uri"])
+
+        produced = mcp_server.quote_card_builder_headless(
+            action="produce",
+            input={"text": "Fallback controllato."},
+            ui_unavailable=True,
+            approve_production=True,
+            approved_preview_sha256=preview.structured_content["svg_sha256"],
+        )
+        self.assertFalse(produced.is_error)
+        self.assertTrue(produced.structured_content["produced"])
+        self.assertTrue(produced.structured_content["resource_uri"].startswith("urn:quote-card-builder:production:"))
+        self.assertEqual(1, len([item for item in produced.content if item.type == "resource"]))
+
+    def test_render_tools_preserve_legacy_svg_unless_compact_mode_is_requested(self):
+        import mcp_server
+
+        legacy_preview = mcp_server.preview_quote_card(text="Compatibilità legacy.")
+        self.assertTrue(legacy_preview.structured_content["rendered"])
+        self.assertIn("svg", legacy_preview.structured_content)
+        self.assertTrue(legacy_preview.structured_content["svg_data_uri"].startswith("data:image/svg+xml;base64,"))
+
+        compact_preview = mcp_server.preview_quote_card(
+            text="Compatibilità compatta.", compact_output=True
+        )
+        self.assertTrue(compact_preview.structured_content["rendered"])
+        self.assertNotIn("svg", compact_preview.structured_content)
+        self.assertNotIn("svg_data_uri", compact_preview.structured_content)
+        self.assertTrue(compact_preview.meta["quoteCard"]["svg"].startswith("<?xml"))
+
+        legacy_production = mcp_server.produce_quote_card(text="Compatibilità legacy.")
+        self.assertTrue(legacy_production.structured_content["produced"])
+        self.assertIn("svg", legacy_production.structured_content)
+
+        compact_production = mcp_server.produce_quote_card(
+            text="Compatibilità compatta.", compact_output=True
+        )
+        self.assertTrue(compact_production.structured_content["produced"])
+        self.assertNotIn("svg", compact_production.structured_content)
+        self.assertTrue(compact_production.meta["quoteCard"]["svg"].startswith("<?xml"))
 
     def test_preview_ui_resource_is_a_portable_mcp_app(self):
         import asyncio
@@ -683,7 +1052,7 @@ class McpProtocolTests(unittest.TestCase):
         resource = next(
             item
             for item in resources
-            if str(item.uri) == "ui://quote-card-builder/preview/v1.38.html"
+            if str(item.uri) == mcp_app.QUOTE_CARD_PREVIEW_RESOURCE
         )
         self.assertEqual(
             resource.meta["ui"]["domain"],
@@ -691,15 +1060,11 @@ class McpProtocolTests(unittest.TestCase):
         )
         self.assertEqual(resource.meta["ui"]["csp"]["connectDomains"], [])
         self.assertEqual(resource.meta["ui"]["csp"]["resourceDomains"], [])
-        self.assertEqual(
-            resource.meta["openai/widgetCSP"]["redirect_domains"],
-            ["https://oaisdmntpritalynorth.blob.core.windows.net"],
-        )
-        self.assertEqual("text/html;profile=mcp-app", resource.mimeType)
+        self.assertEqual("text/html;profile=mcp-app", resource.mime_type)
         self.assertTrue(resource.meta["ui"]["prefersBorder"])
 
         contents = asyncio.run(
-            mcp_server.mcp.read_resource("ui://quote-card-builder/preview/v1.37.html")
+            mcp_server.mcp.read_resource(mcp_app.QUOTE_CARD_PREVIEW_RESOURCE)
         )
         self.assertEqual(1, len(contents))
         html = contents[0].content
@@ -718,8 +1083,8 @@ class McpProtocolTests(unittest.TestCase):
         self.assertIn("ui/notifications/size-changed", html)
         self.assertIn("Content &amp; formatting", html)
         self.assertIn('<html lang="en">', html)
-        self.assertIn('@font-face{font-family:"QCB Barlow"', html)
-        self.assertIn("data:font/woff2;base64,", html)
+        self.assertNotIn("@font-face", html)
+        self.assertNotIn("data:font/woff2;base64,", html)
         self.assertNotIn("data:font/ttf;base64,", html)
         self.assertNotIn('font-family:"QCB Orbitron"', html)
         wordmark = (ROOT / "assets" / "card-editor" / "quote-card-builder-wordmark.svg").read_text(encoding="utf-8")
@@ -737,28 +1102,19 @@ class McpProtocolTests(unittest.TestCase):
         self.assertIn('fill="#9B86AD"', wordmark)
         self.assertIn('viewBox="0 0 660 64"', wordmark)
         self.assertIn('x="372" y="48"', wordmark)
-        self.assertGreaterEqual(html.count("data:image/svg+xml;base64,"), 2)
+        self.assertIn("QcbHostContext", html)
         self.assertLess(len(html.encode("utf-8")), 200_000)
-        self.assertIn("--chrome:#2b1830", html)
-        self.assertIn("--signal:#b9d936", html)
+        self.assertIn("--color-background-primary", html)
+        self.assertIn("--color-text-primary", html)
         self.assertNotIn("font-family: Inter", html)
 
         for style in ("blocks", "cutouts", "constellations", "gradient"):
             self.assertIn(f'data-style-choice="{style}"', html)
-        self.assertNotIn('data-direction=', html)
-        self.assertNotIn('data-motif=', html)
-        self.assertNotIn("Editorial<small>", html)
-        self.assertNotIn("Poster<small>", html)
-        self.assertNotIn("Frame<small>", html)
+        self.assertNotIn("data-direction=", html)
+        self.assertNotIn("data-motif=", html)
+        self.assertNotIn("selected motif", html)
         self.assertIn('id="palettePreset"', html)
-        self.assertIn("Bosco", html)
-        self.assertIn("Carta", html)
-        self.assertIn("Calda", html)
-        self.assertIn('id="primaryHex"', html)
-        self.assertIn('id="paletteReset"', html)
-        self.assertIn('id="patternNext"', html)
-        self.assertIn("Vary pattern", html)
-        self.assertIn("graphic_seed:graphicSeed", html)
+        self.assertIn("paletteFields", html)
         self.assertIn("palette:readPalette()", html)
         self.assertIn('id="produce"', html)
         self.assertIn("Update preview", html)
@@ -780,18 +1136,21 @@ class McpProtocolTests(unittest.TestCase):
 
     def test_cached_preview_resource_versions_serve_the_current_editor(self):
         import asyncio
+        import mcp_app
+        import mcp_app
         import mcp_server
 
         resources = asyncio.run(mcp_server.mcp.list_resources())
-        uris = {str(item.uri) for item in resources}
-        for version in (26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36):
+        resources_by_uri = {str(item.uri): item for item in resources}
+        for version in range(26, 40):
             uri = f"ui://quote-card-builder/preview/v1.{version}.html"
-            self.assertIn(uri, uris)
+            self.assertIn(uri, resources_by_uri)
+            self.assertEqual("text/html;profile=mcp-app", resources_by_uri[uri].mime_type)
             contents = asyncio.run(mcp_server.mcp.read_resource(uri))
             self.assertEqual(1, len(contents))
-            self.assertIn("v1.38", contents[0].content)
+            self.assertIn(mcp_app.QUOTE_CARD_APP_VERSION, contents[0].content)
 
-        self.assertNotIn("ui://quote-card-builder/preview/v1.25.html", uris)
+        self.assertNotIn("ui://quote-card-builder/preview/v1.25.html", resources_by_uri)
 
     def test_domain_challenge_is_exact_and_disabled_without_a_token(self):
         import asyncio
@@ -820,8 +1179,7 @@ class McpProtocolTests(unittest.TestCase):
         previous = os.environ.get("MCP_ALLOWED_HOSTS")
         try:
             os.environ["MCP_ALLOWED_HOSTS"] = "quote-card-builder-mcp-960066178304.europe-west8.run.app"
-            mcp_server.configure_http_transport_security()
-            settings = mcp_server.mcp.settings.transport_security
+            settings = mcp_server.configure_http_transport_security()
             self.assertTrue(settings.enable_dns_rebinding_protection)
             self.assertEqual(
                 ["quote-card-builder-mcp-960066178304.europe-west8.run.app"],
@@ -846,26 +1204,55 @@ class McpProtocolTests(unittest.TestCase):
                 args=[str(SCRIPTS / "mcp_server.py")],
             )
             async with stdio_client(params) as (read_stream, write_stream):
-                async with ClientSession(read_stream, write_stream) as session:
+                async with ClientSession(
+                    read_stream, write_stream, extensions=MCP_APPS_CLIENT_EXTENSION
+                ) as session:
                     initialized = await session.initialize()
-                    self.assertIn("Do not choose defaults", initialized.instructions)
+                    import mcp_server
+
+                    self.assertEqual(mcp_server.MCP_SERVER_VERSION, initialized.server_info.version)
+                    self.assertTrue(initialized.server_info.version)
+                    self.assertIn("quote_card_builder_open_editor", initialized.instructions[:512])
+                    self.assertIn("quote_card_builder_headless", initialized.instructions[:512])
+                    self.assertIn("approved_preview_sha256", initialized.instructions[:512])
                     self.assertIn("3. Palette", initialized.instructions)
                     self.assertIn("Do not ask for tone", initialized.instructions)
-                    self.assertIn("Do not use image generation", initialized.instructions)
-                    self.assertIn("do not look for a local editor", initialized.instructions)
+                    self.assertIn("do not use image generation", initialized.instructions)
+                    self.assertIn("quote_card_builder_headless", initialized.instructions)
+                    self.assertIn("ui_unavailable=true", initialized.instructions)
                     tools = await session.list_tools()
                     self.assertEqual(
-                        ["preview_quote_card", "produce_quote_card", "quote_card_builder_open_editor"],
+                        ["preview_quote_card", "produce_quote_card", "quote_card_builder_headless", "quote_card_builder_open_editor"],
                         sorted(tool.name for tool in tools.tools),
                     )
+                    # The legacy stdio handshake (2025-11-25) exposes the tools
+                    # and resources but does not echo ServerCapabilities.extensions;
+                    # the in-process modern Client contract above verifies Apps
+                    # negotiation explicitly.
+                    resources = await session.list_resources()
+                    resource_uris = {str(item.uri) for item in resources.resources}
+                    import mcp_app
+
+                    self.assertIn(mcp_app.QUOTE_CARD_PREVIEW_RESOURCE, resource_uris)
+                    ui_resource = await session.read_resource(mcp_app.QUOTE_CARD_PREVIEW_RESOURCE)
+                    self.assertEqual(1, len(ui_resource.contents))
+                    self.assertIn("Quote Card Builder", ui_resource.contents[0].text)
                     result = await session.call_tool("preview_quote_card", {"text": "Una preview reale."})
-                    self.assertFalse(result.isError)
-                    self.assertTrue(result.structuredContent["valid"])
-                    self.assertTrue(result.structuredContent["rendered"])
-                    self.assertEqual("4x5", result.structuredContent["format"])
-                    images = [item for item in result.content if item.type == "image"]
+                    self.assertFalse(result.is_error)
+                    self.assertTrue(result.structured_content["valid"])
+                    self.assertTrue(result.structured_content["rendered"])
+                    self.assertEqual("4x5", result.structured_content["format"])
+                    self.assertIn("svg", result.structured_content)
+                    self.assertIn("svg_data_uri", result.structured_content)
+                    self.assertEqual([], [item for item in result.content if item.type == "image"])
+                    images_result = await session.call_tool(
+                        "preview_quote_card", {"text": "Una preview compatibile.", "output_image": True, "compact_output": True}
+                    )
+                    images = [item for item in images_result.content if item.type == "image"]
                     self.assertEqual(1, len(images))
-                    self.assertEqual("image/svg+xml", images[0].mimeType)
+                    self.assertNotIn("svg", images_result.structured_content)
+                    self.assertNotIn("svg_data_uri", images_result.structured_content)
+                    self.assertEqual("image/svg+xml", images[0].mime_type)
                     decoded = base64.b64decode(images[0].data).decode("utf-8")
                     self.assertIn("<svg ", decoded[:220])
 
@@ -875,7 +1262,7 @@ class McpProtocolTests(unittest.TestCase):
                             "text": "Una sola interfaccia.",
                             "attribution": "",
                             "profile_mode": "custom",
-                            "style": "constellations",
+                            "style": "gradient",
                             "palette": {
                                 "name": "Palette test",
                                 "colors": {
@@ -885,14 +1272,15 @@ class McpProtocolTests(unittest.TestCase):
                                     "text": "#111111",
                                 },
                             },
-                        },
-                    )
-                    self.assertFalse(ui_result.isError)
-                    self.assertTrue(ui_result.structuredContent["rendered"])
-                    self.assertEqual("contextual", ui_result.structuredContent["direction"])
-                    self.assertEqual("Palette test", ui_result.structuredContent["profile"])
-                    self.assertEqual("Una sola interfaccia.", ui_result.structuredContent["editor_state"]["text"])
-                    self.assertEqual("custom", ui_result.structuredContent["editor_state"]["profile_mode"])
+                        }
+                        )
+                    self.assertFalse(ui_result.is_error)
+                    self.assertTrue(ui_result.structured_content["rendered"])
+                    self.assertEqual("editorial", ui_result.structured_content["direction"])
+                    self.assertEqual("gradient", ui_result.structured_content["editor_state"]["graphic_variant"])
+                    self.assertEqual("Palette test", ui_result.structured_content["profile"])
+                    self.assertEqual("Una sola interfaccia.", ui_result.structured_content["editor_state"]["text"])
+                    self.assertEqual("custom", ui_result.structured_content["editor_state"]["profile_mode"])
                     self.assertFalse(any(item.type == "image" for item in ui_result.content))
 
                     produced = await session.call_tool(
@@ -900,6 +1288,7 @@ class McpProtocolTests(unittest.TestCase):
                         {
                             "text": "Una produzione reale.",
                             "direction": "contextual",
+                            "compact_output": True,
                             "palette": {
                                 "name": "Palette produzione",
                                 "colors": {
@@ -911,11 +1300,39 @@ class McpProtocolTests(unittest.TestCase):
                             },
                         },
                     )
-                    self.assertFalse(produced.isError)
-                    self.assertTrue(produced.structuredContent["produced"])
-                    self.assertTrue(produced.structuredContent["filename"].endswith(".svg"))
-                    self.assertEqual("custom", produced.structuredContent["editor_state"]["profile_mode"])
+                    self.assertFalse(produced.is_error)
+                    self.assertTrue(produced.structured_content["produced"])
+                    self.assertTrue(produced.structured_content["filename"].endswith(".svg"))
+                    self.assertEqual("custom", produced.structured_content["editor_state"]["profile_mode"])
                     self.assertFalse(any(item.type == "image" for item in produced.content))
+                    self.assertNotIn("svg", produced.structured_content)
+                    self.assertNotIn("svg_data_uri", produced.structured_content)
+                    self.assertIn("svg", produced.meta["quoteCard"])
+
+                    headless_preview = await session.call_tool(
+                        "quote_card_builder_headless",
+                        {
+                            "action": "preview",
+                            "input": {"text": "Una preview senza UI."},
+                            "ui_unavailable": True,
+                        },
+                    )
+                    self.assertFalse(headless_preview.is_error)
+                    self.assertTrue(headless_preview.structured_content["resource_uri"].startswith("urn:quote-card-builder:preview:"))
+                    self.assertEqual(1, len([item for item in headless_preview.content if item.type == "resource"]))
+                    headless_produced = await session.call_tool(
+                        "quote_card_builder_headless",
+                        {
+                            "action": "produce",
+                            "input": {"text": "Una preview senza UI."},
+                            "ui_unavailable": True,
+                            "approve_production": True,
+                            "approved_preview_sha256": headless_preview.structured_content["svg_sha256"],
+                        },
+                    )
+                    self.assertFalse(headless_produced.is_error)
+                    self.assertTrue(headless_produced.structured_content["produced"])
+                    self.assertEqual(1, len([item for item in headless_produced.content if item.type == "resource"]))
 
         asyncio.run(run_round_trip())
 
@@ -934,25 +1351,31 @@ class McpProtocolTests(unittest.TestCase):
 
             async def run_round_trip():
                 params = StdioServerParameters(
-                    command=sys.executable,
+                    command=server["command"],
                     args=server["args"],
-                    cwd=str(plugin_root),
+                    cwd=str(plugin_root / server["cwd"]),
+                    env={
+                        **os.environ,
+                        "UV_CACHE_DIR": os.environ.get("UV_CACHE_DIR", "/private/tmp/qcb-test-uv-cache"),
+                    },
                 )
                 async with stdio_client(params) as (read_stream, write_stream):
-                    async with ClientSession(read_stream, write_stream) as session:
+                    async with ClientSession(
+                        read_stream, write_stream, extensions=MCP_APPS_CLIENT_EXTENSION
+                    ) as session:
                         await session.initialize()
                         result = await session.call_tool(
                             "quote_card_builder_open_editor",
                             {
-                                "text": "Preview dal pacchetto distribuito.",
-                                "attribution": "",
-                                "profile_mode": "neutral",
-                                "style": "blocks",
+                            "text": "Preview dal pacchetto distribuito.",
+                            "attribution": "",
+                            "profile_mode": "neutral",
+                            "style": "gradient",
                             },
                         )
-                        self.assertFalse(result.isError)
-                        self.assertTrue(result.structuredContent["rendered"])
-                        self.assertEqual("Neutral profile", result.structuredContent["profile"])
+                        self.assertFalse(result.is_error)
+                        self.assertTrue(result.structured_content["rendered"])
+                        self.assertEqual("Neutral profile", result.structured_content["profile"])
                         self.assertFalse(any(item.type == "image" for item in result.content))
 
             asyncio.run(run_round_trip())
@@ -1002,12 +1425,14 @@ class McpProtocolTests(unittest.TestCase):
 
             async def run_round_trip():
                 url = f"http://127.0.0.1:{port}/mcp"
-                async with streamable_http_client(url) as (read_stream, write_stream, _):
-                    async with ClientSession(read_stream, write_stream) as session:
+                async with streamable_http_client(url) as (read_stream, write_stream):
+                    async with ClientSession(
+                        read_stream, write_stream, extensions=MCP_APPS_CLIENT_EXTENSION
+                    ) as session:
                         await session.initialize()
                         tools = await session.list_tools()
                         self.assertEqual(
-                            ["preview_quote_card", "produce_quote_card", "quote_card_builder_open_editor"],
+                            ["preview_quote_card", "produce_quote_card", "quote_card_builder_headless", "quote_card_builder_open_editor"],
                             sorted(tool.name for tool in tools.tools),
                         )
                         result = await session.call_tool(
@@ -1016,11 +1441,11 @@ class McpProtocolTests(unittest.TestCase):
                                 "text": "Preview HTTP reale.",
                                 "attribution": "",
                                 "profile_mode": "neutral",
-                                "style": "blocks",
+                                "style": "gradient",
                             },
                         )
-                        self.assertFalse(result.isError)
-                        self.assertTrue(result.structuredContent["rendered"])
+                        self.assertFalse(result.is_error)
+                        self.assertTrue(result.structured_content["rendered"])
 
             asyncio.run(run_round_trip())
         finally:

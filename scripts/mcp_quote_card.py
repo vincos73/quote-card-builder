@@ -268,7 +268,12 @@ def build_manifest(payload: Mapping[str, Any], manifest_dir: Path | None = None)
         "content": content,
         "canvas": {"width": FORMATS[format_id]["width"], "height": FORMATS[format_id]["height"]},
         "direction": direction,
-        "presentation": {"logo_mode": "hidden", "graphic_mode": graphic_mode, "graphic_variant": graphic_variant, "graphic_seed": graphic_seed},
+        "presentation": {
+            "logo_mode": "hidden",
+            "graphic_mode": graphic_mode,
+            "graphic_variant": graphic_variant,
+            "graphic_seed": graphic_seed,
+        },
         "brand": brand,
         "source": {"title": "MCP input", "locator": "mcp://quote-card-builder/preview"},
         "output": {"basename": "quote-card-preview"},

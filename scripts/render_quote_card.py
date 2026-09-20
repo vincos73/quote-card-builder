@@ -371,9 +371,8 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
         for key in ("primary", "accent", "background", "text")
     ):
         # Validate the selected composition rather than rejecting a brand for
-        # a colour pair that this card never paints. Editorial/Gradient is
-        # special: it derives and verifies its actual full-field surface
-        # below, so an unused raw accent may legitimately fall under 4.5:1.
+        # a colour pair that this card never paints. Editorial/Gradient uses
+        # its full-field surface, checked conservatively below.
         graphic_variant = presentation.get("graphic_variant", "default") if isinstance(presentation, dict) else "default"
         if (direction == "editorial" and graphic_variant == "gradient"
                 and presentation.get("graphic_mode", "auto") != "hidden"):
@@ -486,13 +485,7 @@ def logo_data(brand: dict[str, Any], manifest_dir: Path, *, light: bool) -> tupl
 def gradient_logo_ink_colours(
     brand: dict[str, Any], manifest_dir: Path, *, logo_mode: str = "auto",
 ) -> tuple[list[str], str]:
-    """Read actual flat SVG logo paints for Gradient's full-field check.
-
-    Raster images and SVGs with CSS variables/currentColor cannot be audited
-    without rendering their pixels, so they are explicitly returned as
-    ``unverifiable``.  The pack records that state instead of pretending a
-    dark logo is equivalent to the palette primary.
-    """
+    """Read flat SVG logo paints for Gradient's full-field contrast check."""
     if logo_mode == "hidden" or not (brand.get("logo") or {}):
         return [], "not_present"
     logo = brand.get("logo") or {}
@@ -541,8 +534,6 @@ def gradient_logo_ink_colours(
                 re.search(r"(?:fill|stroke)\s*:", style, flags=re.IGNORECASE)
             )
             if not has_paint:
-                # SVG defaults fill to black, which is real ink but cannot be
-                # tied to the brand without resolving inheritance.
                 unresolved = True
     if unresolved or not paints:
         return sorted(paints), "unverifiable_svg_logo"
@@ -552,7 +543,6 @@ def gradient_logo_ink_colours(
 def gradient_ink_colours(
     brand: dict[str, Any], manifest_dir: Path, *, logo_mode: str = "auto",
 ) -> tuple[list[str], str]:
-    """Use the actual quote/attribution inks; add verified logo ink."""
     logo_inks, status = gradient_logo_ink_colours(brand, manifest_dir, logo_mode=logo_mode)
     return [brand["colors"]["primary"].upper(), brand["colors"]["text"].upper(), *logo_inks], status
 
@@ -563,7 +553,7 @@ def gradient_render_safety(
     inks, logo_status = gradient_ink_colours(brand, manifest_dir, logo_mode=logo_mode)
     report = gradient_contrast_report(brand["colors"], inks)
     return {**report, "logo_status": logo_status,
-            "passed": report["passed"] and logo_status != "unverifiable_raster_logo" and logo_status != "unverifiable_svg_logo"}
+            "passed": report["passed"] and logo_status not in {"unverifiable_raster_logo", "unverifiable_svg_logo"}}
 
 
 _FONT_METRICS_CACHE: dict[str, dict[str, float] | None] = {}
@@ -1303,27 +1293,12 @@ GRADIENT_TEXT_CONTRAST = 4.5
 
 
 def _mix_color(first: str, second: str, amount: float) -> str:
-    """Mix two approved palette colours in sRGB and return a canonical hex.
-
-    The Gradient style deliberately uses only tonal derivatives of the brand
-    palette.  Keeping this little operation here (rather than relying on SVG
-    opacity) makes the derived colours inspectable before a rasteriser has
-    painted them.
-    """
     amount = max(0.0, min(1.0, amount))
     channels = [round(a + (b - a) * amount) for a, b in zip(parse_hex(first), parse_hex(second))]
     return "#" + "".join(f"{value:02X}" for value in channels)
 
 
 def _gradient_contrast_bound(colours: list[str], inks: list[str]) -> dict[str, Any]:
-    """Conservative contrast for every alpha-composited gradient colour.
-
-    A stack of soft fields is a convex combination of its stops.  Its actual
-    RGB channels therefore remain inside the channel-wise min/max envelope of
-    *all* stops.  Checking the darker envelope for dark ink (and the lighter
-    one for light ink) is stricter than checking a few coordinates on each
-    radial gradient and remains valid after fields overlap.
-    """
     channels = [parse_hex(colour) for colour in colours]
     lower = "#" + "".join(f"{min(values):02X}" for values in zip(*channels))
     upper = "#" + "".join(f"{max(values):02X}" for values in zip(*channels))
@@ -1331,26 +1306,23 @@ def _gradient_contrast_bound(colours: list[str], inks: list[str]) -> dict[str, A
     ratios: dict[str, float] = {}
     for ink in inks:
         ink_luminance = relative_luminance(ink)
-        # If ink lies inside the possible background-luminance interval, a
-        # composite may meet it and collapse to 1:1.  Otherwise the nearest
-        # endpoint is the honest worst case.  This covers mid-tone ink on a
-        # dark gradient as well as the more usual dark-on-light card.
         if lower_luminance <= ink_luminance <= upper_luminance:
             ratios[ink] = 1.0
         else:
             ratios[ink] = min(contrast_ratio(ink, lower), contrast_ratio(ink, upper))
-    return {"lower": lower, "upper": upper, "ratios": ratios,
-            "minimum": min(ratios.values()), "passed": all(value >= GRADIENT_TEXT_CONTRAST for value in ratios.values())}
+    return {
+        "lower": lower,
+        "upper": upper,
+        "ratios": ratios,
+        "minimum": min(ratios.values()),
+        "passed": all(value >= GRADIENT_TEXT_CONTRAST for value in ratios.values()),
+    }
 
 
 def _most_contrasting_surface(inks: list[str], background: str) -> str:
-    """Nudge the paper tone only as far as needed to create contrast headroom."""
     extremes = ("#FFFFFF", "#000000")
     target = max(extremes, key=lambda colour: min(contrast_ratio(ink, colour) for ink in inks))
     maximum = min(contrast_ratio(ink, target) for ink in inks)
-    # A palette that validates for Editorial is guaranteed 4.5:1 on its
-    # declared paper.  Most palettes can afford extra room for interpolation;
-    # very mid-tone inks cannot, so retain their maximally contrasting paper.
     desired = min(6.0, max(GRADIENT_TEXT_CONTRAST, maximum - 0.08))
     if _gradient_contrast_bound([background], inks)["minimum"] >= desired:
         return background.upper()
@@ -1366,11 +1338,6 @@ def _most_contrasting_surface(inks: list[str], background: str) -> str:
 
 
 def _gradient_safe_tint(candidate: str, base: str, inks: list[str], accepted: list[str]) -> str:
-    """Return the strongest tint whose *whole* interpolation back to base
-    clears text contrast.  Sampling the path is intentionally conservative:
-    SVG gradient interpolation paints every intermediate colour, not only its
-    declared stops.
-    """
     if _gradient_contrast_bound([base, *accepted, candidate], inks)["passed"]:
         return candidate.upper()
     low, high = 0.0, 1.0
@@ -1385,34 +1352,19 @@ def _gradient_safe_tint(candidate: str, base: str, inks: list[str], accepted: li
 
 
 def gradient_palette(colors: dict[str, str], ink_colours: list[str] | None = None) -> dict[str, str]:
-    """Make the three soft Editorial/Gradient fields from a brand palette.
-
-    Quote, attribution and the expected dark logo all live directly on this
-    surface, so every generated colour is verified against ``primary``.  The
-    design never adds a reading panel behind text: contrast belongs to the
-    field itself across the full card.
-    """
     inks = [colour.upper() for colour in (ink_colours or [colors["primary"]])]
     base = _most_contrasting_surface(inks, colors["background"].upper())
     bridge_source = _mix_color(colors["primary"], colors["accent"], 0.50)
-    # The safety ceiling can still make a dense, slate-coloured field. Keep
-    # the actual visual weight deliberately below it: the Gradient style is
-    # an open editorial page with colour moving through it, not a dark panel
-    # that happens to pass contrast.
     sky_limit = _gradient_safe_tint(colors["accent"].upper(), base, inks, [])
     sky = _mix_color(base, sky_limit, 0.82)
     bloom_limit = _gradient_safe_tint(colors["primary"].upper(), base, inks, [sky])
     bloom = _mix_color(base, bloom_limit, 0.28)
     bridge_limit = _gradient_safe_tint(bridge_source, base, inks, [sky, bloom])
     bridge = _mix_color(base, bridge_limit, 0.34)
-    return {
-        "base": base,
-        "sky": sky, "bloom": bloom, "bridge": bridge,
-    }
+    return {"base": base, "sky": sky, "bloom": bloom, "bridge": bridge}
 
 
 def gradient_contrast_report(colors: dict[str, str], ink_colours: list[str] | None = None) -> dict[str, Any]:
-    """Expose auditable full-field contrast for render QA and tests."""
     inks = [colour.upper() for colour in (ink_colours or [colors["primary"]])]
     palette = gradient_palette(colors, inks)
     bound = _gradient_contrast_bound(list(palette.values()), inks)
@@ -1431,13 +1383,6 @@ def gradient_graphic(
     width: int, height: int, colors: dict[str, str], seed: int, *, ink_colours: list[str] | None = None,
     logo_status: str = "not_present",
 ) -> str:
-    """Soft, seed-driven Editorial background with a deliberately clear page.
-
-    The stable entropy stream controls the diagonal, field centres, reach and
-    relative weight.  Its first field remains high/left and its bloom low/right
-    so the result keeps the requested airy blue-to-rose editorial flow while
-    every seed produces a visibly different composition.
-    """
     entropy = _graphic_entropy(seed, "gradient")
     inks = [colour.upper() for colour in (ink_colours or [colors["primary"]])]
     palette = gradient_palette(colors, inks)
@@ -1447,16 +1392,13 @@ def gradient_graphic(
     field_count = 2 + entropy[0] % 2
     angle = -34 + entropy[1] / 255 * 68
     base_angle = 18 + entropy[2] / 255 * 38
-
-    # A loose diagonal is the visual through-line; offsets still range wide
-    # enough across the seed space to change the composition, not just noise.
     centers = [
         (0.10 + entropy[3] / 255 * 0.38, -0.04 + entropy[4] / 255 * 0.36),
         (0.50 + entropy[5] / 255 * 0.42, 0.54 + entropy[6] / 255 * 0.42),
         (0.26 + entropy[7] / 255 * 0.50, 0.28 + entropy[8] / 255 * 0.42),
     ]
     radii = [0.50 + entropy[9] / 255 * 0.36, 0.54 + entropy[10] / 255 * 0.38,
-              0.38 + entropy[11] / 255 * 0.36]
+             0.38 + entropy[11] / 255 * 0.36]
     field_names = ("sky", "bloom", "bridge")
     definitions = [
         f'<linearGradient id="gradient-base-{identifier}" x1="0" y1="0" x2="1" y2="1" '

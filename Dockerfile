@@ -10,6 +10,7 @@ WORKDIR /app
 RUN groupadd --system app && useradd --system --gid app --create-home app
 
 COPY requirements-mcp.txt ./
+COPY pyproject.toml ./
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r requirements-mcp.txt
 
@@ -23,6 +24,7 @@ COPY scripts/mcp_server.py \
 COPY assets/card-editor/vincos-lockup-white.svg ./assets/card-editor/
 COPY assets/card-editor/quote-card-builder-wordmark.svg ./assets/card-editor/
 COPY assets/card-editor/fonts/ ./assets/card-editor/fonts/
+COPY assets/mcp-editor/ ./assets/mcp-editor/
 
 USER app
 EXPOSE 8080

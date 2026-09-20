@@ -6,7 +6,7 @@ Quote Card Builder è una skill per ChatGPT e Claude che trasforma una frase, un
 
 È pensata per creator, marketer e professionisti che vogliono ottenere rapidamente una grafica coerente, senza aprire un editor professionale. Il testo, l’attribuzione e le scelte editoriali restano sempre sotto il controllo dell’utente.
 
-Versione corrente: **1.7.15**
+Versione candidata: **1.7.16**
 
 <img width="1956" height="1130" alt="quote-card-builder-screen" src="https://github.com/user-attachments/assets/550fbf0b-21b3-4b01-b8f1-48cbd04574d5" />
 
@@ -22,15 +22,16 @@ La skill accompagna l’utente dall’idea al file finale:
 6. verifica leggibilità, contrasto, margini e possibili sovrapposizioni;
 7. genera un PNG oppure un pacchetto ZIP con più formati.
 
-L’editor offre tre stili compositivi:
+L’editor inline del plugin offre quattro stili compositivi:
 
-| Stile | Aspetto | Motivi disponibili |
+| Stile | Aspetto | Motivo disponibile |
 | --- | --- | --- |
-| **Editorial** | pagina aperta e tipografia editoriale | Contours, Rhythm Lines |
-| **Poster** | testo dominante e impatto da manifesto | Echo Rings, Modules |
-| **Frame** | contenuto inserito in un campo cromatico | Dot Grid, Route Map |
+| **Blocks** | campi tipografici editoriali | composizione deterministica variabile |
+| **Cutouts** | ritagli geometrici piatti | composizione deterministica variabile |
+| **Constellations** | reti di nodi e connessioni | composizione deterministica variabile |
+| **Gradient** | campi cromatici sfumati | composizione deterministica variabile |
 
-Ogni stile può essere usato anche senza motivo.
+Lo stile si sceglie nell'editor, insieme alla variante riproducibile del motivo; può anche essere nascosto.
 
 ## Che cosa non fa
 
@@ -51,13 +52,12 @@ Attribuzione: Mario Rossi
 La skill prepara il contenuto e apre il Visual Review Studio nel browser. Nell’editor puoi:
 
 - cambiare testo e attribuzione;
-- scegliere Editorial, Poster o Frame;
-- applicare uno dei motivi disponibili oppure nasconderlo;
+- scegliere Blocks, Cutouts, Constellations o Gradient nell'editor;
+- variare in modo riproducibile il motivo oppure nasconderlo;
 - modificare gli a capo;
 - usare grassetto, corsivo, sottolineato, evidenziato, accento o contorno;
 - ridurre la dimensione del testo e scegliere la posizione verticale;
 - mostrare o nascondere il logo;
-- esplorare palette pronte, modificare i quattro colori e ripristinare quelli iniziali;
 - salvare il brand corrente come profilo riutilizzabile;
 - esportare in `4:5`, `1:1`, `9:16` oppure in tutti i formati.
 
@@ -73,10 +73,6 @@ Apri **Palette della card** e scegli **Salva profilo** per conservare il brand c
 - quattro colori della card;
 - famiglia e file del font;
 - file del logo.
-
-Nel medesimo pannello puoi scegliere una palette pronta o modificare i singoli colori, con anteprima e controllo del contrasto a ogni modifica. Queste operazioni cambiano soltanto i colori della card; testo, formattazione, a capo dei tre formati, font, logo, stile, seed e composizione restano invariati. Una combinazione non leggibile viene segnalata e non supera il controllo per la produzione.
-
-**Ripristina iniziali** recupera i quattro colori presenti all'apertura originaria della sessione. Il riferimento resta lo stesso dopo la riapertura, la produzione o l'applicazione di uno stile salvato. Le prove di colore non modificano alcun profilo salvato: solo **Salva profilo / Aggiorna** salva esplicitamente la palette corrente nel profilo. **Save style** include invece la palette corrente nello stile riutilizzabile.
 
 Citazioni, fonti, attribuzioni e alt text non vengono salvati nel profilo. Nei lavori successivi la skill elenca i profili locali disponibili e ne usa uno solo dopo la tua scelta esplicita. Puoi anche allegare il JSON esportato all'inizio di una nuova conversazione: la skill lo valida, mostra palette, font, logo ed eventuali asset mancanti e attende la tua approvazione prima di applicarlo.
 
@@ -137,7 +133,7 @@ Per il flusso completo servono:
 
 La generazione PNG usa Node.js e `sharp` quando sono già disponibili nella sessione. La skill non installa dipendenze automaticamente. Se non trova un convertitore PNG compatibile, conserva l’SVG e dichiara il fallback invece di simulare una consegna riuscita.
 
-Il server dell’editor ascolta soltanto su `127.0.0.1` e usa un token di sessione. Fonte, font, logo e dimensioni restano protetti nell’interfaccia; i quattro colori della card sono modificabili.
+Il server dell’editor ascolta soltanto su `127.0.0.1` e usa un token di sessione. Fonte, brand e dimensioni sono campi protetti nell’interfaccia.
 
 ## Problemi comuni
 
@@ -174,21 +170,23 @@ python3 -m unittest discover -s tests -v
 ### Vertical slice MCP locale
 
 Il repository include ora un backend MCP stdio minimo ma reale, documentato in
-[references/mcp-pilot.md](references/mcp-pilot.md). Il flusso usa tre tool coordinati:
+[references/mcp-pilot.md](references/mcp-pilot.md). Il flusso principale usa tre tool coordinati:
 `quote_card_builder_open_editor` apre una sola MCP App, `preview_quote_card` aggiorna i dati
 nella stessa interfaccia senza rimontarla e `produce_quote_card` genera l'SVG canonico
-solo dopo il clic dell'utente su **Genera**. Prima della chiamata la skill raccoglie frase,
-attribuzione, palette neutra o personalizzata e stile tra Blocks, Cutouts, Constellations e
-Gradient; non chiede un tono e non sostituisce l'app con file generati direttamente in chat.
-La UI consente di correggere queste scelte. I tre tool riusano il renderer canonico e il
-profilo neutro soltanto quando l'utente lo sceglie. I risultati includono lo snapshot completo
-dell'editor, quindi frase e palette iniziali non dipendono dai tempi del bridge. Non esegue pubblicazione, storage remoto
+solo dopo il clic dell'utente su **Genera**. Se l'host dichiara che la UI non può essere montata,
+`quote_card_builder_headless` offre una preview accessibile al modello e una produzione esplicita,
+vincolata all'approvazione del chiamante e all'hash della preview corrente. Prima della chiamata la
+skill raccoglie frase, attribuzione e palette neutra o personalizzata; non chiede tono o stile e non
+usa file locali o generazione immagini. La UI lascia scegliere Blocks, Cutouts, Constellations o
+Gradient e consente di variare o nascondere il pattern. Uno stile già dichiarato dall'utente è solo
+una preselezione dell'editor. I tool riusano il renderer canonico e il profilo neutro soltanto quando
+l'utente lo sceglie. Lo structured output conserva stato e validazione compatti; l'SVG della UI è
+nei metadati MCP e quello headless è una risorsa esplicita. Non esegue pubblicazione, storage remoto
 o modifiche all'installazione personale.
 
-La MCP App riprende ora i controlli principali dell'editor locale: toolbar per grassetto,
-corsivo, sottolineato e riempimenti, riequilibrio degli a capo, i quattro stili generativi,
-variazione deterministica del pattern, scala dal massimo, posizione verticale, preset Bosco,
-Carta e Calda, modifica sincronizzata dei quattro colori e reset alla palette iniziale. L'iframe incorpora inoltre
+La MCP App riprende ora i controlli principali del vecchio editor: toolbar per grassetto,
+corsivo, sottolineato e riempimenti, riequilibrio degli a capo, quattro stili con seed
+riproducibile, scala dal massimo, posizione verticale e palette esplicita. L'iframe incorpora inoltre
 Barlow e Orbitron e usa la palette Plotter Bench dell'editor locale; la palette della card resta
 quella del profilo neutro o personalizzato scelto dall'utente. Il vertical slice supporta
 4:5 e 1:1; il formato 9:16 continua a essere gestito dal Visual Review Studio locale finché
@@ -197,9 +195,7 @@ non verrà portato nello stesso contratto MCP.
 Per provarlo in un ambiente isolato:
 
 ```bash
-python3 -m venv /private/tmp/quote-card-builder-mcp-venv
-/private/tmp/quote-card-builder-mcp-venv/bin/python -m pip install -r requirements-mcp.txt
-/private/tmp/quote-card-builder-mcp-venv/bin/python -m unittest discover -s tests -v
+uv run --frozen python -m unittest discover -s tests -v
 ```
 
 Il manifest del plugin collega `.mcp.json` al server incluso; il builder mantiene

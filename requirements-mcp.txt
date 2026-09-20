@@ -1,4 +1,3 @@
-# Verified on 2026-08-21 in an isolated Python 3.14 virtualenv.
-# 2.0.0 is the current PyPI release, but this pilot pins the last verified
-# FastMCP-compatible release used by the documented server shape.
-mcp==1.29.0
+# MCP Apps 2.x registers the inline editor as an Apps extension instead of
+# relying on legacy FastMCP resource metadata.
+mcp[cli]==2.1.1
