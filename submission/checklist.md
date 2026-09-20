@@ -45,28 +45,31 @@ is recommended before submission.
   returns `404` while no token is configured.
 - **BLOCKED** Domain verification cannot be completed until the portal issues its token and the
   route is deployed with `OPENAI_APPS_CHALLENGE_TOKEN`.
-- **PASS** ChatGPT developer-mode **Aggiorna / Scan Tools** completed against the frozen v1.40
+- **PASS** ChatGPT developer-mode **Aggiorna / Scan Tools** completed against the frozen v1.41
   server on 2026-09-20. It discovered the two public tools, the optional Style preselection, and
-  `ui://quote-card-builder/preview/v1.40.html` without reporting an issue.
+  `ui://quote-card-builder/preview/v1.41.html` and reported `Azioni aggiornate`.
 
 ## UI and behavior
 
-- **PASS** Remote `resources/read` serves the deployed v1.40 resource and exposes the ChatGPT host
+- **PASS** Remote `resources/read` serves the deployed v1.41 resource and exposes the ChatGPT host
   file delivery path (`uploadFile` plus `getFileDownloadUrl`).
 - **PASS** The inline editor has two main actions: **Update preview** and **Generate PNG**, with
   clear supporting labels and distinct primary/secondary hierarchy.
 - **PASS** Quote, attribution, neutral/custom palette, direction, 4:5/1:1 format, authored line
   breaks, formatting ranges, scale, position, and motif are represented in editor state.
 - **PASS** Generate revalidates through the canonical renderer and prepares a PNG in the browser.
-- **PASS** Deployed v1.40 embeds Orbitron in a self-contained SVG wordmark with tightened optical
-  spacing and uses ChatGPT's host file APIs for PNG delivery when available.
+- **PASS** Deployed v1.41 restores the branded masthead, Vincos lockup, visible version badge,
+  Barlow interface typography, Plotter Bench palette, square controls, and embedded Orbitron
+  wordmark while retaining the v1.40 host APIs and ChatGPT file delivery integration.
 - **PASS** A hosted v1.33 test confirmed the title rendering and showed that ChatGPT opens the
-  temporary PNG URL rather than forcing a browser download. Deployed v1.40 labels this behavior
+  temporary PNG URL rather than forcing a browser download. Deployed v1.41 labels this behavior
   accurately as **Open PNG** and tells the user to save the image from the browser.
-- **PASS** The deployed v1.40 production badge has no `TEST` suffix.
+- **PASS** The deployed v1.41 production badge is visible at the upper right and has no `TEST`
+  suffix.
 - **PASS** The deployed editor grows with its contents and no longer creates an internal
   `overflow:auto` scroll area.
-- **FIX** Capture desktop and narrow-width visual evidence from the final production resource.
+- **PASS** Desktop visual inspection of the exact v1.41 HTML confirmed the restored interface and
+  visible badge; narrow-width hosted evidence remains part of the pre-submission browser review.
 - **FIX** Verify the complete open-and-save flow in the hosted ChatGPT iframe; protocol and
   resource checks prove the delivery code is live but do not prove the user-visible click-through.
 - **PORTAL** Confirm keyboard navigation, focus visibility, labels, contrast, and screen-reader
@@ -90,25 +93,25 @@ is recommended before submission.
 
 ## Release integrity
 
-- **PASS** Local plugin manifest, canonical skill, and remote server are `1.7.16`; local and
-  deployed UI are v1.40.
-- **PASS** Historical plugin ZIP evidence for 1.7.11 remains recorded; the current v1.40 Cloud Run
+- **PASS** Local plugin manifest, canonical skill, and remote server are `1.7.17`; local and
+  deployed UI are v1.41.
+- **PASS** Historical plugin ZIP evidence for 1.7.11 remains recorded; the current v1.41 Cloud Run
   source archive is hashed below.
 - **PASS** The project suite passes when socket and headless-browser tests are allowed.
-- **PASS** Remote resource `ui://quote-card-builder/preview/v1.40.html` is readable from the
+- **PASS** Remote resource `ui://quote-card-builder/preview/v1.41.html` is readable from the
   deployed MCP server.
 - **PASS** Local v1.27 source packages have deterministic recorded SHA-256 hashes and clean archive
   listings.
-- **PASS** The clean v1.40 source archive has SHA-256
-  `90ac3d731240b8d429359e9631dbdfeec37cce75f9f41ae518ff461a2e6679cf` and was deployed as
-  revision `quote-card-builder-mcp-00086-cuq` with image digest
-  `sha256:3956efce9775476c94b6342a8a3d0073ed1b0cd7d481e535cf28b941ac008f85`; the 100% traffic split,
+- **PASS** The clean v1.41 source archive has SHA-256
+  `5cef217176cf9302567899489631085a62a6ad99ea160faa4fc62538eaeb24d1` and was deployed as
+  revision `quote-card-builder-mcp-00088-yuh` with image digest
+  `sha256:a94415429a2df5423a71a1d538bf1d794f5a19857b89f461387a4db5efc7a20d`; the 100% traffic split,
   health, MCP handshake, and resource descriptor are recorded in `submission/evidence.md`.
-- **PASS** The v1.40 candidate is frozen in clean commit
-  `8255bc998dd056f7454735a72e5dcae1fdd8bec6` on branch
-  `codex/qcb-remote-v1.40`.
-- **PASS** Deployment and ChatGPT Scan Tools evidence for v1.40 is recorded after promotion.
-- **PASS** The local v1.40 candidate retains v1.26 through v1.39 compatibility resources.
+- **PASS** The v1.41 correction is frozen in clean commit `f2ce591` on branch
+  `codex/qcb-remote-v1.41`.
+- **PASS** Deployment, visual-regression, and ChatGPT Scan Tools evidence for v1.41 is recorded
+  after promotion.
+- **PASS** The local v1.41 candidate retains v1.26 through v1.40 compatibility resources.
 - **PASS** `pytest.ini` restricts default discovery to `tests/` and excludes `work/`.
 
 ## Final gate

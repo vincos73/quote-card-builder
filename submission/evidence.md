@@ -2,6 +2,42 @@
 
 Evidence date: 2026-09-20, Europe/Rome.
 
+## Current v1.41 visual-regression correction
+
+This section supersedes the v1.40 candidate below.
+
+- Frozen correction commit: `f2ce591` (`Restore Quote Card Builder branded UI`) on branch
+  `codex/qcb-remote-v1.41`.
+- Plugin/server version: `1.7.17`; current UI resource:
+  `ui://quote-card-builder/preview/v1.41.html`.
+- Regression cause: v1.40 removed the branded masthead and injected a host-theme rule that hid
+  `.app-header`, `.product-title`, `.product-byline`, and `.version-badge` while replacing the
+  canonical interface palette and typography.
+- Correction: v1.41 retains the v1.40 host-context, tool-result, state, timeout, download, and
+  headless-fallback work, while restoring the self-contained Quote Card Builder wordmark, Vincos
+  lockup, embedded Barlow faces, Plotter Bench palette, square controls, and visible v1.41 badge.
+- Full test suite: `Ran 297 tests in 10.062s` and `OK`, with no skipped tests.
+- Official skill validator: `Skill is valid!`; `git diff --check` passed.
+- Local browser visual inspection confirmed the original dark purple interface, chartreuse accent,
+  branded masthead, and visible `V1.41` badge at the upper right.
+- Cloud Run revision: `quote-card-builder-mcp-00088-yuh`, canary tag `v146`, receiving 100% of
+  canonical service traffic.
+- Deployed image digest:
+  `sha256:a94415429a2df5423a71a1d538bf1d794f5a19857b89f461387a4db5efc7a20d`.
+- Frozen source archive: `/private/tmp/quote-card-builder-cloudrun-v1.41-f2ce591.tar.gz`, SHA-256
+  `5cef217176cf9302567899489631085a62a6ad99ea160faa4fc62538eaeb24d1`.
+- Canary MCP `initialize` returned protocol `2025-06-18` and server version `1.7.17`.
+- Remote v1.41 resource is 214,867 bytes and contains both embedded SVG brand assets, embedded
+  `QCB Barlow`, canonical `--chrome:#2b1830` and `--signal:#b9d936` tokens, and the visible
+  `Quote Card Builder version v1.41` label. The obsolete `display: none !important` hide rule is
+  absent.
+- ChatGPT developer-mode **Aggiorna / Scan Tools** completed after promotion and reported
+  `Azioni aggiornate`; its template now resolves to the v1.41 resource.
+- The remote editor tool returned `isError=false`, `valid=true`, and `rendered=true` after the
+  refreshed scan.
+- The local plugin cache and standalone skill are installed at `1.7.17` / UI v1.41. Plugin cache
+  v1.7.16 and a temporary standalone backup remain available for rollback.
+
 ## Current frozen v1.40 candidate
 
 This section supersedes the historical v1.34 evidence below.
