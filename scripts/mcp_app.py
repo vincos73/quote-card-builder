@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 
 
-QUOTE_CARD_APP_VERSION = "v1.45"
-QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.45.html"
+QUOTE_CARD_APP_VERSION = "v1.46"
+QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.46.html"
 QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.26.html",
     "ui://quote-card-builder/preview/v1.27.html",
@@ -29,6 +29,7 @@ QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
     "ui://quote-card-builder/preview/v1.42.html",
     "ui://quote-card-builder/preview/v1.43.html",
     "ui://quote-card-builder/preview/v1.44.html",
+    "ui://quote-card-builder/preview/v1.45.html",
 )
 QUOTE_CARD_PREVIEW_MIME_TYPE = "text/html;profile=mcp-app"
 QUOTE_CARD_PREVIEW_DOMAIN = "https://quote-card-builder-mcp-960066178304.europe-west8.run.app"
@@ -597,6 +598,7 @@ def quote_card_preview_html() -> str:
       function currentDeliverySnapshot() { return { file:deliveryFile, fileId:deliveryFileId, filename:deliveryFilename, url:deliveryUrl, revision:typeof editRevision === "number" ? editRevision : null, sequence:typeof actionSequence === "number" ? actionSequence : null }; }
       function isCurrentDelivery(snapshot) { return isCurrentAction(snapshot?.sequence, snapshot?.revision) && deliveryFile === snapshot?.file && deliveryFileId === snapshot?.fileId && deliveryFilename === snapshot?.filename && deliveryUrl === snapshot?.url; }
       function canHostDownload(snapshot = currentDeliverySnapshot()) { return Boolean(snapshot?.file && hostCapabilities?.downloadFile); }
+      function canSendFileToChat(snapshot = currentDeliverySnapshot()) { return Boolean(snapshot?.file && hostCapabilities?.message?.resource); }
       function canSendImageToChat(snapshot = currentDeliverySnapshot()) { return Boolean(snapshot?.file && hostCapabilities?.message?.image); }
       async function fileToBase64(file) {
         const bytes = new Uint8Array(await file.arrayBuffer());
@@ -650,7 +652,29 @@ def quote_card_preview_html() -> str:
         );
         if (result?.isError) throw new Error("The PNG hand-off was denied by the host.");
         if (!isCurrentDelivery(snapshot)) return false;
-        status.textContent = "PNG sent to chat. Open the image there to save it.";
+        status.textContent = "PNG sent as an image. Save options depend on this client.";
+        return true;
+      }
+      async function sendPreparedFileToChat(snapshot = currentDeliverySnapshot()) {
+        if (!canSendFileToChat(snapshot)) throw new Error("This host cannot receive PNG files from the widget.");
+        status.textContent = "Sending the PNG file to chat…";
+        scheduleResize();
+        const filename = snapshot.filename || "quote-card.png";
+        const blob = await fileToBase64(snapshot.file);
+        const result = await withTimeout(
+          request("ui/message", {
+            role:"user",
+            content:[
+              { type:"text", text:"Quote Card Builder generated the attached PNG file " + filename + ". Provide a download link for this file; do not invoke the builder again." },
+              { type:"resource", resource:{ uri:"file:///" + encodeURIComponent(filename), mimeType:"image/png", blob } },
+            ],
+          }),
+          30000,
+          "The host did not accept the PNG file hand-off.",
+        );
+        if (result?.isError) throw new Error("The PNG file hand-off was denied by the host.");
+        if (!isCurrentDelivery(snapshot)) return false;
+        status.textContent = "PNG file sent to chat. Use its download action there.";
         return true;
       }
       function canHandoffToChat(snapshot = currentDeliverySnapshot()) {
@@ -726,16 +750,17 @@ def quote_card_preview_html() -> str:
             return;
             }
           }
-        } else if (!canHostDownload() && !canSendImageToChat()) {
+        } else if (!canHostDownload() && !canSendFileToChat() && !canSendImageToChat()) {
           deliveryUrl = URL.createObjectURL(file);
         }
         if (!isCurrentAction(sequence, revision)) return false;
         const hostCanDownload = canHostDownload();
+        const hostCanSendFile = canSendFileToChat();
         const hostCanSendImage = canSendImageToChat();
         const bridgeCanOpen = Boolean(deliveryFileId && window.openai?.openExternal);
         const bridgeCanHandoff = canHandoffToChat();
         const localDownload = deliveryUrl.startsWith("blob:");
-        download.textContent = hostCanDownload || bridgeCanOpen || localDownload ? "Download PNG" : bridgeCanHandoff ? "Send download to chat" : hostCanSendImage ? "Send PNG to chat" : "Save PNG";
+        download.textContent = hostCanDownload || bridgeCanOpen || localDownload ? "Download PNG" : bridgeCanHandoff ? "Send download to chat" : hostCanSendFile ? "Send PNG file to chat" : hostCanSendImage ? "Send PNG to chat" : "Save PNG";
         handoff.hidden = !(bridgeCanOpen && bridgeCanHandoff);
         download.disabled = false; deliveryName.textContent = downloadableName; delivery.hidden = false; scheduleResize();
         status.textContent = hostCanDownload
@@ -746,8 +771,10 @@ def quote_card_preview_html() -> str:
           ? "PNG ready. Download it from this editor."
           : bridgeCanHandoff
             ? "PNG ready. Send its temporary download link to the chat."
+          : hostCanSendFile
+            ? "PNG file ready. Send it to the conversation for download."
           : hostCanSendImage
-            ? "PNG ready. Send the image to the conversation."
+            ? "PNG ready as an image. This host has no file download action."
             : "PNG ready. Save it from this host.";
         return true;
       }
@@ -755,7 +782,7 @@ def quote_card_preview_html() -> str:
         const snapshot = currentDeliverySnapshot();
         if (!snapshot.file && !snapshot.url && !snapshot.fileId) return;
         download.disabled = true;
-        status.textContent = canHostDownload(snapshot) ? "Opening the save dialog…" : snapshot.fileId && window.openai?.openExternal ? "Starting the PNG download…" : snapshot.url.startsWith("blob:") ? "Starting the PNG download…" : canHandoffToChat(snapshot) ? "Sending the PNG link to chat…" : canSendImageToChat(snapshot) ? "Sending the PNG to chat…" : "Opening PNG…";
+        status.textContent = canHostDownload(snapshot) ? "Opening the save dialog…" : snapshot.fileId && window.openai?.openExternal ? "Starting the PNG download…" : snapshot.url.startsWith("blob:") ? "Starting the PNG download…" : canHandoffToChat(snapshot) ? "Sending the PNG link to chat…" : canSendFileToChat(snapshot) ? "Sending the PNG file to chat…" : canSendImageToChat(snapshot) ? "Sending the PNG to chat…" : "Opening PNG…";
         scheduleResize();
         try {
           const bridge = window.openai;
@@ -777,6 +804,8 @@ def quote_card_preview_html() -> str:
             status.textContent = "PNG download started.";
           } else if (canHandoffToChat(snapshot)) {
             await handoffPreparedDownload(snapshot);
+          } else if (canSendFileToChat(snapshot)) {
+            await sendPreparedFileToChat(snapshot);
           } else if (canSendImageToChat(snapshot)) {
             await sendPreparedImageToChat(snapshot);
           } else {

@@ -659,7 +659,7 @@ if (status.textContent !== "PNG download accepted by the host.") throw new Error
         )
         self.assertEqual(0, completed.returncode, completed.stderr)
 
-    def test_png_delivery_uses_standard_image_message_fallback(self):
+    def test_png_delivery_sends_downloadable_resource_before_image_fallback(self):
         if shutil.which("node") is None:
             self.skipTest("Node.js non disponibile: test hand-off MCP Apps saltato")
         import mcp_app
@@ -674,7 +674,7 @@ let deliveryFileId = "";
 let deliveryFilename = "";
 let deliveryFile = null;
 let sentMessage = null;
-let hostCapabilities = { message:{ image:{} } };
+let hostCapabilities = { message:{ resource:{}, image:{} } };
 const download = { disabled:true, textContent:"" };
 const handoff = { hidden:true, disabled:false };
 const deliveryName = { textContent:"" };
@@ -698,12 +698,21 @@ const request = async (method, params) => {
   return {};
 };
 await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-message.svg" });
-if (download.textContent !== "Send PNG to chat") throw new Error(`wrong message action: ${download.textContent}`);
+if (download.textContent !== "Send PNG file to chat") throw new Error(`wrong file action: ${download.textContent}`);
 await openPreparedDownload();
 if (sentMessage?.role !== "user") throw new Error("message role missing");
+const resource = sentMessage?.content?.find((item) => item.type === "resource");
+if (resource?.resource?.uri !== "file:///quote-card-message.png" || resource.resource.mimeType !== "image/png" || resource.resource.blob !== Buffer.from(pngBytes).toString("base64")) throw new Error("downloadable PNG resource missing");
+if (status.textContent !== "PNG file sent to chat. Use its download action there.") throw new Error(`unexpected file status: ${status.textContent}`);
+clearProduction();
+hostCapabilities = { message:{ image:{} } };
+sentMessage = null;
+await prepareDownload({ produced:true, svg:"<svg/>", filename:"quote-card-message.svg" });
+if (download.textContent !== "Send PNG to chat") throw new Error(`wrong image action: ${download.textContent}`);
+await openPreparedDownload();
 const image = sentMessage?.content?.find((item) => item.type === "image");
 if (image?.mimeType !== "image/png" || image.data !== Buffer.from(pngBytes).toString("base64")) throw new Error("PNG image block missing");
-if (status.textContent !== "PNG sent to chat. Open the image there to save it.") throw new Error(`unexpected status: ${status.textContent}`);
+if (status.textContent !== "PNG sent as an image. Save options depend on this client.") throw new Error(`unexpected image status: ${status.textContent}`);
 '''
         completed = subprocess.run(
             ["node", "--input-type=module", "-e", delivery_functions + assertions],
