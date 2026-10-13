@@ -1,6 +1,19 @@
 # Candidate evidence
 
-Evidence date: 2026-09-20, Europe/Rome.
+Evidence date: 2026-10-13, Europe/Rome.
+
+## Current v1.46 MCP Apps PNG hand-off
+
+This section supersedes the v1.45 delivery evidence below for the live pilot.
+
+- Source commit: `009bb4f` on `codex/qcb-live-png-download`; the deployment source worktree was clean.
+- UI resource: `ui://quote-card-builder/preview/v1.46.html`. The v1.45 URI remains available as a compatibility alias.
+- Delivery change: when `ui/initialize` advertises `message.resource`, the editor sends the browser-rendered PNG as an embedded `image/png` resource in `ui/message`. This path precedes the image-only hand-off. Native `ui/download-file` and the ChatGPT uploaded-file route retain priority. The image-only path now says that save options depend on the client.
+- Relevant UI/MCP tests: 35 passed. The dependency-complete `uv run --frozen python -m unittest discover -s tests -q` exited successfully. The focused regression checks both resource-first delivery and the image-only fallback.
+- Cloud Run revision: `quote-card-builder-mcp-00100-naz`, tag `v151`, `Ready=True`, receiving 100% of canonical service traffic. The prior revision `00097-qax` remains tagged `v150` for rollback.
+- Image digest: `sha256:ed536612e4a558bf5c2d5ddef8da8747d8f8bc41254dc2161fbc7c53d361305f`.
+- Direct canary and both canonical backend hostnames completed MCP initialization, listed the v1.46 resource, read its HTML, and confirmed the new file route. A tool call through the Sites plugin returned `valid=true` and `rendered=true` after promotion.
+- The final click-through in the user's Codex client remains to be verified: the observed host must advertise `message.resource` and show the embedded PNG as a downloadable file. Server and protocol checks alone do not establish that UI outcome.
 
 ## Current v1.45 hosted-download correction
 
