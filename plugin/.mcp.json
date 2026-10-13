@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "quote-card-builder": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--frozen",
+        "python",
+        "scripts/mcp_server.py",
+        "--local-file-delivery"
+      ],
+      "cwd": "skills/quote-card-builder"
+    }
+  }
+}

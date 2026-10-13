@@ -1,0 +1,5 @@
+# MCP Apps 2.x registers the inline editor as an Apps extension instead of
+# relying on legacy FastMCP resource metadata.
+mcp[cli]==2.1.1
+openai-mcp-extensions==0.2.0
+google-cloud-storage==3.4.1

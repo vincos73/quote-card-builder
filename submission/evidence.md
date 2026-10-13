@@ -1,0 +1,290 @@
+# Candidate evidence
+
+Evidence date: 2026-10-13, Europe/Rome.
+
+## Current 1.8.10 / UI v1.57 deployment
+
+- Source version: plugin and MCP server `1.8.10`; current resource
+  `ui://quote-card-builder/workspace/v1.57.html`.
+- Cloud Run revision: `quote-card-builder-mcp-00122-yoc`, ready and receiving 100% of canonical
+  service traffic. Public endpoint:
+  `https://quote-card-builder-mcp-960066178304.europe-west8.run.app/mcp`.
+- The opening instructions compose medium-length quotes into short semantic rows for smartphone
+  readability while preserving source wording and punctuation. The verified example renders on
+  seven rows at 106.4 px on the 1440 px remote canvas.
+- Attribution uses 46.8 px on the 1440 px canvas. The interface caption class is now
+  `.qcb-preview-caption`, preventing its 9 px UI rule from overriding the SVG attribution in the
+  inline preview.
+- Canary and production checks passed for server version, current UI resource, scoped caption CSS,
+  exact wording and one representative render. Two focused regression tests, Python compilation
+  and `git diff --check` passed. The complete suite and a new native ChatGPT/download visual check
+  were intentionally not repeated for this correction; the user owns the final visual check.
+- Frozen deployment source and machine-readable evidence are documented in root
+  `RELEASE-STATUS.md`. Local installed plugin/skill state remains 1.8.3 and is not presented as
+  updated by this GitHub release.
+
+## Historical v1.46 MCP Apps PNG hand-off
+
+This section supersedes the v1.45 delivery evidence below for the live pilot.
+
+- Source commit: `009bb4f` on `codex/qcb-live-png-download`; the deployment source worktree was clean.
+- UI resource: `ui://quote-card-builder/preview/v1.46.html`. The v1.45 URI remains available as a compatibility alias.
+- Delivery change: when `ui/initialize` advertises `message.resource`, the editor sends the browser-rendered PNG as an embedded `image/png` resource in `ui/message`. This path precedes the image-only hand-off. Native `ui/download-file` and the ChatGPT uploaded-file route retain priority. The image-only path now says that save options depend on the client.
+- Relevant UI/MCP tests: 35 passed. The dependency-complete `uv run --frozen python -m unittest discover -s tests -q` exited successfully. The focused regression checks both resource-first delivery and the image-only fallback.
+- Cloud Run revision: `quote-card-builder-mcp-00100-naz`, tag `v151`, `Ready=True`, receiving 100% of canonical service traffic. The prior revision `00097-qax` remains tagged `v150` for rollback.
+- Image digest: `sha256:ed536612e4a558bf5c2d5ddef8da8747d8f8bc41254dc2161fbc7c53d361305f`.
+- Direct canary and both canonical backend hostnames completed MCP initialization, listed the v1.46 resource, read its HTML, and confirmed the new file route. A tool call through the Sites plugin returned `valid=true` and `rendered=true` after promotion.
+- Final click-through in the user's Codex client: after selecting `Generate PNG` and `Send PNG file to chat`, the host delivered an embedded `image/png` resource (`quote-card-415eacd8.png`). The user confirmed in this chat that a downloadable PNG appears. This verifies the file hand-off in the live pilot client.
+
+## Current v1.45 hosted-download correction
+
+This section supersedes the v1.41 candidate below.
+
+- Frozen correction commit: `86b5e2b` (`Fall back to local PNG download`) on branch
+  `codex/qcb-remote-v1.45`.
+- Plugin/server version: `1.7.21`; current UI resource:
+  `ui://quote-card-builder/preview/v1.45.html`.
+- Delivery correction: the editor first uploads the browser-rendered PNG with ChatGPT's
+  `uploadFile` bridge. If the temporary file URL uses an explicitly approved redirect origin,
+  **Download PNG** opens it through the host; if ChatGPT returns another regional Azure origin,
+  the editor uses a local `blob:` download from the PNG already in memory. The chat attachment
+  path is optional and no longer the primary delivery path.
+- Full test suite: `Ran 297 tests in 9.521s` and `OK`, with no skipped tests. The regression tests
+  cover both an approved temporary URL and an unknown regional origin falling back to one local
+  download without calling `openExternal`.
+- Official skill validator: `Skill is valid!`.
+- Cloud Run revision: `quote-card-builder-mcp-00097-qax`, canary tag `v150`, receiving 100% of
+  canonical service traffic and reporting `Ready=True`.
+- Deployed image digest:
+  `sha256:3d92d083193c40b448c586e809cd46d006a668408bf2f0a1221d64ea7dd6c56f`.
+- Frozen source archive: `/private/tmp/quote-card-builder-cloudrun-v1.45-86b5e2b.tar.gz`, SHA-256
+  `6e0cfb655485d246ab8f8ab7a44520bfc574df81463c885fa1124480178754d9`.
+- Plugin package: `/private/tmp/quote-card-builder-plugin-v1.7.21.zip`, SHA-256
+  `918fb9dcbd4fa2cdee27e23d49a26d3c059cc6c356b65886f4706b5585ad0744`; `unzip -t` reported no
+  errors.
+- Canonical MCP verification returned server version `1.7.21`, the 212,236-byte v1.45 resource,
+  the visible v1.45 badge, the local Blob fallback, `isError=false`, `valid=true`, and
+  `rendered=true`.
+- ChatGPT developer-mode **Aggiorna / Scan Tools** completed after promotion and resolved the
+  template to `ui://quote-card-builder/preview/v1.45.html`.
+- Hosted ChatGPT end-to-end verification succeeded on 2026-09-20: the existing editor refreshed
+  through its compatibility URI but displayed `V1.45`; **Generate PNG** produced
+  `quote-card-14d6163f.png`; **Download PNG** opened the temporary image in a new browser tab; and
+  the resulting card rendered at 1440 by 1800 pixels with the expected quote and attribution.
+- The local plugin cache and standalone skill are installed at `1.7.21` / UI v1.45. Both were
+  compared with `diff -qr` against the verified expanded package with no differences. Older cache
+  versions remain available for rollback.
+
+## Current v1.41 visual-regression correction
+
+This section supersedes the v1.40 candidate below.
+
+- Frozen correction commit: `f2ce591` (`Restore Quote Card Builder branded UI`) on branch
+  `codex/qcb-remote-v1.41`.
+- Plugin/server version: `1.7.17`; current UI resource:
+  `ui://quote-card-builder/preview/v1.41.html`.
+- Regression cause: v1.40 removed the branded masthead and injected a host-theme rule that hid
+  `.app-header`, `.product-title`, `.product-byline`, and `.version-badge` while replacing the
+  canonical interface palette and typography.
+- Correction: v1.41 retains the v1.40 host-context, tool-result, state, timeout, download, and
+  headless-fallback work, while restoring the self-contained Quote Card Builder wordmark, Vincos
+  lockup, embedded Barlow faces, Plotter Bench palette, square controls, and visible v1.41 badge.
+- Full test suite: `Ran 297 tests in 10.062s` and `OK`, with no skipped tests.
+- Official skill validator: `Skill is valid!`; `git diff --check` passed.
+- Local browser visual inspection confirmed the original dark purple interface, chartreuse accent,
+  branded masthead, and visible `V1.41` badge at the upper right.
+- Cloud Run revision: `quote-card-builder-mcp-00088-yuh`, canary tag `v146`, receiving 100% of
+  canonical service traffic.
+- Deployed image digest:
+  `sha256:a94415429a2df5423a71a1d538bf1d794f5a19857b89f461387a4db5efc7a20d`.
+- Frozen source archive: `/private/tmp/quote-card-builder-cloudrun-v1.41-f2ce591.tar.gz`, SHA-256
+  `5cef217176cf9302567899489631085a62a6ad99ea160faa4fc62538eaeb24d1`.
+- Canary MCP `initialize` returned protocol `2025-06-18` and server version `1.7.17`.
+- Remote v1.41 resource is 214,867 bytes and contains both embedded SVG brand assets, embedded
+  `QCB Barlow`, canonical `--chrome:#2b1830` and `--signal:#b9d936` tokens, and the visible
+  `Quote Card Builder version v1.41` label. The obsolete `display: none !important` hide rule is
+  absent.
+- ChatGPT developer-mode **Aggiorna / Scan Tools** completed after promotion and reported
+  `Azioni aggiornate`; its template now resolves to the v1.41 resource.
+- The remote editor tool returned `isError=false`, `valid=true`, and `rendered=true` after the
+  refreshed scan.
+- The local plugin cache and standalone skill are installed at `1.7.17` / UI v1.41. Plugin cache
+  v1.7.16 and a temporary standalone backup remain available for rollback.
+
+## Current frozen v1.40 candidate
+
+This section supersedes the historical v1.34 evidence below.
+
+- Frozen source commit: `8255bc998dd056f7454735a72e5dcae1fdd8bec6`
+  (`Prepare Quote Card Builder remote UI v1.40`).
+- Clean branch and worktree: `codex/qcb-remote-v1.40` in
+  `/Users/vincos/.codex/worktrees/qcb-remote-v1-40/Quote Builder`.
+- Plugin/server version: `1.7.16`.
+- Current UI resource: `ui://quote-card-builder/preview/v1.40.html`.
+- Cloud Run revision: `quote-card-builder-mcp-00086-cuq` in project
+  `quote-card-builder-mcp`, region `europe-west8`.
+- Deployed image:
+  `europe-west8-docker.pkg.dev/quote-card-builder-mcp/cloud-run-source-deploy/quote-card-builder-mcp@sha256:3956efce9775476c94b6342a8a3d0073ed1b0cd7d481e535cf28b941ac008f85`.
+- Canary tag: `v145`; the canonical service now sends 100% of traffic to revision `00086-cuq`.
+- Public MCP URL:
+  `https://quote-card-builder-mcp-960066178304.europe-west8.run.app/mcp`.
+- Source archive: `/private/tmp/quote-card-builder-cloudrun-v1.40-8255bc9.tar.gz`.
+- Source archive SHA-256:
+  `90ac3d731240b8d429359e9631dbdfeec37cce75f9f41ae518ff461a2e6679cf`.
+- Candidate test suite: `Ran 297 tests in 11.333s` and `OK`, with no skipped tests.
+- Official skill validator: `Skill is valid!`; `git diff --check` passed.
+- Remote MCP `initialize` returned protocol `2025-06-18` and server version `1.7.16`.
+- Remote `resources/read` returned the v1.40 HTML resource (97,517 bytes), including
+  `setWidgetState`, `ui/download-file`, and `ui/update-model-context` integration.
+- Remote `quote_card_builder_open_editor` returned `isError=false`, `valid=true`, and
+  `rendered=true` with a neutral 4:5 diagnostic card.
+- ChatGPT developer-mode **Aggiorna / Scan Tools** completed successfully on 2026-09-20. The
+  refreshed surface exposes `quote_card_builder_open_editor` and
+  `quote_card_builder_headless` as public tools, keeps `preview_quote_card` and
+  `produce_quote_card` app-private, requires Quote, Attribution, and Palette for the editor,
+  treats Style as an optional preselection, and points at the v1.40 UI resource.
+- Authentication remains intentionally disabled for the current test phase. The service renders
+  stateless, in-memory output and does not access user-specific records or change external data.
+  OAuth 2.1 must be introduced before any future user-specific data access or external writes.
+
+The ChatGPT Apps Management entry remains in `development` status. Public submission and listing
+have not been performed.
+
+## Local production candidate
+
+- Canonical skill and plugin manifest: `1.7.11`.
+- MCP App badge: `v1.34` without a test suffix.
+- Current UI resource: `ui://quote-card-builder/preview/v1.34.html`.
+- Compatibility resources: v1.26 through v1.33.
+- Domain challenge route: implemented, disabled with `404` until a portal token is configured.
+- Deployment status: v1.34 is deployed as revision `quote-card-builder-mcp-00064-raf`, ready and
+  receiving 100% of production traffic.
+- Header typography: v1.34 embeds the approved `Orbitron-Variable-latin.woff2` in the product SVG,
+  prevents host font fallback, and tightens the optical spacing between the two title groups.
+- PNG delivery: v1.34 converts the canonical SVG to PNG in the browser, uploads it through the
+  optional ChatGPT file bridge with `library: false`, requests a temporary download URL, and opens
+  that URL through the host. Other compatible hosts retain the local Blob fallback.
+- Hosted behavior observed after deployment: ChatGPT presents its external-link confirmation and
+  opens the temporary PNG URL in a browser tab; it does not force a download. Deployed v1.34
+  therefore labels the action **Open PNG** and instructs the user to save from the browser.
+
+The actual local Streamable HTTP server was started with a non-production test value for
+`OPENAI_APPS_CHALLENGE_TOKEN`. Both `/health` and `/.well-known/openai-apps-challenge` returned
+HTTP 200; the challenge body matched the configured test value. No token value is retained in
+this public evidence pack.
+
+## Version alignment
+
+- `plugin/.codex-plugin/plugin.json`: version `1.7.11`.
+- `scripts/mcp_app.py`: badge `v1.34` and current resource
+  `ui://quote-card-builder/preview/v1.34.html`.
+- Local v1.34 keeps v1.26 through v1.33 compatibility aliases.
+- Remote v1.34 resource evidence is recorded below. A fresh hosted ChatGPT click-through remains a
+  separate, required verification.
+
+## Deployment evidence
+
+The following evidence applies to the deployed v1.34 candidate.
+
+- Cloud Run service: `quote-card-builder-mcp`.
+- Project: `quote-card-builder-mcp`.
+- Region: `europe-west8`.
+- Cloud Build ID: `6e563164-b49c-4a66-81a0-2b262c85ef7e`, status `SUCCESS`.
+- Revision observed after deployment: `quote-card-builder-mcp-00064-raf`, ready and receiving 100%
+  traffic.
+- Image deployed:
+  `europe-west8-docker.pkg.dev/quote-card-builder-mcp/quote-card-builder/quote-card-builder@sha256:97a0410f1c452a07085bfcc59133c08ca48dd872d0be538bcc0dfa893c02c135`.
+- Image digest:
+  `sha256:97a0410f1c452a07085bfcc59133c08ca48dd872d0be538bcc0dfa893c02c135`.
+- Public service URL: `https://quote-card-builder-mcp-960066178304.europe-west8.run.app`.
+- Live health response:
+  `{"status":"ok","service":"quote-card-builder","mcp_path":"/mcp"}`.
+- Live MCP `initialize`: HTTP 200, protocol `2025-06-18`, English workflow instructions.
+- Live MCP `resources/read` for `ui://quote-card-builder/preview/v1.34.html` returns a 168,928-byte
+  response containing the v1.34 component, **Open PNG**, and **Prepare image**; the obsolete
+  **Download PNG** and **Prepare final download** copy is absent.
+- Live health response and MCP handshake were verified after routing 100% traffic to v1.34. The
+  handshake returned protocol `2025-06-18` and a valid MCP session ID; the initialized
+  notification returned HTTP 202.
+- Live challenge route returns HTTP 404 while `OPENAI_APPS_CHALLENGE_TOKEN` is intentionally unset.
+
+The first v1.27 revision, `quote-card-builder-mcp-00044-25p`, exposed a missing embedded logo asset
+during `resources/read`. Traffic was immediately returned to the working v1.26 revision. The
+Dockerfile was corrected, the container contract test was extended, and only corrected revision
+`00045-mdw` was then assigned production traffic.
+
+## Package evidence
+
+- Local v1.31 candidate package: `dist/quote-card-builder-plugin-v1.7.11.zip`
+  - SHA-256: `3642108255c659f2a6c1db48ecb2778e15bfd90ccfbb5bbbee72c1c401177f3c`
+  - archive-tested with `unzip -t`
+  - `unzip -t`: no errors
+- Cloud Run source archive: `dist/quote-card-builder-cloudrun-v1.34-clean.tar.gz`
+  - SHA-256: `f41b0509483f63d4cf2f6d6421baf3445803c1627f27a0e5cb87aa12e897cb63`
+  - archive listing verified locally and in Cloud Shell; built without macOS extended headers
+  - uploaded, built, and deployed as Cloud Build `6e563164-b49c-4a66-81a0-2b262c85ef7e`
+
+Historical v1.28 deployment evidence remains in the repository history; the prior production
+revision was `quote-card-builder-mcp-00047-tpj` with image digest
+`sha256:f5df9d06a66350b11428e39cb2e0eac658a1c3903b7996b06c78fbb3b82ea81a`.
+
+Historical v1.27 package evidence remains for auditability:
+
+- Local production package: `dist/quote-card-builder-plugin-v1.7.7.zip`
+  - SHA-256: `4d46b5af9f94ca35d9b8de1e7aad4659d6069cafec7d3487b53afba5117139eb`
+  - 45 archive entries
+  - `unzip -t`: no errors
+  - official local plugin validator: passed
+- Local production source: `dist/quote-card-builder-cloudrun-v1.27-fixed.tar.gz`
+  - SHA-256: `15e25d071d6f2539c29506651bc299dc201db9b4834527949d823351ae3bf220`
+  - contains only Docker configuration, the MCP/renderer dependency chain, bundled fonts, and the
+    approved Vincos lockup used by the self-contained UI
+  - no `work/`, `__pycache__`, `.pyc`, `.DS_Store`, or AppleDouble entries found by the archive
+    hygiene check
+
+The previously observed production package remains:
+
+- `dist/quote-card-builder-plugin-v1.7.6.zip` —
+  `384a4957931e54877df34dc53d68847aa90b57b1336af4738b5aeebb24220535`.
+- `dist/quote-card-builder-cloudrun-v1.26.tar.gz` —
+  `d05af3659176c253cfb91442be7ce4f735886041fa78a472d82a8a16dc80d51e`.
+
+## Test evidence
+
+Verified command:
+
+```text
+python3 -m pytest -q tests
+```
+
+The complete test suite passes when socket and headless-browser tests are allowed:
+
+```text
+225 passed, 9 skipped, 210 subtests passed in 4.62s
+```
+
+The same suite inside the restricted sandbox produced three environmental failures (two denied
+localhost binds and one denied Chrome process); the unrestricted verification above passed.
+
+The local production candidate adds `pytest.ini`, so bare `python3 -m pytest -q` is constrained to
+the canonical `tests/` directory and does not collect archives under `work/`.
+
+Docker is not installed in the local execution environment. The v1.34 source archive was built by
+Cloud Build; the resulting image digest, Cloud Run revision, traffic split, MCP handshake,
+resource payload, and health response are recorded above. A fresh visual click-through and real
+open-and-save flow in the hosted ChatGPT iframe remain required before submission.
+
+## Architectural evidence
+
+- `scripts/mcp_server.py` imports the MCP adapter from `mcp_quote_card.py`.
+- `mcp_quote_card.py` delegates rendering to `render_quote_card.py`.
+- The MCP UI transports editor state and sanitizes returned SVG before DOM insertion.
+- Browser-side PNG conversion consumes the canonical SVG; it does not redraw the card with a
+  separate layout engine.
+- The server declares no external write, destructive, or open-world behavior for any tool.
+
+## Reproducibility caveat
+
+The worktree is detached and contains modified and untracked files. The package hashes and remote
+revision above identify the observed candidate, but a clean source commit has not yet been frozen
+as its reproducible release origin.

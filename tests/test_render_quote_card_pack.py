@@ -84,6 +84,64 @@ class ProductionManifestTests(unittest.TestCase):
             manifest = production_manifest(proof_path)
             self.assertEqual([], PACK.validate_production_manifest(manifest, Path(temp_dir)))
 
+    def test_production_pack_refuses_a_gradient_that_fails_the_full_surface_audit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            proof_path = root / "proof.png"
+            proof_path.write_bytes(b"proof")
+            manifest = production_manifest(proof_path)
+            manifest["approval"]["direction"] = "editorial"
+            manifest["presentation"].update({
+                "graphic_variant": "gradient",
+                "graphic_mode": "auto",
+                "logo_mode": "hidden",
+            })
+            manifest_path = root / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with mock.patch.object(
+                PACK.proof,
+                "gradient_render_safety",
+                return_value={"passed": False, "logo_status": "hidden"},
+            ):
+                with self.assertRaisesRegex(RuntimeError, "Gradient"):
+                    PACK.render_pack(
+                        manifest,
+                        manifest_path,
+                        root / "output",
+                        "never",
+                        None,
+                        None,
+                        "keep",
+                    )
+
+    def test_production_pack_records_the_gradient_surface_audit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            proof_path = root / "proof.png"
+            proof_path.write_bytes(b"proof")
+            manifest = production_manifest(proof_path)
+            manifest["approval"]["direction"] = "editorial"
+            manifest["presentation"].update({
+                "graphic_variant": "gradient",
+                "graphic_mode": "auto",
+                "logo_mode": "hidden",
+            })
+            manifest["formats"] = [manifest["formats"][0]]
+            manifest_path = root / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            result = PACK.render_pack(
+                manifest,
+                manifest_path,
+                root / "output",
+                "never",
+                None,
+                None,
+                "keep",
+            )
+            qa = json.loads(Path(result["qa_report"]).read_text(encoding="utf-8"))
+            self.assertTrue(qa["checks"]["gradient_contrast"]["passed"])
+            self.assertEqual("not_present", qa["checks"]["gradient_contrast"]["logo_status"])
+
     def test_rejects_content_changed_after_approval(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             proof_path = Path(temp_dir) / "proof.png"
