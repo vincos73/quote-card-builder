@@ -13,7 +13,7 @@ This section supersedes the v1.45 delivery evidence below for the live pilot.
 - Cloud Run revision: `quote-card-builder-mcp-00100-naz`, tag `v151`, `Ready=True`, receiving 100% of canonical service traffic. The prior revision `00097-qax` remains tagged `v150` for rollback.
 - Image digest: `sha256:ed536612e4a558bf5c2d5ddef8da8747d8f8bc41254dc2161fbc7c53d361305f`.
 - Direct canary and both canonical backend hostnames completed MCP initialization, listed the v1.46 resource, read its HTML, and confirmed the new file route. A tool call through the Sites plugin returned `valid=true` and `rendered=true` after promotion.
-- The final click-through in the user's Codex client remains to be verified: the observed host must advertise `message.resource` and show the embedded PNG as a downloadable file. Server and protocol checks alone do not establish that UI outcome.
+- Final click-through in the user's Codex client: after selecting `Generate PNG` and `Send PNG file to chat`, the host delivered an embedded `image/png` resource (`quote-card-415eacd8.png`). The user confirmed in this chat that a downloadable PNG appears. This verifies the file hand-off in the live pilot client.
 
 ## Current v1.45 hosted-download correction
 
