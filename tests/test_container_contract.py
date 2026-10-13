@@ -17,6 +17,7 @@ class ContainerContractTests(unittest.TestCase):
             "mcp_server.py",
             "mcp_quote_card.py",
             "mcp_app.py",
+            "remote_png_store.py",
             "render_quote_card.py",
             "quote_card_contract.py",
             "rasterize.py",
@@ -33,13 +34,24 @@ class ContainerContractTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn("COPY assets/card-editor/fonts/ ./assets/card-editor/fonts/", dockerfile)
+        self.assertIn("COPY assets/mcp-editor/ ./assets/mcp-editor/", dockerfile)
         self.assertIn("PORT=8080", dockerfile)
+        self.assertIn("COPY pyproject.toml ./", dockerfile)
 
     def test_build_context_excludes_session_artifacts(self):
         ignored = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
         self.assertIn("work/", ignored)
         self.assertIn(".git", ignored)
         self.assertNotIn("assets/", ignored)
+
+    def test_ci_python_matrix_matches_supported_runtime(self):
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        self.assertIn('requires-python = ">=3.12,<3.15"', pyproject)
+        self.assertIn('python-version: ["3.12", "3.13", "3.14"]', workflow)
+        self.assertNotRegex(workflow, r'"3\.(?:10|11)"')
+        self.assertIn('python-version: "3.12"', release)
 
 
 if __name__ == "__main__":

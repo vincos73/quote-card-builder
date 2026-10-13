@@ -1,8 +1,15 @@
 {
   "mcpServers": {
     "quote-card-builder": {
-      "command": "python3",
-      "args": ["skills/quote-card-builder/scripts/mcp_server.py"]
+      "command": "uv",
+      "args": [
+        "run",
+        "--frozen",
+        "python",
+        "scripts/mcp_server.py",
+        "--local-file-delivery"
+      ],
+      "cwd": "skills/quote-card-builder"
     }
   }
 }

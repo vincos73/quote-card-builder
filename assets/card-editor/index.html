@@ -92,7 +92,12 @@
         </summary>
         <div class="palette-content">
           <div id="brand-colors" class="brand-colors" role="list" aria-label="Colori applicati alla card"></div>
-          <p id="color-palette-help" class="palette-help">Profilo protetto.</p>
+          <div class="palette-actions" aria-label="Azioni palette">
+            <label for="palette-preset"><span>Palette pronta</span><select id="palette-preset"></select></label>
+            <button id="palette-reset" type="button">Ripristina iniziali</button>
+          </div>
+          <p id="palette-contrast" class="palette-contrast" role="status" aria-live="polite"></p>
+          <p id="color-palette-help" class="palette-help">Modifica i colori della card. Il reset ripristina i colori iniziali di questa sessione.</p>
           <div class="profile-save-row">
             <span><small>Profilo riutilizzabile</small><strong id="profile-save-state">Verifica in corso</strong></span>
             <div class="profile-row-actions">
@@ -112,39 +117,38 @@
       </details>
 
       <form id="editor-form">
-        <fieldset class="tool-section direction-section">
+        <fieldset class="tool-section style-section">
           <legend>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h11M4 17h7"/></svg>
-            <span>Stili</span>
+            <span>Style</span>
           </legend>
-          <div class="directions" role="group" aria-label="Stile visuale">
-            <button type="button" data-direction="editorial" aria-pressed="false"><span>ED</span><small>Editorial</small></button>
-            <button type="button" data-direction="statement" aria-pressed="false"><span>PS</span><small>Poster</small></button>
-            <button type="button" data-direction="contextual" aria-pressed="false"><span>FR</span><small>Frame</small></button>
+          <div class="style-picker" id="style-picker" role="group" aria-label="Choose a style">
+            <button type="button" data-style-choice="blocks" aria-pressed="false"><svg class="style-thumb" viewBox="0 0 36 24" aria-hidden="true"></svg><span>Blocks</span></button>
+            <button type="button" data-style-choice="cutouts" aria-pressed="false"><svg class="style-thumb" viewBox="0 0 36 24" aria-hidden="true"></svg><span>Cutouts</span></button>
+            <button type="button" data-style-choice="constellations" aria-pressed="false"><svg class="style-thumb" viewBox="0 0 36 24" aria-hidden="true"></svg><span>Constellations</span></button>
+            <button type="button" data-style-choice="gradient" aria-pressed="false"><svg class="style-thumb" viewBox="0 0 36 24" aria-hidden="true"></svg><span>Gradient</span></button>
+            <button type="button" data-style-choice="plain" aria-pressed="false"><svg class="style-thumb" viewBox="0 0 36 24" aria-hidden="true"><path d="M5 12h26"/></svg><span>Hide pattern</span></button>
+            <button type="button" data-style-choice="legacy" aria-pressed="false" hidden><svg class="style-thumb" viewBox="0 0 36 24" aria-hidden="true"><path d="M5 5l26 14M31 5L5 19"/></svg><span>Legacy</span></button>
+          </div>
+          <p id="graphic-help" class="style-help" aria-live="polite">Choose a visual style.</p>
+          <div id="cover-variation" class="cover-variation" hidden>
+            <div class="segmented">
+              <button type="button" id="cover-previous">Previous</button>
+              <button type="button" id="cover-next">Vary pattern</button>
+            </div>
+            <output id="cover-seed" aria-live="polite">Variant 1</output>
           </div>
         </fieldset>
 
-        <fieldset class="tool-section graphic-section">
-          <legend>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17c3-6 6-10 16-10M4 20c5-6 9-9 16-9M13 20c2-3 4-5 7-6"/></svg>
-            <span>Motivo</span>
-          </legend>
-          <div class="segmented motif-control" id="graphic-control" role="group" aria-label="Motivo per lo stile selezionato">
-            <button type="button" data-graphic-choice="default" aria-pressed="false">
-              <svg class="motif-swatch" viewBox="0 0 28 18" aria-hidden="true"></svg>
-              <span class="motif-label">Originale</span>
-            </button>
-            <button type="button" data-graphic-choice="alternate" aria-pressed="false">
-              <svg class="motif-swatch" viewBox="0 0 28 18" aria-hidden="true"></svg>
-              <span class="motif-label">Alternativo</span>
-            </button>
-            <button type="button" data-graphic-choice="hidden" aria-pressed="false">
-              <svg class="motif-swatch" viewBox="0 0 28 18" aria-hidden="true"><path d="M6 3l16 12M22 3L6 15"/></svg>
-              <span class="motif-label">Nessuno</span>
-            </button>
+        <section class="my-styles" aria-labelledby="my-styles-title">
+          <div class="my-styles-heading"><h2 id="my-styles-title">My styles</h2><span id="style-save-state">Available in this session</span></div>
+          <div id="saved-styles" class="saved-styles" role="list" aria-live="polite"></div>
+          <div id="style-save-form" class="style-save-form" role="form">
+            <label for="style-name"><span>Style name</span><input id="style-name" type="text" maxlength="80" autocomplete="off" placeholder="e.g. Campaign dark"></label>
+            <button id="style-save-confirm" type="button">Save style</button>
           </div>
-          <p id="graphic-help" class="sr-only">Il motivo segue lo stile selezionato.</p>
-        </fieldset>
+          <p id="style-save-feedback" class="style-save-feedback" role="status" aria-live="polite" hidden></p>
+        </section>
 
         <div id="editorial-fields" class="tool-section lines-section content-section">
           <div class="field-label">

@@ -37,11 +37,7 @@ VALID_EVIDENCE_STATUSES = {"VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"
 VALID_DIRECTIONS = {"editorial", "statement", "contextual"}
 VALID_STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent", "outline"}
 VALID_GRAPHIC_MODES = {"auto", "hidden"}
-GRAPHIC_VARIANTS = {
-    "editorial": {"default", "rhythm_lines"},
-    "statement": {"default", "modules"},
-    "contextual": {"default", "route_map"},
-}
+GRAPHIC_VARIANTS = renderer.GRAPHIC_VARIANTS
 VALID_VERTICAL_POSITIONS = {"upper", "center", "lower"}
 PALETTE_COLOR_KEYS = ("primary", "accent", "background", "text")
 HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -228,6 +224,9 @@ def build_manifest(payload: Mapping[str, Any], manifest_dir: Path | None = None)
     graphic_variant = payload.get("graphic_variant", "default")
     if graphic_variant not in GRAPHIC_VARIANTS.get(direction, set()):
         errors.append(_issue("graphic_variant", "enum", "The motif does not belong to the selected direction."))
+    graphic_seed = payload.get("graphic_seed", 0)
+    if not renderer.graphic_seed_allowed(graphic_seed):
+        errors.append(_issue("graphic_seed", "range", "Use an integer between 0 and 999999."))
     vertical_position = payload.get("vertical_position", "center")
     if vertical_position not in VALID_VERTICAL_POSITIONS:
         errors.append(_issue("vertical_position", "enum", "Use upper, center, or lower."))
@@ -269,7 +268,12 @@ def build_manifest(payload: Mapping[str, Any], manifest_dir: Path | None = None)
         "content": content,
         "canvas": {"width": FORMATS[format_id]["width"], "height": FORMATS[format_id]["height"]},
         "direction": direction,
-        "presentation": {"logo_mode": "hidden", "graphic_mode": graphic_mode, "graphic_variant": graphic_variant},
+        "presentation": {
+            "logo_mode": "hidden",
+            "graphic_mode": graphic_mode,
+            "graphic_variant": graphic_variant,
+            "graphic_seed": graphic_seed,
+        },
         "brand": brand,
         "source": {"title": "MCP input", "locator": "mcp://quote-card-builder/preview"},
         "output": {"basename": "quote-card-preview"},

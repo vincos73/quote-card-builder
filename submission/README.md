@@ -6,14 +6,19 @@ canonical Python renderer.
 
 ## Candidate under review
 
-- Current candidate: plugin `1.7.12`, MCP App UI `v1.39`
-- Deployed MCP App UI: `v1.38`
-- Deployed revision: `quote-card-builder-mcp-00074-mod`, ready and receiving 100% of traffic
+- Current candidate: plugin `1.8.10`, MCP App UI `v1.57`
+- Deployed MCP App UI: `v1.57`
+- Deployed revision: `quote-card-builder-mcp-00122-yoc`, ready and receiving 100% of traffic
 - Public MCP endpoint: `https://quote-card-builder-mcp-960066178304.europe-west8.run.app/mcp`
-- Candidate UI resource: `ui://quote-card-builder/preview/v1.39.html`
+- Current UI resource: `ui://quote-card-builder/workspace/v1.57.html`
 - Authentication: none
-- Persistence: none in the application runtime
+- Persistence: no personal account data; temporary PNG delivery only
 - Canonical renderer: `scripts/render_quote_card.py`, reached through the thin MCP adapter
+
+The current release uses short semantic rows for mobile readability, defaults to the neutral
+palette and no attribution, and offers one-step PNG download. The UI caption style is scoped away
+from the SVG, so attribution typography remains consistent between preview and exported image.
+Root `RELEASE-STATUS.md` records the deployment and the intentionally limited 1.8.10 checks.
 
 The local plugin package uses `.mcp.json` and stdio for development. The submission form must
 instead receive the public Universal MCP URL above; a local marketplace entry or integration ID

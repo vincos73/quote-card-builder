@@ -1,8 +1,19 @@
 # Submission checklist
 
-Status legend: **PASS** verified on the current candidate; **PORTAL** must be verified in the
-OpenAI submission flow; **BLOCKED** required input or decision is missing; **FIX** candidate work
-is recommended before submission.
+> **Historical snapshot:** This checklist records the local review from 2026-09-20 for package
+> `1.7.16` and UI resource `v1.40`. Every **PASS** below applies only to that reviewed snapshot;
+> it is not evidence for candidate `1.8.10`, a current deployment, or an installed plugin. Use the
+> root `RELEASE-STATUS.md` for the current distribution state once it is added.
+
+Status legend for the 2026-09-20 review: **PASS** verified on that review snapshot; **PORTAL** had
+to be verified in the OpenAI submission flow; **BLOCKED** required input or decision was missing;
+**FIX** candidate work was recommended before submission; **HISTORICAL** evidence for an earlier
+candidate only.
+
+Local review: 2026-09-20. Package version: `1.7.16`. UI resource: `v1.40`.
+This checklist distinguishes local source/tests from hosted behavior. No deployment, installation,
+or public release was performed during this review. Earlier deployment records remain in
+`submission/evidence.md`; they do not verify the current candidate or current remote state.
 
 ## Account and submission channel
 
@@ -12,7 +23,8 @@ is recommended before submission.
   an MCP server at the time this checklist was prepared.
 - **PASS** The candidate is correctly treated as a plugin with an MCP server, not as a skills-only
   package.
-- **PASS** The remote Universal MCP URL is known and public.
+- **HISTORICAL** A public Universal MCP URL is recorded in the deployment evidence. Recheck it
+  against the frozen release candidate before submission.
 
 ## Listing
 
@@ -28,13 +40,21 @@ is recommended before submission.
 
 ## MCP server
 
-- **PASS** `/health` responds successfully over HTTPS.
-- **PASS** Streamable HTTP `initialize` succeeds with protocol `2025-06-18`.
-- **PASS** Three tools are exposed with explicit input and structured output schemas.
+- **HISTORICAL** HTTPS `/health` and Streamable HTTP initialization were verified for the earlier
+  deployment. Repeat both against the final deployment and record its negotiated protocol.
+- **PASS** Four tools have explicit input and structured output schemas.
+- **PASS** MCP initialization reports the project version `1.7.16`; primary routing and
+  headless approval requirements appear within the first 512 instruction characters.
+- **PASS** Legacy editor calls retain `svg` and `svg_data_uri`; current UI updates opt into
+  `compact_output: true` and receive SVG through metadata. The initial editor response retains
+  legacy fields for cached components. Headless results have a separate compact schema.
 - **PASS** Every tool declares `readOnlyHint=true`, `destructiveHint=false`, and
   `openWorldHint=false`; the operations validate/render in memory and do not change external
   state.
-- **PASS** Only `quote_card_builder_open_editor` is model-visible and linked to the UI resource.
+- **PASS** `quote_card_builder_open_editor` is model-visible and linked to the UI resource.
+- **PASS** `quote_card_builder_headless` is also model-visible, without an attached UI. It requires
+  reported UI unavailability; production requires explicit caller approval bound to the current
+  preview hash. The approval flag is a caller declaration, not proof of human consent.
 - **PASS** `preview_quote_card` and `produce_quote_card` are app-private and do not open duplicate
   components.
 - **PASS** The UI resource is `text/html;profile=mcp-app`, declares its domain, keeps connection and
@@ -47,30 +67,23 @@ is recommended before submission.
 
 ## UI and behavior
 
-- **PASS** Remote `resources/read` serves the deployed v1.38 resource and exposes standard MCP Apps
-  native download (`ui/download-file`) and PNG chat transfer (`ui/message`), plus the older
-  ChatGPT-specific file delivery path as a compatibility fallback.
+- **PASS** The local resource exposes standard MCP Apps native download (`ui/download-file`) and
+  PNG chat transfer (`ui/message`), plus the older ChatGPT-specific delivery path as a fallback.
 - **PASS** The inline editor has two main actions: **Update preview** and **Generate PNG**, with
   clear supporting labels and distinct primary/secondary hierarchy.
 - **PASS** Quote, attribution, neutral/custom palette, direction, 4:5/1:1 format, authored line
   breaks, formatting ranges, scale, position, and motif are represented in editor state.
 - **PASS** Generate revalidates through the canonical renderer and prepares a PNG in the browser.
-- **PASS** Deployed v1.38 embeds Orbitron in a self-contained SVG wordmark with tightened optical
-  spacing and uses host-mediated MCP Apps delivery when available.
-- **PASS** A hosted v1.33 test confirmed that external navigation opens the temporary PNG URL
-  rather than forcing a browser download. Deployed v1.38 keeps **Open PNG** only as a compatibility
-  fallback after the standard **Download PNG** and **Send PNG to chat** paths.
-- **PASS** The deployed v1.38 production badge has no `TEST` suffix.
-- **PASS** The deployed editor grows with its contents and no longer creates an internal
-  `overflow:auto` scroll area.
+- **PASS** The local UI uses host theme variables and native fonts, without a branded masthead.
+  Draft persistence, model context updates, stale export protection, and bounded bridge calls
+  have local regression coverage.
+- **PASS** A local browser harness verified light/dark themes, a 360px viewport, draft restoration,
+  and PNG bytes accepted by a simulated host. This does not verify ChatGPT or saving to disk.
+- **HISTORICAL** Earlier hosted tests and v1.38 delivery/resource evidence remain available in
+  `submission/evidence.md`. They are not proof of the v1.40 user-visible flow.
 - **FIX** Capture desktop and narrow-width visual evidence from the final production resource.
 - **FIX** Verify the complete open-and-save flow in the hosted ChatGPT iframe; protocol and
   resource checks prove the delivery code is live but do not prove the user-visible click-through.
-- **PASS (DEPLOYED)** v1.38 completes the MCP Apps initialization handshake, reads host capabilities,
-  sends embedded PNG bytes to `ui/download-file`, and can hand the PNG itself to `ui/message` when
-  native download is unavailable. ChatGPT-specific upload, URL, and external-open APIs remain
-  compatibility fallbacks. The
-  hosted user-visible click-through remains open as a separate verification.
 - **PORTAL** Confirm keyboard navigation, focus visibility, labels, contrast, and screen-reader
   behavior in the hosted ChatGPT iframe.
 
@@ -81,29 +94,39 @@ is recommended before submission.
 - **PASS** The component sanitizes inline SVG before inserting it into the DOM.
 - **BLOCKED** Decide and document the production authentication posture. Current code is no-auth;
   older project documentation also says public beta access should be replaced before real use.
+- **FIX** Read the official [authentication guide](https://developers.openai.com/plugins/build/auth)
+  at the distribution step before deciding the production posture.
 - **BLOCKED** Privacy copy must cover infrastructure/request logs even though the application does
   not persist quote-card content itself.
-- **PASS** The local Dockerfile copies only the MCP server, adapter, application resource, canonical
-  renderer, contract, and rasterization dependency.
+- **PASS** The Dockerfile includes the server, renderer dependencies, and bundled UI assets;
+  container-contract tests check the required runtime files.
 - **PORTAL** Confirm rate limits, abuse monitoring, dependency-update process, incident contact,
   and retention/deletion statements.
 
 ## Release integrity
 
-- **PASS** Local plugin manifest and canonical skill are `1.7.12`; local UI is v1.39 and deployed UI is v1.38.
-- **PASS** The local plugin ZIP for 1.7.12 was rebuilt, archive-tested, and hashed from the
-  candidate worktree; reproduce it from the frozen commit before release publication.
-- **PASS** The project suite passes when socket and headless-browser tests are allowed.
-- **PASS** Remote resource `ui://quote-card-builder/preview/v1.38.html` is readable from the deployed MCP server.
-- **PASS** Local v1.27 source packages have deterministic recorded SHA-256 hashes and clean archive
-  listings.
-- **PASS** The clean v1.38 source archive was built by Cloud Build and deployed as revision
+- **PASS** At review time, the local plugin manifest, project metadata, and canonical skill
+  identified `1.7.16`; the local UI resource was `v1.40`.
+- **PASS** The existing `.codex-plugin/plugin.json` and `.mcp.json` layout remains officially
+  supported. Migration to portable root `plugin.json`/`mcp.json` is optional for this package;
+  it requires updating the builder and validators together, not renaming files.
+- **PASS** On 2026-09-20 the final local suite ran **281 tests, zero skips, all passed** using
+  `python -m unittest discover -s tests -v` in the isolated MCP-enabled Python 3.14 environment.
+  Coverage includes stdio/HTTP protocol calls and launching the packaged MCP server. The official
+  skill validator and `git diff --check` also pass. These are not a Docker image build or hosted
+  ChatGPT certification.
+- **PASS** Skill routing distinguishes MCP, standalone local editing, observed UI failure, and
+  explicit user choices. The shared standalone-capable skill does not require a remote MCP
+  dependency; the downloadable plugin bundles its stdio configuration.
+- **FIX** Freeze the final source in a clean, traceable commit, rebuild packages, archive-test
+  them, and record hashes for those exact artifacts before release publication.
+- **HISTORICAL** The v1.38 source archive was built by Cloud Build and deployed as revision
   `quote-card-builder-mcp-00074-mod`; the image digest, 100% traffic split, health, MCP handshake,
-  and resource descriptor are recorded in `submission/evidence.md`.
-- **FIX** Freeze the approved v1.39 candidate in a clean, traceable commit before submission.
-- **PASS** Deployment evidence for v1.38 is recorded after the production deploy.
-- **PASS** The local v1.39 candidate retains v1.26 through v1.38 compatibility resources; the
-  deployed v1.38 candidate retains v1.26 through v1.37.
+  and resource descriptor are recorded in `submission/evidence.md`. Historical ZIP versions and
+  hashes do not establish integrity of the current worktree.
+- **PASS** The local candidate retains v1.26 through v1.39 compatibility resource aliases.
+  Aliases serve updated HTML when fetched; already mounted or cached components additionally
+  require a backward-compatible tool response contract.
 - **PASS** `pytest.ini` restricts default discovery to `tests/` and excludes `work/`.
 
 ## Final gate

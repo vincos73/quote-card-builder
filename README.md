@@ -2,11 +2,13 @@
 
 Quote Card Builder è una skill per ChatGPT e Claude che trasforma una frase, un testo, un URL, un documento o un’idea in una quote card pronta da condividere.
 
-È disponibile anche come plugin italiano skills-only per ChatGPT e Codex. Il pacchetto plugin usa la stessa skill canonica e viene generato automaticamente, così le due distribuzioni non possono divergere.
+È disponibile come skill e come plugin per ChatGPT e Codex. Il plugin include l'MCP server locale e l'app interattiva; la skill canonica resta utilizzabile anche senza MCP.
 
 È pensata per creator, marketer e professionisti che vogliono ottenere rapidamente una grafica coerente, senza aprire un editor professionale. Il testo, l’attribuzione e le scelte editoriali restano sempre sotto il controllo dell’utente.
 
-Versione corrente: **1.7.12**
+Nella release remota 1.8.8/UI v1.56 erano stati verificati apertura popolata da URL e due aggiornamenti consecutivi nell'editor nativo; la versione corrente è 1.8.10/UI v1.57. Per aprire la card da un link, il modello usa la navigazione dell'host, mentre il server non legge URL. Le modifiche successive dalla chat usano un aggiornamento del draft completo con controllo della revisione; per attivare il tool nel client ChatGPT, richiama il plugin in ogni follow-up. La promozione, gli smoke e le prove sono documentati in `RELEASE-STATUS.md`. L'installazione locale resta 1.8.3.
+
+La versione remota **1.8.10/UI v1.57 è live al 100%**. Le istruzioni preparano righe più corte per dare maggiore impatto alla quote su smartphone, senza riscriverla. La firma è più discreta e il CSS dell’interfaccia non ne altera più la resa nell’anteprima. Sono passati due test mirati e i controlli di versione, risorsa UI e rendering sul servizio remoto; la prova visiva nativa e del download è lasciata all’utente. Evidenze e limiti in `RELEASE-STATUS.md`.
 
 <img width="1956" height="1130" alt="quote-card-builder-screen" src="https://github.com/user-attachments/assets/550fbf0b-21b3-4b01-b8f1-48cbd04574d5" />
 
@@ -22,15 +24,16 @@ La skill accompagna l’utente dall’idea al file finale:
 6. verifica leggibilità, contrasto, margini e possibili sovrapposizioni;
 7. genera un PNG oppure un pacchetto ZIP con più formati.
 
-L’editor offre tre stili compositivi:
+L’editor del plugin offre quattro stili compositivi:
 
-| Stile | Aspetto | Motivi disponibili |
+| Stile | Aspetto | Motivo disponibile |
 | --- | --- | --- |
-| **Editorial** | pagina aperta e tipografia editoriale | Contours, Rhythm Lines |
-| **Poster** | testo dominante e impatto da manifesto | Echo Rings, Modules |
-| **Frame** | contenuto inserito in un campo cromatico | Dot Grid, Route Map |
+| **Blocks** | campi tipografici editoriali | composizione deterministica variabile |
+| **Cutouts** | ritagli geometrici piatti | composizione deterministica variabile |
+| **Constellations** | reti di nodi e connessioni | composizione deterministica variabile |
+| **Gradient** | campi cromatici sfumati | composizione deterministica variabile |
 
-Ogni stile può essere usato anche senza motivo.
+Lo stile si sceglie nell'editor, insieme alla variante riproducibile del motivo; può anche essere nascosto.
 
 ## Che cosa non fa
 
@@ -51,8 +54,8 @@ Attribuzione: Mario Rossi
 La skill prepara il contenuto e apre il Visual Review Studio nel browser. Nell’editor puoi:
 
 - cambiare testo e attribuzione;
-- scegliere Editorial, Poster o Frame;
-- applicare uno dei motivi disponibili oppure nasconderlo;
+- scegliere Blocks, Cutouts, Constellations o Gradient nell'editor;
+- variare in modo riproducibile il motivo oppure nasconderlo;
 - modificare gli a capo;
 - usare grassetto, corsivo, sottolineato, evidenziato, accento o contorno;
 - ridurre la dimensione del testo e scegliere la posizione verticale;
@@ -132,7 +135,7 @@ Per il flusso completo servono:
 
 La generazione PNG usa Node.js e `sharp` quando sono già disponibili nella sessione. La skill non installa dipendenze automaticamente. Se non trova un convertitore PNG compatibile, conserva l’SVG e dichiara il fallback invece di simulare una consegna riuscita.
 
-Il server dell’editor ascolta soltanto su `127.0.0.1` e usa un token di sessione. Fonte, brand e dimensioni sono campi protetti nell’interfaccia.
+Il server dell’editor ascolta soltanto su `127.0.0.1` e usa un token di sessione. La fonte, i font, i loghi e le dimensioni restano protetti nell’interfaccia; l’utente può modificare esplicitamente la palette della card con i controlli colore.
 
 ## Problemi comuni
 
@@ -169,39 +172,48 @@ python3 -m unittest discover -s tests -v
 ### Vertical slice MCP locale
 
 Il repository include ora un backend MCP stdio minimo ma reale, documentato in
-[references/mcp-pilot.md](references/mcp-pilot.md). Il flusso usa tre tool coordinati:
+[references/mcp-pilot.md](references/mcp-pilot.md). Il flusso principale usa tre tool coordinati:
 `quote_card_builder_open_editor` apre una sola MCP App, `preview_quote_card` aggiorna i dati
 nella stessa interfaccia senza rimontarla e `produce_quote_card` genera l'SVG canonico
-solo dopo il clic dell'utente su **Genera**. Prima della chiamata la skill raccoglie frase,
-attribuzione, palette neutra o personalizzata e direzione visuale; non chiede un tono e non
-sostituisce l'app con file generati direttamente in chat. La UI consente di correggere queste scelte
-e propone Editoriale, Manifesto o Campo. I tre tool riusano il renderer canonico e il
-profilo neutro soltanto quando l'utente lo sceglie. I risultati includono lo snapshot completo
-dell'editor, quindi frase e palette iniziali non dipendono dai tempi del bridge. Non esegue pubblicazione, storage remoto
+solo dopo il clic dell'utente su **Genera**. Se l'host dichiara che la UI non può essere montata,
+`quote_card_builder_headless` offre una preview accessibile al modello e una produzione esplicita,
+vincolata all'approvazione del chiamante e all'hash della preview corrente. Prima della chiamata la
+skill apre l'editor con il testo selezionato e usa attribuzione fornita/verificata oppure nessuna;
+la palette neutra è predefinita salvo scelta personalizzata esplicita. Per un link usa la lettura
+dell'host, perché il server non acquisisce URL. Le modifiche successive passano dal tool di update
+revisionato, che preserva i campi non modificati. Non chiede tono o stile e non usa file locali o generazione immagini. La UI lascia scegliere Blocks, Cutouts, Constellations o
+Gradient e consente di variare o nascondere il pattern. Uno stile già dichiarato dall'utente è solo
+una preselezione dell'editor. I tool riusano il renderer canonico e il profilo neutro soltanto quando
+l'utente lo sceglie. Lo structured output conserva stato e validazione compatti; l'SVG della UI è
+nei metadati MCP e quello headless è una risorsa esplicita. Non esegue pubblicazione, storage remoto
 o modifiche all'installazione personale.
 
 La MCP App riprende ora i controlli principali del vecchio editor: toolbar per grassetto,
-corsivo, sottolineato e riempimenti, riequilibrio degli a capo, motivo originale/alternativo/
-nascosto, scala dal massimo, posizione verticale e palette esplicita. L'iframe incorpora inoltre
+corsivo, sottolineato e riempimenti, riequilibrio degli a capo, quattro stili con seed
+riproducibile, scala dal massimo, posizione verticale e palette esplicita. L'iframe incorpora inoltre
 Barlow e Orbitron e usa la palette Plotter Bench dell'editor locale; la palette della card resta
 quella del profilo neutro o personalizzato scelto dall'utente. Il vertical slice supporta
 4:5 e 1:1; il formato 9:16 continua a essere gestito dal Visual Review Studio locale finché
 non verrà portato nello stesso contratto MCP.
 
+Il percorso workspace resta un ingresso vuoto per chi apre il plugin senza una citazione. Quando l'utente fornisce un link e chiede di procedere, il modello legge la fonte con la navigazione dell'host, seleziona una citazione esatta e apre un solo editor popolato. Se non fornisce un nome e la fonte non ne verifica uno, l'attribuzione resta vuota; la palette neutra è predefinita. Per modifiche successive in chat, `quote_card_builder_update_editor` riceve la bozza corrente completa, la revisione e i soli campi modificati; il server restituisce una preview aggiornata e la UI respinge aggiornamenti basati su una bozza superata. Il risultato segnala l'accettazione effettiva. La versione 1.8.10/UI v1.57 è live sul servizio remoto; bozze e modifiche non si sincronizzano tra dispositivi o conversazioni.
+
 Per provarlo in un ambiente isolato:
 
 ```bash
-python3 -m venv /private/tmp/quote-card-builder-mcp-venv
-/private/tmp/quote-card-builder-mcp-venv/bin/python -m pip install -r requirements-mcp.txt
-/private/tmp/quote-card-builder-mcp-venv/bin/python -m unittest discover -s tests -v
+uv run --frozen python -m unittest discover -s tests -v
 ```
 
 Il manifest del plugin collega `.mcp.json` al server incluso; il builder mantiene
 sincronizzati sorgente della skill e pacchetto plugin. Il server espone inoltre una
-MCP App opzionale per la preview inline, descritta nel documento del pilot; Cloud Run,
+MCP App per la preview in una scheda contenuto, descritta nel documento del pilot; Cloud Run,
 autenticazione e storage restano decisioni operative separate.
 
-La pipeline GitHub esegue la suite su Python 3.10, 3.11, 3.12 e 3.13. Il workflow di release controlla che il tag coincida con la versione dichiarata in `SKILL.md`, crea `quote-card-builder.zip` e `quote-card-builder-plugin.zip`, quindi pubblica i checksum SHA-256.
+La pipeline GitHub copre Python 3.12, 3.13 e 3.14, in linea con il requisito `>=3.12,<3.15`. Il workflow di release, quando attivato da un tag, verifica la versione della skill, esegue i test di coerenza del pacchetto e prepara gli ZIP e i checksum SHA-256 per la release. Questa descrizione della pipeline non prova che una specifica versione sia stata pubblicata.
+
+## Stili generativi nell’editor locale
+
+Il selettore offre Blocks, Cutouts, Constellations e Gradient, con variazioni riproducibili del motivo. **Save style** e **My styles** salvano e riapplicano identità visiva, famiglia e seed alla citazione corrente. I motivi precedenti restano compatibili. Contratto e archivio locale: [generative-styles.md](references/generative-styles.md).
 
 ## Licenze dei font
 

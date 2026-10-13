@@ -425,7 +425,10 @@ class VisualManifestTests(unittest.TestCase):
                     ".//{http://www.w3.org/2000/svg}text[@class='meta attribution source-field']"
                 )
                 self.assertIsNotNone(field)
-                self.assertGreaterEqual(float(field.attrib["font-size"]), 90.0)
+                font_size = float(field.attrib["font-size"])
+                self.assertGreaterEqual(font_size, 44.0)
+                self.assertLessEqual(font_size, 47.0)
+                self.assertAlmostEqual(12.2, font_size * 375 / width, places=1)
 
     def test_long_attribution_fits_its_direction_lane(self):
         label = "Vincenzo Cosenza — Research, strategy and editorial design"

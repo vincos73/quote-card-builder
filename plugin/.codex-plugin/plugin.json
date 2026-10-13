@@ -1,6 +1,6 @@
 {
   "name": "quote-card-builder",
-  "version": "1.7.12",
+  "version": "1.8.10",
   "description": "Turn quotes, text, URLs, documents, and ideas into editable quote cards with guided editorial and visual review.",
   "author": {
     "name": "Vincenzo Cosenza",
@@ -19,8 +19,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Quote Card Builder",
-    "shortDescription": "Open a guided editor for creating quote cards.",
-    "longDescription": "Collect a quote, visible attribution, palette, and visual direction, then open the interactive Quote Card Builder editor. The plugin uses the canonical renderer rather than image generation, direct chat files, or a local editor.",
+    "shortDescription": "Create editable quote cards",
+    "longDescription": "When a user clearly asks to proceed from a readable URL, the host reads the source, selects a strong exact quote, and opens one populated editor. The server does not fetch URLs. Missing attribution defaults to none unless the user supplied a name or the source verifies it; the neutral palette is the default. Later explicit chat edits use quote_card_builder_update_editor with the current revision, complete draft, and requested changes; the revision-checked update carries forward all unspecified choices. Drafts do not sync across devices or conversations. The global workspace and thread entrypoint remain available for users who open the plugin without a quote; they may show an editable demo that is never presented as user-supplied. Download PNG generates and saves the exact finished PNG in one action. The plugin uses the canonical renderer. If the host explicitly reports that the editor cannot mount, its model-visible headless fallback returns a preview as an explicit SVG resource and requires caller approval plus the current preview SHA-256 for production.",
     "developerName": "Vincenzo Cosenza",
     "category": "Productivity",
     "capabilities": [
@@ -31,6 +31,7 @@
     "defaultPrompt": [
       "Open Quote Card Builder and turn this quote into a card.",
       "Find the strongest quote in this text and open the Quote Card Builder editor.",
+      "Proceed with this link and make a quote card.",
       "Open the Quote Card Builder editor."
     ],
     "brandColor": "#12161F"

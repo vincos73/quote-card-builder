@@ -2,7 +2,7 @@
 
 <!-- impeccable:product-schema 1 -->
 
-Stato: rilascio v1.0.1
+Stato del documento: rilascio v1.0.1; addendum candidato locale 1.8.2
 Data: 15 agosto 2026
 Ambito: skill Codex, con primo nucleo editoriale riutilizzabile
 
@@ -24,18 +24,77 @@ Quote Card Builder non compete con un canvas libero. Unisce selezione editoriale
 
 ## Operating Context
 
-La skill viene invocata in una task Codex e apre un editor web locale su `127.0.0.1`. Manifest, sessioni, profili e output restano sul computer; non sono richiesti account o servizi remoti per l’editor. L’utente lavora tipicamente su una singola card, controlla la prova renderizzata, preme `Genera` e torna alla task con il file prodotto.
+La skill può aprire il Visual Review Studio web locale su `127.0.0.1` oppure usare il plugin MCP locale. Il nuovo workspace Extension apre un editor vuoto; il flusso MCP conversazionale continua ad aprire l’editor con i dati già scelti. Il Visual Review Studio locale gestisce 4:5, 1:1 e 9:16 e profili locali espliciti. Il workspace MCP produce 4:5 o 1:1 con palette scelta nell’editor; non trasferisce i profili locali.
 
 ## Capabilities and Constraints
 
 - editor vincolato, non canvas grafico libero;
-- brand, fonte e dimensioni protetti durante la revisione;
+- font e logo del brand, fonte e dimensioni protetti durante la revisione; palette della card modificabile esplicitamente dall’utente;
 - profili di brand locali riutilizzabili, esportabili come JSON e scelti sempre esplicitamente;
 - profili limitati a nome, colori, font e logo, senza contenuti editoriali;
 - alt text automatico con sostituzione facoltativa nel pannello avanzato `Accessibilità`;
 - master e adattamenti compositivi distinti per `4:5`, `1:1` e `9:16`;
 - PNG come consegna predefinita e SVG come fallback dichiarato quando manca un convertitore;
 - nessuna deduzione automatica del brand da fonte, memoria o profilo personale.
+
+## Addendum — workspace MCP locale candidato 1.8.2
+
+Questo addendum descrive il sorgente locale candidato e l'installazione personale. Non dichiara
+che la versione sia stata pubblicata o distribuita su un servizio remoto.
+
+- `quote_card_builder_open_workspace` accetta `{}` e apre l’editor vuoto da navigazione globale,
+  scheda del thread o selezione del plugin senza frase. Non inventa
+  una frase, un’attribuzione o una palette; l’utente sceglie tutti e tre prima della preview o
+  della generazione.
+- `quote_card_builder_open_editor` apre una scheda contenuto fullscreen per contenuti già
+  selezionati nella conversazione, con le relative scelte preliminari.
+- La bozza si recupera localmente nel workspace. Non c’è sincronizzazione fra dispositivi o
+  conversazioni, associazione a file o menzioni, né applicazione automatica di modifiche proposte
+  dal modello.
+- I formati MCP restano 4:5 e 1:1. Il 9:16, i profili salvati e il pacchetto multiformato
+  appartengono al Visual Review Studio locale.
+- Il renderer Python canonico resta la base della preview e della produzione. Il servizio remoto
+  mantiene il proprio stato fino a un deployment verificato; l’Extension non implica una
+  migrazione dell’hosting né un nuovo deployment.
+
+## Storico — MCP remoto live 1.8.5/UI v1.52
+
+La versione live v1.52 aggiorna l'esperienza del workspace remoto, mantenendo l'endpoint e il
+trasporto MCP senza OAuth. Il server apre con `{}` e restituisce stato vuoto. Se non è recuperata una
+bozza, la UI presenta il demo editabile “Le idee migliori meritano di essere condivise.” senza nome
+di autore, con attribuzione vuota e le scelte nessuna attribuzione/palette neutra marcate demo-only.
+Se arriva una frase esplicita mentre il demo è intatto, lo sostituisce. Per trattare il risultato come card reale, l'utente sceglie testo, attribuzione e palette; il demo resta identificato come esempio.
+
+Nel workspace remoto **Download PNG** è l'unica azione di produzione e consegna: con un clic genera
+e salva il PNG. Non esiste un invio separato dell'immagine alla chat. Gli URL temporanei degli export
+scadono entro 24 ore. Queste sono caratteristiche del servizio remoto live; l'installazione locale
+confermata resta 1.8.3 e conserva il flusso documentato sopra.
+
+## Storico — MCP remoto live 1.8.6/UI v1.53
+
+La versione live aggiorna il demo iniziale alla frase su quattro righe “Le idee migliori / meritano /
+di essere / condivise.”, con prima riga in grassetto, “meritano” e “di essere” in corsivo e “condivise” evidenziato. Le modifiche di formattazione e spaziatura non azzerano le scelte demo e lo stato delle
+scelte ancora pendenti resta visibile dopo il rendering. La palette neutra è preselezionata nei nuovi
+workspace, in New Card, negli input senza palette e nei draft ripristinati che non hanno ancora una
+scelta. La modifica del testo conserva la palette neutra o una palette personalizzata esplicita.
+La versione è live su Cloud Run; l’installazione locale confermata resta 1.8.3. La chat ChatGPT già aperta poteva mostrare UI v1.52 in cache; il client è stato ricaricato per la versione successiva.
+
+## Addendum — MCP remoto live 1.8.7/UI v1.54
+
+La versione live preimposta l'attribuzione come “nessuna” nei nuovi workspace, New Card, input senza
+attribuzione e bozze legacy con attribuzione vuota, così l'utente può visualizzare il testo senza una
+domanda obbligatoria. Le attribuzioni nominative esplicite vengono mantenute; una scelta esplicita
+“con autore” senza testo resta incompleta e visibile. Modificare il demo non ripristina una scelta
+“nessuna attribuzione” e digitare avvia l'anteprima. La palette neutra e il resto del comportamento
+UI v1.53 rimangono invariati. La versione è live su Cloud Run; l'installazione locale confermata resta 1.8.3. Una nuova chat ha mostrato il badge v1.54, senza una prova manuale dei pulsanti nel client reale.
+
+## Storico — MCP remoto live 1.8.8 / UI v1.55
+
+Per una richiesta chiara di procedere da un URL leggibile, il modello usa la navigazione disponibile nell'host, seleziona una citazione esatta e apre una sola volta l'editor già popolato. Il server non acquisisce URL. Attribuzione assente resta nessuna, a meno che l'utente la fornisca o la fonte verifichi il nome; la palette neutra è il default. Una modifica esplicita successiva dalla chat usa una patch revisionata sulla bozza completa corrente; il widget applica la patch solo se bozza e revisione corrispondono, altrimenti segnala il conflitto. Per rendere disponibile il tool nel follow-up, richiama il plugin nella chat. La revisione è stata sostituita da UI v1.56; i test nativi su v1.55 hanno verificato apertura e due aggiornamenti con conservazione delle scelte. Evidenze in `RELEASE-STATUS.md`.
+
+## Storico — MCP remoto live 1.8.8 / UI v1.56
+
+La UI live usa la navigazione dell'host per leggere un URL e apre un solo editor già popolato quando la richiesta di procedere è chiara. Le modifiche successive usano il tool `quote_card_builder_update_editor` sulla bozza e revisione correnti; ogni follow-up deve richiamare il plugin in ChatGPT. Il server non acquisisce URL. La versione è live al 100% su Cloud Run, con smoke di produzione PASS, 352 test senza skip e 33 controlli browser superati. Il browser usa un host MCP Apps simulato. Due aggiornamenti consecutivi sono stati verificati nella UI nativa v1.56, con conservazione di testo, stile e scelte non modificate. L'installazione locale confermata resta 1.8.3. Dettagli in `RELEASE-STATUS.md`.
 
 ## Brand Commitments
 
@@ -56,6 +115,14 @@ L’identità dell’interfaccia è Vincos e segue il sistema Plotter Bench docu
 3. Il percorso principale deve restare rapido; opzioni avanzate e spiegazioni appaiono soltanto quando servono.
 4. Preview, quality gate ed export devono condividere lo stesso renderer e gli stessi vincoli.
 5. La persistenza locale deve essere esplicita, leggibile e resistente agli aggiornamenti della skill.
+
+## Addendum 1.8.10 — composizione per smartphone
+
+Questo addendum descrive le regole della versione 1.8.10/UI v1.57, condivise dalla skill e dai flussi locale/MCP. Lo stato della distribuzione è registrato in `RELEASE-STATUS.md`. Quando l'utente ha già fornito una frase e chiede chiaramente di procedere, l'editor deve aprirsi una sola volta con una composizione iniziale leggibile, senza una conferma separata per layout o trattamenti. La composizione può cambiare gli a capo e aggiungere enfasi, ma deve conservare esattamente parole, punteggiatura, negazioni e cautele. Non riscrivere editorialmente la citazione per adattarla alla card.
+
+Per circa 20–40 parole, comporre in genere 6–9 righe brevi e semanticamente bilanciate, con 12–20 caratteri per riga e un limite morbido di 22. La guida resta flessibile: non isolare parole funzionali né forzare molte righe per citazioni brevi. Puntare a un testo di circa 30–40 px quando la card è vista a 375 px di larghezza, occupando circa il 45–60% dell’altezza. Accorciare le righe semanticamente anziché ridurre tutto il testo. Applicare 1–3 enfasi brevi, di norma con non più di due trattamenti, preservando ogni parola della fonte. Le richieste esplicite di layout, stile o testo semplice dell'utente prevalgono.
+
+Nel percorso MCP, `lines` trasferisce la composizione e `text` è la loro unione con newline. `styles` trasporta separatamente le enfasi con intervalli Unicode che includono i newline nel conteggio. I marcatori Markdown non fanno parte del contenuto. Un cambio di soli a capo o stili mantiene `VERBATIM` e lo stato della prova: la formattazione non costituisce una modifica editoriale.
 
 ## Accessibility & Inclusion
 

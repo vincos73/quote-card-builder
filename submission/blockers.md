@@ -1,5 +1,10 @@
 # Submission blockers and review risks
 
+> **Historical snapshot:** These blockers were recorded for the September 2026 submission review
+> of package `1.7.16` and UI resource `v1.40`. They do not establish the state of candidate
+> `1.8.10` or the live service. Consult the root `RELEASE-STATUS.md` for current
+> source, publication, installation, and deployment state.
+
 ## P0 — resolve before submission
 
 1. **Publisher and portal eligibility** — verify publisher identity, Apps Management write access,
@@ -21,16 +26,18 @@
 
 1. **Visual and accessibility evidence** — capture final desktop/narrow screenshots and complete a
    hosted keyboard/screen-reader pass.
-2. **Hosted interaction proof and legacy resources** — deployed v1.38 negotiates current MCP Apps
-   capabilities and prefers the host-mediated `ui/download-file` request, with a direct PNG image
-   hand-off through `ui/message` when native download is unavailable. Repeat the final click-through,
-   then decide whether v1.26 through v1.37
-   should remain as compatibility aliases before freezing the candidate.
+2. **Hosted interaction proof and legacy resources** — the historical local v1.40 candidate prefers
+   `ui/download-file`, with PNG transfer through `ui/message` as a fallback. Verify the complete
+   flow in ChatGPT after deployment. Preserve v1.26 through v1.39 aliases and compatible tool
+   responses for already mounted older components. Recorded v1.38 deployment evidence is
+   historical, not a verification of this candidate.
 
-## Not blockers in the current design
+## Not blockers in the reviewed design
 
 - The local `.mcp.json` uses stdio because it belongs to the downloadable plugin package; the
   submission portal should receive the public Universal MCP URL separately.
+- The compatibility manifest `.codex-plugin/plugin.json` remains supported. Adopting the portable
+  manifest layout is a separate packaging improvement, not a prerequisite for this local fix.
 - `produce_quote_card` is read-only at the MCP/server level: it returns an in-memory artifact and
   does not publish, persist, or modify external data. A user-initiated browser download is not an
   external server-side write.
@@ -38,11 +45,12 @@
   redirect allowlist is intentionally limited to the observed ChatGPT temporary-file origin and
   is shared by the current resource and every compatibility alias.
 
-## Approval gate for the next implementation pass
+## Distribution work remaining
 
-The following are material candidate changes and should be approved before implementation:
+The user authorized the local compatibility, server, skill, and checklist corrections. That work
+does not publish a release or change the deployed service. Before distribution:
 
-- approve the v1.26-v1.33 compatibility window;
-- rebuild the plugin and Cloud Run source packages after the frozen source commit;
-- configure the deployed candidate challenge route with the future portal token;
-- repeat hosted visual/accessibility capture against the deployed v1.38 resource.
+- read the official authentication guide and choose the production posture;
+- rebuild the plugin and Cloud Run source packages from the frozen source commit;
+- configure the deployed candidate challenge route once the portal token is available;
+- repeat hosted visual/accessibility capture and reviewer cases against the exact deployed candidate.

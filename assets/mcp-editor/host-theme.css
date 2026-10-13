@@ -1,0 +1,168 @@
+/* Original Plotter Bench skin, independent of host theme. Host safe-area
+ * insets and fullscreen layout remain supported below. */
+:root {
+        --chrome:#2b1830; --deep:#1b121f; --raised:#35203b; --concrete:#cdd5cf;
+        --concrete-light:#e7e9e5; --signal:#b9d936; --signal-dark:#6f8217;
+        --lavender:#9b86ad; --lavender-light:#d8cedb; --ink:#171619;
+        --paper:#252328; --danger:#ff8b77; --seam:rgba(216,206,219,.24);
+        --seam-strong:rgba(216,206,219,.48); --line:rgba(23,22,25,.22);
+        --ui:"QCB Barlow","Helvetica Neue",system-ui,sans-serif;
+        --mono:"IBM Plex Mono","SFMono-Regular","Cascadia Mono","Roboto Mono",Consolas,monospace;
+        color-scheme:dark; background:var(--deep); color:var(--lavender-light);
+        font-family:var(--ui); font-synthesis:none;
+      }
+
+:root {
+  --qcb-bg:var(--deep); --qcb-bg-subtle:var(--chrome);
+  --qcb-border:var(--seam); --qcb-border-strong:var(--seam-strong);
+  --qcb-text:var(--lavender-light); --qcb-text-muted:var(--lavender);
+  --qcb-danger:var(--danger);
+}
+html, body { min-width:0; font-family:var(--ui); }
+.status, .errors { overflow-wrap:anywhere; }
+.delivery-actions button { border-radius:0; }
+[data-workspace-only] {
+  display: none;
+}
+
+body[data-qcb-workspace="true"] {
+  box-sizing: border-box;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  padding:
+    max(env(safe-area-inset-top, 0px), var(--qcb-safe-area-top, 0px))
+    max(env(safe-area-inset-right, 0px), var(--qcb-safe-area-right, 0px))
+    max(env(safe-area-inset-bottom, 0px), var(--qcb-safe-area-bottom, 0px))
+    max(env(safe-area-inset-left, 0px), var(--qcb-safe-area-left, 0px));
+}
+
+body[data-qcb-workspace="true"] [data-workspace-only] {
+  display: grid;
+}
+
+.shell[data-workspace="true"] {
+  display: grid;
+  grid-template-columns: minmax(320px, .82fr) minmax(360px, 1.18fr);
+  grid-template-areas:
+    "brand brand"
+    "workspace workspace"
+    "form status"
+    "form delivery"
+    "form preview"
+    "form errors";
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  align-items: stretch;
+  background: var(--qcb-bg-subtle);
+}
+
+.shell[data-workspace="true"] .app-header {
+  grid-area: brand;
+}
+
+.shell[data-workspace="true"] .workspace-bar {
+  grid-area: workspace;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--qcb-border);
+  background: var(--qcb-bg);
+}
+
+.workspace-bar > div {
+  display: grid;
+  gap: 2px;
+}
+
+.workspace-bar strong {
+  font-size: 15px;
+}
+
+.workspace-bar span {
+  color: var(--qcb-text-muted);
+  font-size: 12px;
+}
+
+.workspace-bar span[data-available="false"] {
+  color: var(--qcb-danger);
+}
+
+.workspace-bar button {
+  padding: 8px 12px;
+  border: 1px solid var(--qcb-border-strong);
+  background: var(--qcb-bg);
+  color: var(--qcb-text);
+}
+
+.shell[data-workspace="true"] .form {
+  grid-area: form;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  border-right: 1px solid var(--qcb-border);
+}
+
+.shell[data-workspace="true"] .status { grid-area: status; }
+.shell[data-workspace="true"] .delivery { grid-area: delivery; }
+.shell[data-workspace="true"] .preview {
+  grid-area: preview;
+  align-content: center;
+  min-height: 0;
+  overflow: hidden;
+  padding: clamp(18px, 4vw, 48px);
+}
+.shell[data-workspace="true"] .errors { grid-area: errors; }
+.shell[data-workspace="true"] .preview .svg-preview {
+  display: flex;
+  width: min(100%, 560px);
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+}
+.shell[data-workspace="true"] .preview .svg-preview svg {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  border: 1px solid var(--qcb-border);
+  background: #fff;
+}
+
+@media (max-width: 820px) {
+  body[data-qcb-workspace="true"] {
+    height: auto;
+    overflow: visible;
+  }
+  .shell[data-workspace="true"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "brand" "workspace" "form" "status" "delivery" "preview" "errors";
+    grid-template-rows: auto;
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .shell[data-workspace="true"] .form {
+    max-height: none;
+    overflow: visible;
+    border-right: 0;
+  }
+  .shell[data-workspace="true"] .preview {
+    min-height: 280px;
+  }
+  .shell[data-workspace="true"] .preview .svg-preview,
+  .shell[data-workspace="true"] .preview .svg-preview svg {
+    height: auto;
+    max-height: none;
+  }
+}

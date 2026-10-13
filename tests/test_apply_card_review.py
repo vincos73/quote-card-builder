@@ -21,7 +21,7 @@ def manifest():
                     "emphasis": "confronta.", "attribution": {"label": "vincos.it", "role": "publisher"}},
         "presentation": {"logo_mode": "auto", "graphic_mode": "auto"},
         "formats": [{"id": "4x5", "width": 1440, "height": 1800, "lines": [text], "text_scale": 1.0, "vertical_position": "center"}],
-        "brand": {"name": "Brand"},
+        "brand": {"name": "Brand", "colors": {"primary": "#072743", "accent": "#E3F4FF", "background": "#FEFDFB", "text": "#323232"}},
     }
 
 
@@ -109,6 +109,39 @@ class ApplyCardReviewTests(unittest.TestCase):
             self.assertEqual("1x1", saved["presentation"]["output_mode"])
             self.assertEqual("f-1", state["applied_feedback_id"])
             self.assertTrue(list(root.glob("manifest-r3.backup.json")))
+
+    def test_palette_change_persists_the_original_reset_snapshot_once(self):
+        feedback = {
+            "feedback_id": "f-1",
+            "base_revision": 3,
+            "action": "feedback",
+            "brand": {"colors": {
+                "primary": "#123456",
+                "accent": "#E3F4FF",
+                "background": "#FEFDFB",
+                "text": "#323232",
+            }},
+        }
+        temp, root, manifest_path, feedback_path = self.make_files(feedback)
+        with temp:
+            APPLIER.apply_review(manifest_path, feedback_path, root)
+            saved = json.loads(manifest_path.read_text())
+            self.assertEqual("#123456", saved["brand"]["colors"]["primary"])
+            self.assertEqual(manifest()["brand"]["colors"], saved["palette_initial"])
+
+            feedback["feedback_id"] = "f-2"
+            feedback["base_revision"] = 4
+            feedback["brand"]["colors"]["primary"] = "#654321"
+            feedback_path.write_text(json.dumps(feedback), encoding="utf-8")
+            state_path = root / "session-state.json"
+            state = json.loads(state_path.read_text())
+            state["last_feedback_id"] = "f-2"
+            state["manifest_revision"] = 4
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            APPLIER.apply_review(manifest_path, feedback_path, root)
+            saved = json.loads(manifest_path.read_text())
+            self.assertEqual("#654321", saved["brand"]["colors"]["primary"])
+            self.assertEqual(manifest()["brand"]["colors"], saved["palette_initial"])
 
     def test_rejects_content_or_format_identity_change(self):
         feedback = {"feedback_id": "f-1", "base_revision": 3, "action": "feedback", "content": {"text": "alterato"}}
