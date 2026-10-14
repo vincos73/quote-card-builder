@@ -10,6 +10,7 @@ import html
 import json
 import math
 import re
+import random
 import struct
 import sys
 import unicodedata
@@ -328,11 +329,11 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
             normalize_grammar_presentation(presentation)
         except ValueError as error:
             add_error(errors, "presentation.composition", "grammar", str(error))
-        if presentation.get("visual_grammar") != "ribbons" and any(
+        if presentation.get("visual_grammar") not in {"ribbons", "urban"} and any(
             isinstance(style, dict) and style.get("type") == "size"
             for style in (styles if isinstance(styles, list) else [])
         ):
-            add_error(errors, "content.styles", "grammar", "La dimensione locale è disponibile nella grammatica Nastri.")
+            add_error(errors, "content.styles", "grammar", "La dimensione locale richiede una grammatica visuale.")
         if not graphic_seed_allowed(presentation.get("graphic_seed", 0)):
             add_error(errors, "presentation.graphic_seed", "range", "Usare un seed intero da 0 a 999999.")
         graphic_mode = presentation.get("graphic_mode", "auto")
@@ -392,7 +393,7 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
         # a colour pair that this card never paints. Editorial/Gradient uses
         # its full-field surface, checked conservatively below.
         graphic_variant = presentation.get("graphic_variant", "default") if isinstance(presentation, dict) else "default"
-        if isinstance(presentation, dict) and presentation.get("visual_grammar") == "ribbons":
+        if isinstance(presentation, dict) and presentation.get("visual_grammar") in {"ribbons", "urban"}:
             composition = presentation.get("composition") or {}
             foreground = colors.get(composition.get("text_role", "text"), colors["text"])
             background = colors.get(composition.get("background_role", "background"), colors["background"])
@@ -465,6 +466,7 @@ def font_css(font: dict[str, Any], manifest_dir: Path) -> str:
         ("medium_path", 500, "normal"),
         ("bold_path", 700, "normal"),
         ("italic_path", 400, "italic"),
+        ("bold_italic_path", 700, "italic"),
     ):
         value = font.get(key)
         if value:
@@ -2257,6 +2259,90 @@ def render_ribbon_svg(
             f'{_ribbon_text(layout["author_rows"], colors, composition, author=True)}</svg>\n')
 
 
+def urban_layout(data: dict[str, Any], manifest_dir: Path, *, render_options: dict[str, Any] | None = None,
+                 font_size_override: float | None = None) -> dict[str, Any]:
+    options = {**(data.get("presentation") or {}), **(render_options or {})}
+    scene = normalize_grammar_presentation(options)["composition"]
+    width, height = data["canvas"]["width"], data["canvas"]["height"]
+    boxes = {key: _pixel_box(scene[key], width, height) for key in ("quote_box", "author_box", "logo_box")}
+    faces = _ribbon_face_metrics(data["brand"]["font"], manifest_dir)
+    activate_font_metrics(data["brand"]["font"], manifest_dir)
+    text = data["content"]["text"]
+    styles = list(data["content"].get("styles") or [])
+    size = scene.get("quote_font_size", options.get("quote_font_size", font_size_override))
+    if size is None:
+        low, high = 1.0, width*.22
+        for _ in range(32):
+            mid=(low+high)/2
+            rows=_ribbon_rows(text,styles,mid,boxes["quote_box"],faces,data["content"].get("lines"))
+            bounds=_rows_bounds(rows,boxes["quote_box"])
+            if bounds["width"]<=boxes["quote_box"]["width"] and bounds["height"]<=boxes["quote_box"]["height"]: low=mid
+            else: high=mid
+        size=math.floor(low*.995*float(options.get("text_scale",1))*10)/10
+    rows=_ribbon_rows(text,styles,float(size),boxes["quote_box"],faces,data["content"].get("lines"))
+    attribution=data["content"].get("attribution") or {}; author=attribution.get("label","") if attribution.get("role")!="none" else ""
+    author_size=options.get("author_font_size",width*ATTRIBUTION_FONT_SIZE_RATIO)
+    author_rows=_ribbon_rows(author,[],float(author_size),boxes["author_box"],faces,author.splitlines(),tracking=0) if author else []
+    bounds=_rows_bounds(rows,boxes["quote_box"]); warnings=[]
+    if bounds["width"]>boxes["quote_box"]["width"] or bounds["height"]>boxes["quote_box"]["height"]:
+        add_error(warnings,"presentation.quote_font_size","quote_overflow","Il testo non entra nell'area assegnata.")
+    ground=data["brand"]["colors"][scene.get("quote_backing_role",scene["background_role"])]
+    ink=data["brand"]["colors"][scene["text_role"]]
+    if contrast_ratio(ink,ground)<4.5:
+        add_error(warnings,"presentation.composition.text_role","text_contrast","Il colore del testo non garantisce contrasto sul fondo riservato alla citazione.")
+    author_ground=data["brand"]["colors"][scene.get("author_backing_role",scene["background_role"])]
+    if author and contrast_ratio(ink,author_ground)<4.5:
+        add_error(warnings,"presentation.composition.text_role","author_contrast","Il colore del testo non garantisce contrasto sul fondo riservato all'attribuzione.")
+    author_bounds=_rows_bounds(author_rows,boxes["author_box"])
+    def overlaps(a: dict[str,float], b: dict[str,float]) -> bool:
+        return bool(a["width"] and a["height"] and b["width"] and b["height"] and min(a["x"]+a["width"],b["x"]+b["width"])>max(a["x"],b["x"]) and min(a["y"]+a["height"],b["y"]+b["height"])>max(a["y"],b["y"]))
+    if overlaps(bounds,author_bounds): add_error(warnings,"presentation.composition.author_box","author_overlaps_quote","L'attribuzione si sovrappone alla citazione.")
+    if options.get("logo_mode","auto")!="hidden" and data["brand"].get("logo") and (overlaps(bounds,boxes["logo_box"]) or overlaps(author_bounds,boxes["logo_box"])):
+        add_error(warnings,"presentation.composition.logo_box","logo_overlaps_text","Il logo si sovrappone al testo.")
+    return {"rows":rows,"author_rows":author_rows,"font_size":float(size),"author_font_size":float(author_size),**boxes,
+            "bounds":{"quote":bounds,"author":author_bounds,"logo":boxes["logo_box"]},
+            "warnings":warnings,"valid":not warnings,"geometry_valid":not warnings,"fitting":"urban_fit","metric":"font_metrics_ttf" if faces.get("regular") else "deterministic_heuristic"}
+
+def render_urban_svg(data: dict[str, Any], manifest_dir: Path, *, render_options: dict[str, Any] | None = None,
+                     font_size_override: float | None = None) -> str:
+    options={**(data.get("presentation") or {}),**(render_options or {})}
+    scene=normalize_grammar_presentation(options)["composition"]
+    layout=urban_layout(data,manifest_dir,render_options=render_options,font_size_override=font_size_override)
+    width,height=data["canvas"]["width"],data["canvas"]["height"]; colors=data["brand"]["colors"]
+    bg,ink=colors[scene["background_role"]],colors[scene["text_role"]]
+    shapes=[]
+    for b in scene["blocks"]:
+        if b["shape"]=="rect":
+            shapes.append(f'<rect data-block-id="{html.escape(str(b["id"]),quote=True)}" x="{b["x"]*width:.2f}" y="{b["y"]*height:.2f}" width="{b["width"]*width:.2f}" height="{b["height"]*height:.2f}" fill="{colors[b["color_role"]]}"/>')
+        else:
+            pts=" ".join(f'{x*width:.2f},{y*height:.2f}' for x,y in b["points"])
+            shapes.append(f'<polygon data-block-id="{html.escape(str(b["id"]),quote=True)}" points="{pts}" fill="{colors[b["color_role"]]}"/>')
+    for s in scene["strips"]:
+        shapes.append(f'<line data-strip-id="{html.escape(str(s["id"]),quote=True)}" x1="{s["x1"]*width:.2f}" y1="{s["y1"]*height:.2f}" x2="{s["x2"]*width:.2f}" y2="{s["y2"]*height:.2f}" stroke="{colors[s["color_role"]]}" stroke-width="{s["width"]*width:.2f}"/>')
+    # Reserve the explicitly selected backing role beneath each text lane.
+    for lane, key in (("quote", "quote_box"), ("author", "author_box")):
+        backing=scene.get(f"{lane}_backing_role")
+        if backing:
+            box=layout[key]
+            shapes.append(f'<rect class="{lane}-backing" x="{box["x"]:.2f}" y="{box["y"]:.2f}" width="{box["width"]:.2f}" height="{box["height"]:.2f}" fill="{colors[backing]}"/>')
+    texture=scene["texture"]; rng=random.Random(texture["seed"]); marks=[]
+    for _ in range(texture["dots"]):
+        x,y=rng.random()*width,rng.random()*height
+        if not any(box["x"]-12<x<box["x"]+box["width"]+12 and box["y"]-12<y<box["y"]+box["height"]+12 for box in (layout["quote_box"],layout["author_box"])):
+            marks.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{rng.uniform(1,2.1):.1f}" fill="{colors[texture["color_role"]]}" opacity=".18"/>')
+    for _ in range(texture["scratches"]):
+        x,y=rng.random()*width,rng.random()*height; dx=rng.uniform(5,24); dy=rng.uniform(-12,12)
+        if not any(max(x,x+dx)>=box["x"]-12 and min(x,x+dx)<=box["x"]+box["width"]+12 and max(y,y+dy)>=box["y"]-12 and min(y,y+dy)<=box["y"]+box["height"]+12 for box in (layout["quote_box"],layout["author_box"])):
+            marks.append(f'<line x1="{x:.1f}" y1="{y:.1f}" x2="{x+dx:.1f}" y2="{y+dy:.1f}" stroke="{colors[texture["color_role"]]}" opacity=".2" stroke-width="1"/>')
+    logo=""; asset=logo_data(data["brand"],manifest_dir,light=relative_luminance(bg)<.2)
+    if asset and options.get("logo_mode","auto")!="hidden":
+        box=layout["logo_box"]; lw=min(box["width"],box["height"]*asset[1]); logo=logo_image(asset,x=box["x"],y=box["y"],width=lw)
+    attribution=data["content"].get("attribution") or {}; author=attribution.get("label","") if attribution.get("role")!="none" else ""
+    desc=data["content"].get("alt_text","").strip() or default_alt_text(data["content"]["text"],author,data.get("source"))
+    attrs=" ".join(f'data-{k.replace("_","-")}="{html.escape(json.dumps(layout[k]),quote=True)}"' for k in ("quote_box","author_box","logo_box"))
+    css=font_css(data["brand"]["font"],manifest_dir)+f'.quote,.meta{{font-family:{card_font_stack(data["brand"]["font"]["family"])};font-synthesis:weight;font-kerning:none;font-variant-ligatures:none}}'
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'+f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc" data-visual-grammar="urban" data-composition-id="{scene["id"]}" data-layout-valid="{str(layout["valid"]).lower()}" data-geometry-valid="{str(layout["geometry_valid"]).lower()}" data-layout-warnings="{html.escape(json.dumps(layout["warnings"]),quote=True)}" {attrs}><title id="title">Urban — {html.escape(data["brand"]["name"])}</title><desc id="desc">{html.escape(desc)}</desc><style>{css}</style><rect width="100%" height="100%" fill="{bg}"/>{''.join(shapes)}{''.join(marks)}{logo}{_ribbon_text(layout["rows"],colors,scene)}{_ribbon_text(layout["author_rows"],colors,scene,author=True)}</svg>\n')
+
 def render_svg(
     data: dict[str, Any],
     manifest_dir: Path,
@@ -2265,7 +2351,10 @@ def render_svg(
     font_size_override: float | None = None,
     render_options: dict[str, Any] | None = None,
 ) -> str:
-    if {**(data.get("presentation") or {}), **(render_options or {})}.get("visual_grammar") == "ribbons":
+    grammar = {**(data.get("presentation") or {}), **(render_options or {})}.get("visual_grammar")
+    if grammar == "urban":
+        return render_urban_svg(data, manifest_dir, render_options=render_options, font_size_override=font_size_override)
+    if grammar == "ribbons":
         return render_ribbon_svg(data, manifest_dir, render_options=render_options, font_size_override=font_size_override)
     width = data["canvas"]["width"]
     height = data["canvas"]["height"]

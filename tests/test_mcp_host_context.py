@@ -61,6 +61,32 @@ console.log(JSON.stringify(output));
         self.assertEqual([], result["state"]["imageIds"])
         self.assertTrue(result["hasRestoredDraft"])
 
+    def test_model_context_redacts_brand_assets_but_local_workspace_keeps_them(self):
+        result = self.run_node(
+            r'''
+const secret = "A".repeat(900000);
+const kit = {schema:"qcb-brand-kit",schema_version:1,name:"Studio",colors:{primary:"#123456"},font:{family:"Private Font",regular:{mime_type:"font/woff2",data_base64:secret}},logo:{mime_type:"image/png",data_base64:secret}};
+const values = new Map();
+const storage = {getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
+const requests = [];
+const helper = new QcbHostContext({workspace:true,storage,openai:{},request:(method,params)=>{requests.push({method,params});},debounceMs:0});
+helper.setDraft({text:"A quote",brand_kit:kit},{context:false});
+helper._sendModelContext();
+const model = requests[0].params.structuredContent.modelContent;
+const summary = requests[0].params.content[0].text;
+const persisted = JSON.parse(values.get(QcbHostContext.WORKSPACE_STORAGE_KEY)).modelContent;
+console.log(JSON.stringify({modelHasKit:Object.hasOwn(model,"brand_kit"),attached:model.brand_kit_attached,brandSummary:model.brand_summary,modelBytes:JSON.stringify(model).length,summaryHasAsset:summary.includes(secret),persistedAsset:persisted.brand_kit.logo.data_base64===secret,localAsset:helper.getDraft().brand_kit.font.regular.data_base64===secret,helperModel:QcbHostContext.modelSnapshot({brand_kit:kit})}));
+helper.destroy();
+'''
+        )
+        self.assertFalse(result["modelHasKit"])
+        self.assertTrue(result["attached"])
+        self.assertEqual({"name": "Studio", "font_family": "Private Font", "logo_present": True}, result["brandSummary"])
+        self.assertLess(result["modelBytes"], 2000)
+        self.assertFalse(result["summaryHasAsset"])
+        self.assertTrue(result["persistedAsset"])
+        self.assertTrue(result["localAsset"])
+
     def test_workspace_restores_versioned_local_draft_and_ignores_widget_state(self):
         result = self.run_node(
             r'''
@@ -332,6 +358,87 @@ console.log(JSON.stringify({ok: true}));
 '''
         )
         self.assertTrue(result["ok"])
+
+    def test_personal_bases_are_content_free_and_migrate_legacy_storage(self):
+        result = self.run_node(
+            r'''
+const draft = {text:"A meaningful quote", attribution:"Writer", styles:[{start:0,end:3}], evidence_status:"VERIFIED", alt_text:"description", visual_grammar:"ribbons", composition:{id:"ribbon-1"}, palette:{name:"Ink"}, format:"4x5", brand_kit:{name:"Studio"}};
+draft.composition_candidates = [{id:"candidate"}]; draft.proposal_source = "model"; draft.logo_mode = "hidden";
+const fresh = QcbHostContext.baseFromDraft(draft, "Studio base");
+const legacy = {schema:"qcb-card-bases",schemaVersion:1,bases:[{id:"keep-id",name:"Old base",draft}]};
+const values = new Map([[QcbHostContext.BASES_STORAGE_KEY,JSON.stringify(legacy)]]);
+const storage = {getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value)};
+const helper = new QcbHostContext({storage});
+const migrated = helper.listBases()[0];
+const selected = QcbHostContext.baseFromDraft({...draft,palette:{name:"Selected"},composition:{id:"selected"},quote_font_size:41},"Selected base");
+const reused = QcbHostContext.reuseBase(selected,"A new quote","New Author","card",draft);
+const same = QcbHostContext.reuseBase(selected,"A meaningful quote",undefined,"card",draft);
+const styled = QcbHostContext.reuseBase(selected,"A new quote","New Author","style",draft);
+const injected = QcbHostContext.importBase({schema:"qcb-personal-base",schemaVersion:2,name:"Injected",design:{...selected.design,text:"leak",attribution:"leak",evidence_status:"VERIFIED",alt_text:"leak",styles:[{start:0,end:4}]}});
+let unsupportedRejected = false;
+try { QcbHostContext.importBase({schema:"qcb-personal-base",schemaVersion:99,design:{}}); } catch (_) { unsupportedRejected = true; }
+const lines = QcbHostContext.draftFromBase(fresh,"one\ntwo","Author").lines;
+const project = QcbHostContext.draftFromProject(QcbHostContext.projectFromDraft(draft));
+const archiveBefore = helper.listArchivedProjects();
+const restoredArchive = QcbHostContext.draftFromProject(archiveBefore[0]);
+helper.listBases(); helper.listBases();
+helper.saveBase("Another base",{...draft,composition:{id:"another"}});
+console.log(JSON.stringify({fresh,migrated,reused,same,styled,injected,unsupportedRejected,lines,stored:JSON.parse(values.get(QcbHostContext.BASES_STORAGE_KEY)),archives:helper.listArchivedProjects(),restoredArchive,roundtrip:QcbHostContext.importBase(QcbHostContext.exportBase(fresh)),project}));
+'''
+        )
+        base = result["fresh"]
+        self.assertEqual("qcb-personal-base", base["schema"])
+        self.assertEqual(2, base["schemaVersion"])
+        self.assertNotIn("text", result["migrated"]["design"])
+        self.assertEqual("keep-id", result["migrated"]["id"])
+        self.assertEqual(1, len(result["archives"]))
+        self.assertEqual("keep-id", result["archives"][0]["id"])
+        self.assertEqual("Old base", result["archives"][0]["name"])
+        self.assertEqual("A meaningful quote", result["restoredArchive"]["text"])
+        self.assertEqual("Writer", result["restoredArchive"]["attribution"])
+        self.assertEqual("VERIFIED", result["restoredArchive"]["evidence_status"])
+        self.assertEqual([{"start": 0, "end": 3}], result["restoredArchive"]["styles"])
+        self.assertEqual("4x5", result["restoredArchive"]["format"])
+        self.assertEqual({"name": "Studio"}, result["restoredArchive"]["brand_kit"])
+        self.assertEqual(1, len(result["stored"]["archivedProjects"]))
+        self.assertNotIn("text", base["design"])
+        self.assertNotIn("composition_candidates", base["design"])
+        self.assertNotIn("proposal_source", base["design"])
+        self.assertEqual("hidden", base["design"]["logo_mode"])
+        self.assertEqual({"name": "Studio"}, result["reused"]["draft"]["brand_kit"])
+        self.assertEqual({"name": "Selected"}, result["reused"]["draft"]["palette"])
+        self.assertEqual({"id": "selected"}, result["reused"]["draft"]["composition"])
+        self.assertEqual("New Author", result["reused"]["draft"]["attribution"])
+        self.assertEqual("USER_SUPPLIED", result["reused"]["draft"]["evidence_status"])
+        self.assertEqual(result["same"]["draft"]["styles"], [{"start": 0, "end": 3}])
+        self.assertEqual("Writer", result["same"]["draft"]["attribution"])
+        self.assertEqual({"name": "Selected"}, result["same"]["draft"]["palette"])
+        self.assertEqual([], result["reused"]["draft"]["styles"])
+        self.assertIsNone(result["reused"]["draft"]["quote_font_size"])
+        self.assertNotIn("text", result["injected"]["design"])
+        self.assertNotIn("attribution", result["injected"]["design"])
+        self.assertNotIn("evidence_status", result["injected"]["design"])
+        self.assertTrue(result["unsupportedRejected"])
+        self.assertEqual(["one", "two"], result["lines"])
+        self.assertEqual("qcb-personal-base", result["stored"]["bases"][0]["schema"])
+        self.assertEqual("keep-id", result["stored"]["bases"][0]["id"])
+        self.assertEqual("demo", result["styled"]["draft"]["proposal_source"])
+        self.assertEqual({"name": "Studio"}, result["project"]["brand_kit"])
+
+    def test_legacy_base_archive_is_returned_when_storage_write_fails_without_mutating_raw_store(self):
+        result = self.run_node(
+            r'''
+const legacy={schema:"qcb-card-bases",schemaVersion:1,bases:[{id:"preserve-me",name:"Portfolio",draft:{text:"Original quote",attribution:"Original author",styles:[{start:0,end:4,type:"bold"}],evidence_status:"VERIFIED",visual_grammar:"ribbons",composition:{id:"scene"}}}]};
+const raw=JSON.stringify(legacy);
+const storage={getItem:()=>raw,setItem(){throw new Error("quota");}};
+const helper=new QcbHostContext({storage});
+const bases=helper.listBases(),archives=helper.listArchivedProjects();
+console.log(JSON.stringify({bases,archives,stillOriginal:raw===JSON.stringify(legacy)}));
+'''
+        )
+        self.assertTrue(result["stillOriginal"])
+        self.assertNotIn("text", result["bases"][0]["design"])
+        self.assertEqual("Original quote", result["archives"][0]["draft"]["text"])
 
 
 class HostThemeAssetTests(unittest.TestCase):

@@ -301,7 +301,7 @@ PRIMARY_BACKEND = "sharp"
 
 def primary_backend(visual_grammar: str | None = None) -> str:
     """Compatibility baseline for this grammar's preview/export pairing."""
-    return "chrome" if visual_grammar == "ribbons" else PRIMARY_BACKEND
+    return "chrome" if visual_grammar in {"ribbons", "urban"} else PRIMARY_BACKEND
 
 
 def _svg_grammar(svg_path: Path) -> str | None:
@@ -314,8 +314,9 @@ def _svg_grammar(svg_path: Path) -> str | None:
     except (OSError, UnicodeError):
         return None
     root = re.search(r"<svg\b[^>]*>", head)
-    if root and re.search(r"\bdata-visual-grammar\s*=\s*([\"'])ribbons\1", root.group()):
-        return "ribbons"
+    if root:
+        match = re.search(r"\bdata-visual-grammar\s*=\s*([\"'])(ribbons|urban)\1", root.group())
+        if match: return match.group(2)
     return None
 
 BACKENDS: tuple[tuple[str, Callable[..., None]], ...] = (
@@ -336,14 +337,14 @@ def rasterize(
     verify_png, so a converter that writes a blank or mis-sized canvas is
     treated as a failure and the next one is tried.
 
-    ``visual_grammar='ribbons'`` (or its renderer-owned SVG root marker)
+    Parametric grammars (or their renderer-owned SVG root marker)
     requires Chromium through Playwright; no legacy-font fallback is accepted.
     """
     attempts: list[tuple[str, str]] = []
     visual_grammar = options.get("visual_grammar") or _svg_grammar(svg_path)
-    # Ribbons have a verified browser proof. Reject unavailable Chromium
+    # Parametric grammars have verified browser font metrics. Reject unavailable Chromium
     # rather than delivering an unapproved font/spacing substitution.
-    backends = (("chrome", _chrome_ribbons),) if visual_grammar == "ribbons" else BACKENDS
+    backends = (("chrome", _chrome_ribbons),) if visual_grammar in {"ribbons", "urban"} else BACKENDS
     for name, backend in backends:
         try:
             backend(svg_path, png_path, width, height, options)
@@ -360,7 +361,7 @@ def rasterize(
             if not detail:
                 reason = f"uscita {error.returncode}"
             else:
-                reason = detail[0] if visual_grammar == "ribbons" else detail[-1]
+                reason = detail[0] if visual_grammar in {"ribbons", "urban"} else detail[-1]
             attempts.append((name, reason))
             continue
         except (OSError, ValueError) as error:

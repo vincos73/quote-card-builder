@@ -5,9 +5,9 @@ description: Trasforma frasi, testi, URL, documenti e idee in quote card. Usa qu
 
 # Quote Card Builder
 
-Versione: **1.8.11** (pacchetto web MCP / UI v1.58)
+Versione: **1.9.0** (sorgenti e pacchetti candidati / UI v1.59)
 
-La versione 1.8.11/UI v1.58 è live nel servizio web MCP, con la grammatica Nastri e avvisi visuali non bloccanti. Il plugin personale di test contiene la skill web; l’installazione locale resta distinta. Consultare RELEASE-STATUS.md per distinguere pacchetto, distribuzione e verifiche native nel client. Per una richiesta chiara di procedere da un URL leggibile, il modello usa la navigazione dell'host per leggere la fonte e apre un solo editor già popolato. Per modifiche successive nella chat, richiama `@Quote Card Builder TEST MCP` in ogni follow-up così il tool `quote_card_builder_update_editor` è disponibile. La UI usa attribuzione “nessuna” e palette neutra come default; conserva i nomi forniti dall’utente o verificati nella fonte. Bozze e modifiche non si sincronizzano tra dispositivi o conversazioni.
+I sorgenti 1.9.0/UI v1.59 aggiungono Urban, basi personali portabili e brand kit con font/logo. Il servizio live resta 1.8.11/UI v1.58 fino a un deploy verificato. Il plugin personale di test contiene la skill web; l’installazione locale resta distinta. Consultare RELEASE-STATUS.md per distinguere pacchetto, distribuzione e verifiche native nel client. Per una richiesta chiara di procedere da un URL leggibile, il modello usa la navigazione dell'host per leggere la fonte e apre un solo editor già popolato. Per modifiche successive nella chat, richiama `@Quote Card Builder TEST MCP` in ogni follow-up così il tool `quote_card_builder_update_editor` è disponibile. La UI usa attribuzione “nessuna” e palette neutra come default; conserva i nomi forniti dall’utente o verificati nella fonte. Bozze e modifiche non si sincronizzano tra dispositivi o conversazioni.
 
 Separare sempre provenienza osservata, dichiarazioni editoriali dell'utente e produzione visuale. La skill non inventa dati né certifica le scelte dell'utente: propone etichette e segnala incongruenze, ma l'utente può modificare e approvare testo, classificazione, prova, attribuzione ed è il garante finale.
 
@@ -18,6 +18,12 @@ Gestire il lavoro con questi stati: `bozza` → `candidati_pronti` → `candidat
 Le istruzioni esplicite dell'utente hanno precedenza sulle indicazioni operative di questa skill, salvo i limiti effettivi imposti da tool disponibili, sicurezza e consenso. La disponibilità di un tool, di un editor o di un runtime determina il percorso applicabile; non autorizza a saltare un'approvazione richiesta dall'utente.
 
 Se l'utente chiede esplicitamente di saltare o non aprire l'editor, non aprirlo e non trattare la richiesta come prova di indisponibilità dell'interfaccia per attivare headless. Se il percorso richiesto non è supportato dall'host o richiede un consenso non dato, dichiarare il limite e fermarsi.
+
+## Grammatiche e riuso 1.9.0
+
+Nastri resta il default per nuove card senza uno stile scelto; Urban è la seconda grammatica. Rispettare sempre una preferenza esplicita o una base personale. Per Urban leggere [il contratto delle scene](references/urban-web-mcp.md), creare tre composizioni parametriche e passare `style: urban`, `visual_grammar: urban`, scena scelta, candidati e `proposal_source: model` al tool disponibile. Verificare prima che il servizio collegato supporti questi campi.
+
+La [base personale](references/personal-bases.md) conserva design e brand senza citazione; il progetto conserva la card completa. Web e locale condividono i formati trasferibili. Le vecchie basi web preservano la card originaria come progetto recuperabile. Il [brand kit](references/brand-kits.md) contiene font e logo incorporati; non promettere una sincronizzazione account. Le modifiche dalla chat usano il contesto corrente e la revisione: quando gli asset restano nell’editor, il tool restituisce un aggiornamento da renderizzare lì senza sostituire font o logo.
 
 ## Gate obbligatorio dell'editor
 

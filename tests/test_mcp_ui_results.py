@@ -22,6 +22,11 @@ for(const key of ['call_tool_result','mcp_tool_result']) {
 assert.equal(QcbToolResults.read(state).editor_state.text,'Current card');
 assert.equal(QcbToolResults.read({content:[{type:'text',text:JSON.stringify({...state,svg:'legacy'})}]}).svg,'legacy');
 assert.equal(QcbToolResults.read({content:[{type:'text',text:'Not JSON'}]}),null);
+const kit={name:'Studio',font:{regular:{data_base64:'font-bytes'}}};
+const compact={structuredContent:{valid:true,rendered:false,editor_state:{text:'Edited'}},_meta:{quoteCard:{brand_kit:kit}}};
+assert.deepEqual(QcbToolResults.read(compact).editor_state.brand_kit,kit);
+const cleared={structuredContent:{valid:true,rendered:false,editor_state:{text:'Edited',brand_kit:kit}},_meta:{quoteCard:{brand_kit:null}}};
+assert.equal(QcbToolResults.read(cleared).editor_state.brand_kit,null);
 const cyclic={};cyclic.result=cyclic;assert.equal(QcbToolResults.read(cyclic),null);
 assert.equal(state.svg,undefined);
 '''

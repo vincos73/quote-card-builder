@@ -10,10 +10,15 @@
       visited.add(value);
       const structured = value.structuredContent || value.structured_content;
       if (structured && typeof structured === "object") {
-        return { ...structured,
+        const quoteCard = value._meta?.quoteCard;
+        const result = { ...structured,
           ...(typeof value._meta?.quoteCard?.svg === "string" ? { svg:value._meta.quoteCard.svg } : {}),
           ...(Array.isArray(value._meta?.quoteCard?.composition_previews) ? { composition_previews:value._meta.quoteCard.composition_previews } : {}),
         };
+        if (quoteCard && Object.prototype.hasOwnProperty.call(quoteCard, "brand_kit") && result.editor_state && typeof result.editor_state === "object") {
+          result.editor_state = {...result.editor_state, brand_kit:quoteCard.brand_kit};
+        }
+        return result;
       }
       for (const key of envelopeKeys) {
         const result = visit(value[key]);

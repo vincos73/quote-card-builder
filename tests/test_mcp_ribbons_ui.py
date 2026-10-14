@@ -52,10 +52,13 @@ const saved=first.saveBase('My base',draft);
 const second=new QcbHostContext({workspace:true,storage,openai:{},request:async(method,params)=>{requests.push({method,params});return {};}});
 second.initialize({});
 assert.deepEqual(second.getDraft(),draft);
-assert.deepEqual(second.listBases()[0].draft.composition,scene);
-assert.equal(second.listBases()[0].draft.quote_font_size,120);
-assert.equal(second.listBases()[0].draft.author_font_size,28);
-assert.equal(second.listBases()[0].draft.styles[0].scale,1.5);
+assert.equal(second.listBases()[0].schema,'qcb-personal-base');
+assert.deepEqual(second.listBases()[0].design.composition,scene);
+assert.equal(second.listBases()[0].design.visual_grammar,'ribbons');
+assert.equal(second.listBases()[0].design.quote_font_size,120);
+assert.equal(second.listBases()[0].design.author_font_size,28);
+assert.ok(!('text' in second.listBases()[0].design));
+assert.ok(!('styles' in second.listBases()[0].design));
 second.acceptToolInput(draft);await Promise.resolve();
 const context=requests.find(item=>item.method==='ui/update-model-context').params;
 assert.deepEqual(context.structuredContent.modelContent.composition,scene);
@@ -152,6 +155,7 @@ const selectedStyle=()=>style,textValue=()=>draft.text,readLines=()=>null,readPa
 const format={value:'9x16'},attribution={value:'Autore'},scale={value:'100'},position={value:'center'};
 const quoteFontSize={value:'120'},authorFontSize={value:'28'},paletteDecision={value:'custom'},attributionDecision={value:'named'};
 let styles=draft.styles,graphicSeed=7,draftTransformation='VERBATIM',draftEvidenceStatus='VERIFIED',draftAltText='';
+let brandKit=null;const $=id=>id==='logoMode'?{value:'auto'}:{value:''};
 let ribbonComposition=scene,ribbonCandidates=[scene],ribbonProposalSource='model',pendingReuseComposition=scene;
 let editRevision=11,draftUpdateStatus='',appliedUpdateFingerprints=[],demoChoices=false,demoAttributionChoice=false,demoPaletteChoice=false;
 ''' + code + r'''
@@ -189,6 +193,7 @@ const textValue=()=>draft.text,readPalette=()=>draft.palette,readLines=()=>draft
 const selectedStyle=()=>({direction:'editorial',variant:'default',grammar:'ribbons'});
 const format={value:'9x16'},attribution={value:draft.attribution},scale={value:'100'},position={value:'center'};
 let styles=draft.styles,graphicSeed=7,draftTransformation=draft.transformation,draftEvidenceStatus=draft.evidence_status,draftAltText=draft.alt_text;
+let brandKit=null;const $=id=>id==='logoMode'?{value:'auto'}:{value:''};
 const paletteDecision={value:'custom'},attributionDecision={value:'named'};
 let editRevision=11,draftUpdateStatus='',appliedUpdateFingerprints=[],demoChoices=false,demoAttributionChoice=false,demoPaletteChoice=false;
 ''' + hydrate + arguments + r'''

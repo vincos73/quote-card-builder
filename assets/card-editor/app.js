@@ -61,6 +61,7 @@
     constellations: { direction: 'contextual', variant: 'constellations', icon: 'dots', label: 'Constellations' },
     gradient: { direction: 'editorial', variant: 'gradient', icon: 'gradient', label: 'Gradient' },
     ribbons: { direction: 'editorial', variant: 'default', icon: 'ribbons', label: 'Nastri', grammar: 'ribbons' },
+    urban: { direction: 'editorial', variant: 'default', icon: 'ribbons', label: 'Urban', grammar: 'urban' },
     plain: { direction: 'editorial', variant: 'default', hidden: true, label: 'Hide pattern' },
   };
   const STYLE_THUMBS = {
@@ -86,7 +87,7 @@
     graphic_variant: normalizeGraphicVariant(direction, presentation.graphic_variant || 'default'),
     graphic_seed: Number.isInteger(presentation.graphic_seed) && presentation.graphic_seed >= 0 && presentation.graphic_seed <= 999999 ? presentation.graphic_seed : 0,
     output_mode: presentation.output_mode || fallbackMode,
-    ...(presentation.visual_grammar === 'ribbons' ? { visual_grammar: 'ribbons' } : {}),
+    ...(['ribbons', 'urban'].includes(presentation.visual_grammar) ? { visual_grammar: presentation.visual_grammar } : {}),
     ...(presentation.composition && typeof presentation.composition === 'object'
       ? { composition: clone(presentation.composition) } : {}),
     ...(Number.isFinite(presentation.quote_font_size) ? { quote_font_size: presentation.quote_font_size } : {}),
@@ -281,7 +282,7 @@
   };
 
   const currentFormat = () => state.draft?.formats.find((item) => item.id === state.activeFormat);
-  const isRibbons = () => state.draft?.presentation?.visual_grammar === 'ribbons';
+  const isRibbons = () => ['ribbons', 'urban'].includes(state.draft?.presentation?.visual_grammar);
 
   const activate = (container, datasetKey, value) => {
     container.querySelectorAll('button').forEach((button) => {
@@ -772,7 +773,7 @@
       composition_candidates: clone(manifest.composition_candidates || []),
       proposal_source: manifest.proposal_source === 'model' ? 'model' : 'demo',
     };
-    if (draft.presentation.visual_grammar === 'ribbons') draft.formats = completeRibbonFormats(draft.formats, draft.text);
+    if (['ribbons', 'urban'].includes(draft.presentation.visual_grammar)) draft.formats = completeRibbonFormats(draft.formats, draft.text);
     sanitizeDirectionStyles(draft);
     return draft;
   };
@@ -784,7 +785,7 @@
         && saved?.baseline_signature === baselineSignature(manifest)
         && typeof saved.draft?.text === 'string'
         && Array.isArray(saved.draft?.formats)
-        && (saved.draft?.presentation?.visual_grammar === 'ribbons'
+        && (['ribbons', 'urban'].includes(saved.draft?.presentation?.visual_grammar)
           || saved.draft.formats.length === manifest.formats.length)) {
         const initial = initialDraft(manifest);
         const restored = {
@@ -799,7 +800,7 @@
           ),
         };
         restored.formats = normalizeFormats(saved.draft.formats);
-        if (restored.presentation.visual_grammar === 'ribbons') restored.formats = completeRibbonFormats(restored.formats, restored.text);
+        if (['ribbons', 'urban'].includes(restored.presentation.visual_grammar)) restored.formats = completeRibbonFormats(restored.formats, restored.text);
         sanitizeDirectionStyles(restored);
         return restored;
       }
@@ -1031,7 +1032,7 @@
       item.className = 'saved-style'; item.setAttribute('role', 'listitem');
       const name = document.createElement('span'); name.textContent = style.name || 'Unnamed style';
       const actions = document.createElement('div'); actions.className = 'saved-style-actions';
-      if (style.presentation?.visual_grammar === 'ribbons' || style.visual_grammar === 'ribbons') {
+      if (['ribbons', 'urban'].includes(style.presentation?.visual_grammar || style.visual_grammar)) {
         [['card', 'Riusa questa card'], ['style', 'Crea nello stesso stile']].forEach(([mode, label]) => {
           const reuse = document.createElement('button'); reuse.type = 'button'; reuse.dataset.styleId = style.id;
           reuse.dataset.reuseMode = mode; reuse.textContent = label;
@@ -1190,23 +1191,21 @@
   };
 
   const downloadProject = () => {
-    const draft = payload();
-    const manifest = clone(state.manifest);
-    // These belong to the current editor session, not the reusable card.
-    ['font_capabilities', 'limits', 'return_url'].forEach((key) => { delete manifest[key]; });
-    const project = { ...manifest,
-      content: { ...clone(state.manifest.content), text: draft.text, transformation: draft.transformation,
-        evidence_status: draft.evidence_status, attribution: draft.attribution, alt_text: draft.alt_text,
-        styles: draft.styles, styles_customized: draft.styles_customized, emphasis: '' },
-      brand: { ...clone(state.manifest.brand), colors: draft.palette },
-      direction: draft.direction, presentation: draft.presentation, formats: draft.formats,
-      composition_candidates: draft.composition_candidates, proposal_source: draft.proposal_source,
-    };
-    const blob = new Blob([JSON.stringify(project, null, 2) + '\n'], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a'); link.href = url; link.download = 'quote-card-project.json';
-    document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-    setStyleFeedback('Progetto scaricato con testo, formattazioni, brand e composizione.');
+    downloadPortable('project');
+  };
+
+  const downloadPortable = async (kind) => {
+    try {
+      const result = await api('/portable/export', {
+        method: 'POST', body: JSON.stringify({ kind, format: state.activeFormat, draft: payload() }),
+      });
+      const blob = new Blob([JSON.stringify(result, null, 2) + '\n'], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = url;
+      link.download = kind === 'base' ? 'quote-card-personal-base.json' : 'quote-card-project.json';
+      document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+      setStyleFeedback(kind === 'base' ? 'Base personale esportata senza testo.' : 'Progetto completo esportato con contenuto e composizione.');
+    } catch (error) { setStyleFeedback(error.message, true); }
   };
 
   const loadProjectFile = async () => {
@@ -1214,8 +1213,15 @@
     if (!file) return;
     els.projectUpload.disabled = true;
     try {
-      if (file.size > 2 * 1024 * 1024) throw new Error('Il progetto supera 2 MB. Usa il JSON esportato dall’editor.');
+      if (file.size > 9 * 1024 * 1024) throw new Error('Il file supera 9 MB.');
       const project = JSON.parse(await file.text());
+      if (project?.schema === 'qcb-personal-base') {
+        const result = await api('/styles/import-base', { method: 'POST', body: JSON.stringify({ base: project }) });
+        state.styles = Array.isArray(result.styles) ? result.styles : state.styles;
+        renderSavedStyles();
+        setStyleFeedback(`Base personale “${project.name || 'importata'}” aggiunta ai riutilizzi. Applicala per riusare il layout.`);
+        return;
+      }
       const result = await api('/project/load', { method: 'POST', body: JSON.stringify({ project }) });
       clearTimeout(state.timer); state.timer = null; state.requestId += 1;
       localStorage.removeItem(storageKey);
@@ -1293,7 +1299,7 @@
   };
 
   const styleChoiceForDraft = (draft = state.draft) => {
-    if (draft.presentation.visual_grammar === 'ribbons') return 'ribbons';
+    if (['ribbons', 'urban'].includes(draft.presentation.visual_grammar)) return draft.presentation.visual_grammar;
     if (draft.presentation.graphic_mode === 'hidden') return 'plain';
     const match = Object.entries(STYLE_OPTIONS).find(([, option]) => (
       !option.hidden && !option.grammar && option.direction === draft.direction && option.variant === draft.presentation.graphic_variant
@@ -2184,6 +2190,7 @@
   els.reuseCancel.addEventListener('click', () => { els.reuseForm.hidden = true; });
   els.reuseConfirm.addEventListener('click', confirmStyleReuse);
   els.projectDownload.addEventListener('click', downloadProject);
+  $('#base-export').addEventListener('click', () => downloadPortable('base'));
   els.projectUpload.addEventListener('click', () => els.projectFile.click());
   els.projectFile.addEventListener('change', loadProjectFile);
   $('#zoom-in').addEventListener('click', () => setZoom(state.zoom + 10));

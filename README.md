@@ -1,5 +1,8 @@
 # Quote Card Builder
 
+
+Sorgenti candidati **1.9.0 / UI v1.59**: Nastri e Urban, basi personali e progetti interoperabili, upload e trasferimento di font/logo. Il servizio remoto resta alla 1.8.11 finché non viene eseguito un deploy verificato; i pacchetti locali e web sono costruiti dalla stessa versione. Vedi [RELEASE-STATUS.md](RELEASE-STATUS.md), [basi personali](references/personal-bases.md) e [brand kit](references/brand-kits.md).
+
 Quote Card Builder è una skill per ChatGPT e Claude che trasforma una frase, un testo, un URL, un documento o un’idea in una quote card pronta da condividere.
 
 È disponibile come skill e come plugin per ChatGPT e Codex. Il plugin include l'MCP server locale e l'app interattiva; la skill canonica resta utilizzabile anche senza MCP.

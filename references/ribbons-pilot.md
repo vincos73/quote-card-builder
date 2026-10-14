@@ -39,7 +39,7 @@ L'editor, da solo, non contiene una chiamata a un modello. Se mancano dati proge
 
 ## Base personale e nuova card
 
-**Salva base** conserva kit, grammatica, percorsi, incroci, spessori, aree e preferenze di dimensione. Non conserva la frase o le selezioni tipografiche nella base. **Scarica progetto JSON** conserva invece la card completa, testo e selezioni inclusi. Il file riferisce font e logo disponibili sul computer: su un altro dispositivo servono anche gli asset; non promettere un pacchetto autosufficiente.
+**Salva base** conserva kit, grammatica, percorsi, incroci, spessori, aree e preferenze di dimensione. Non conserva la frase o le selezioni tipografiche nella base. **Scarica progetto JSON** conserva invece la card completa, testo e selezioni inclusi. Il formato portabile 1.9.0 incorpora font e logo nel brand kit e può essere importato nell’editor web. I vecchi manifest locali con percorsi restano importabili; vedere [brand kit](brand-kits.md).
 
 **Riusa questa card** applica esattamente la composizione della base. Il testo attuale, se invariato, conserva le formattazioni. Con testo nuovo si cancellano gli intervalli della vecchia frase, la sua attribuzione se non fornita di nuovo e le prove editoriali non applicabili; la frase parte con fitting automatico.
 

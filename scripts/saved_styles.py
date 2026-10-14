@@ -222,7 +222,8 @@ def apply_style(style_id: str, draft: dict[str, Any], current: dict[str, Any], p
     for settings in style["formats"]:
         if settings["id"] in current_formats:
             current_formats[settings["id"]].update({"text_scale": settings["text_scale"], "vertical_position": settings["vertical_position"]})
-    if candidate["presentation"].get("visual_grammar") == "ribbons":
+    grammar = candidate["presentation"].get("visual_grammar")
+    if grammar in {"ribbons", "urban"}:
         candidate["formats"] = complete_ribbon_formats(candidate["formats"], candidate["content"]["text"])
         candidate.pop("composition_candidates", None)
         candidate.pop("proposal_source", None)
@@ -240,7 +241,7 @@ def apply_style(style_id: str, draft: dict[str, Any], current: dict[str, Any], p
         candidate.pop("composition_candidates", None)
         candidate.pop("proposal_source", None)
         if composition_candidates is not None:
-            raise ValueError("Le proposte di composizione richiedono una base Nastri")
+            raise ValueError("Le proposte di composizione richiedono una base con grammatica nativa")
     # Applying a style is a preview/editor state transformation. The manifest
     # is deliberately not persisted here, so its revision must remain the
     # same and the returned session can be submitted against that manifest.

@@ -1,4 +1,18 @@
-# Quote Card Builder — web MCP 1.8.11 / UI v1.58
+# Candidato 1.9.0 / UI v1.59 — Urban e riuso portabile
+
+14 ottobre 2026. **Sorgenti e pacchetti preparati e verificati; nuovo servizio non distribuito in questa sessione.** Ultimo stato live confermato: web 1.8.11/UI v1.58 e installazione standalone personale 1.8.3.
+
+- Nastri e Urban condividono scene native, editor tipografico e formati 4:5/1:1/9:16. Urban usa pannelli, fasce e segni di stampa parametrici; i percorsi Nastri precedenti sono preservati.
+- Le basi personali escludono il contenuto editoriale; i progetti conservano la card completa. Web e locale condividono i JSON trasferibili, inclusi font/logo. La migrazione delle vecchie basi web conserva le card originali come progetti recuperabili e non cancella l’archivio se la scrittura fallisce.
+- Upload e validazione di font/logo nel web; trasferimento degli asset nei JSON e mantenimento delle varianti logo locali. Il contesto del modello riceve una descrizione compatta. Gli aggiornamenti con asset privati sono applicati e renderizzati dalla bozza completa dell’editor, senza font sostitutivi. La richiesta di nuove composizioni del modello è separata dalle varianti demo.
+- Suite completa: **510 test superati senza skip**, `uv run --with cairosvg python -m unittest discover -s tests -q`; registro `work/tests-1.9.0.log`. CairoSVG è un backend opzionale usato per la prova del renderer legacy in questo ambiente, non una dipendenza aggiunta al servizio web. Controllo finale di schema/compatibilità e pacchetti: **17 test superati**, inclusa accessibilità del tool di validazione dall’app.
+- Browser Chromium reale con host MCP simulato e tool server reali: **9 verifiche superate**, `work/grammars-verification/report.json`. Coperti upload di font e SVG, revisione dalla chat con asset preservati, base priva di contenuto, progetto completo, riuso con frase nuova/autore vuoto, richiesta al modello, import e PNG reale 1440×1800. Screenshot desktop/mobile e PNG in quella directory. La prova non equivale a un test nativo ChatGPT/Codex.
+- UI v1.59 autosufficiente: **242214 byte**, entro 256 KiB. I font `*-ui.woff2` sono sottoinsiemi del chrome, separati dai font completi incorporati nelle card. Le risorse v1.58 restano disponibili come alias di compatibilità.
+- Pacchetti allineati in `dist/`: `quote-card-builder-plugin-1.9.0.zip`, `quote-card-builder-web-1.9.0.zip`, `quote-card-builder-web-server-1.9.0.zip`, con `SHA256SUMS-1.9.0.txt`. Builder e runtime usano la medesima versione; il server contiene 35 file canonici più BUILD-INFO, senza sessioni o dati utente.
+
+Il deployment Cloud Run e l’aggiornamento del plugin personale/standalone restano da eseguire nel loro ambiente: questa sessione non dispone di un’identità Cloud Run configurata. Endpoint, autenticazione, audience e ID del plugin esistente sono preservati. Non sono stati creati tag o release pubbliche. La sincronizzazione account è una successiva evoluzione di prodotto; il trasferimento corrente è esplicito tramite JSON.
+
+# Storico — web MCP 1.8.11 / UI v1.58
 
 14 ottobre 2026. **Servizio remoto aggiornato al 100% e plugin personale di test aggiornato**. Installazione locale Codex ancora 1.8.3, verificata in lettura e non modificata. Nessuna release GitHub, submission pubblica o installazione stdio eseguita.
 
