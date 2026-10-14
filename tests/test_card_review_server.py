@@ -669,8 +669,10 @@ class CardReviewServerTests(unittest.TestCase):
         self.assertTrue(previews[0]["auto_fitted"])
         self.assertLess(previews[0]["font_size"], previews[0]["requested_font_size"])
         with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(ValueError, "quality gate"):
-                SERVER.ensure_approvable(item, Path(directory))
+            reviewed = SERVER.ensure_approvable(item, Path(directory))
+            self.assertTrue(reviewed["generation_allowed"])
+            self.assertFalse(reviewed["passed"])
+            self.assertTrue(all(warning["severity"] == "advisory" for warning in reviewed["warnings"]))
 
     def test_square_variants_share_one_auto_fit_contract(self):
         item = manifest()

@@ -30,7 +30,7 @@ try:
         TextResourceContents,
         ToolAnnotations,
     )
-    from pydantic import BaseModel, Field
+    from pydantic import BaseModel, Field, model_serializer, model_validator
     from openai_mcp_extensions import (
         OpenAIExtensions,
         OpenAIGlobalEntrypoint,
@@ -90,7 +90,42 @@ MCP_HTTP_MAX_REQUEST_BYTES = 12 * 1024 * 1024
 class StyleRange(BaseModel):
     start: int = Field(ge=0, description="Starting Unicode offset, inclusive.")
     end: int = Field(gt=0, description="Ending Unicode offset, exclusive.")
-    type: Literal["bold", "italic", "underline", "highlight", "accent", "outline"]
+    type: Literal["bold", "italic", "underline", "highlight", "accent", "outline", "size"]
+    scale: float | None = Field(default=None, ge=.5, le=2.5, description="Required for size: relative scale 0.5–2.5.")
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_size(cls, value):
+        if isinstance(value, dict):
+            scale = value.get("scale")
+            if value.get("type") == "size" and (scale is None or isinstance(scale, bool)):
+                raise ValueError("Size ranges require a numeric scale.")
+            if value.get("type") != "size" and scale is not None:
+                raise ValueError("Only size ranges may contain scale.")
+        return value
+
+    @model_serializer
+    def serialize_range(self):
+        result = {"start": self.start, "end": self.end, "type": self.type}
+        if self.type == "size":
+            result["scale"] = self.scale
+        return result
+
+
+class GrammarFields(BaseModel):
+    """Canonical, portable scene state shared by tools and the editor."""
+
+    visual_grammar: Literal["ribbons"] | None = Field(default=None, description="Use ribbons for native editable ribbon compositions; omit for legacy styles.")
+    composition: dict[str, object] | None = Field(default=None, description=(
+        "Native ribbon scene: version=1, id, optional name; quote_box, author_box, logo_box each {x,y,width,height} within 0..1; "
+        "background_role,text_role,highlight_role from primary/accent/background/text; ribbons [{id,color_role,width_ratio:0.015..0.3,points:[[x,y],...]}] "
+        "with 1+3*n points (4..37), coordinates -0.5..1.5, interpreted as start then cubic controls/end; crossings [{over,under,segment,t:0..1}]. "
+        "Compose distinctive curves around quote, optional author and logo. Preserve user-authored scenes exactly."
+    ))
+    composition_candidates: list[dict[str, object]] = Field(default_factory=list, max_length=3, description="Up to three distinct native scenes for selection; empty means no gallery. Model scenes require proposal_source=model.")
+    proposal_source: Literal["model", "demo"] | None = None
+    quote_font_size: float | None = Field(default=None, ge=8, le=720, description="Absolute quote size in 1440px canvas pixels; omitted means automatic fit. Explicit values are preserved.")
+    author_font_size: float | None = Field(default=None, ge=8, le=720, description="Independent attribution size in canvas pixels.")
 
 
 class PaletteColors(BaseModel):
@@ -105,9 +140,9 @@ class PaletteInput(BaseModel):
     colors: PaletteColors
 
 
-class PreviewQuoteCardInput(BaseModel):
+class PreviewQuoteCardInput(GrammarFields):
     text: str = Field(min_length=1, max_length=600, description="Quote card text.")
-    format: Literal["4x5", "1x1"] = Field(default="4x5", description="Card format: 4x5 portrait or 1x1 square.")
+    format: Literal["4x5", "1x1", "9x16"] = Field(default="4x5", description="Card format: portrait 4x5, square 1x1, or story 9x16.")
     attribution: str = Field(default="", max_length=160, description="Optional visible attribution.")
     transformation: Literal["VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"] = "VERBATIM"
     evidence_status: Literal["VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"] = "USER_SUPPLIED"
@@ -125,13 +160,15 @@ class PreviewQuoteCardInput(BaseModel):
     styles: list[StyleRange] | None = Field(default=None, max_length=64)
     alt_text: str = Field(default="", max_length=400, description="Optional replacement for the automatic alt text.")
     output_image: bool = Field(default=False, description="Compatibility option: when true, include ImageContent in a preview response.")
+    presentation: dict[str, object] | None = Field(default=None, description="Optional native presentation mapping; canonical output uses the flattened scene fields.")
+    reuse_composition: dict[str, object] | None = Field(default=None, description="Saved scene for deterministic style variations when no new scene/candidates are supplied; output is labelled demo.")
 
 
-class EditorState(BaseModel):
+class EditorState(GrammarFields):
     """Authoritative editor snapshot echoed by every render tool result."""
 
     text: str
-    format: Literal["4x5", "1x1"] = "4x5"
+    format: Literal["4x5", "1x1", "9x16"] = "4x5"
     attribution: str
     profile_mode: Literal["neutral", "custom"]
     transformation: Literal["VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"]
@@ -152,9 +189,10 @@ class ValidationIssue(BaseModel):
     path: str
     code: str
     message: str
+    severity: Literal["advisory"] | None = None
 
 
-class RenderedQuoteCard(BaseModel):
+class RenderedQuoteCard(GrammarFields):
     """Internal result from the canonical renderer, including SVG bytes."""
 
     valid: bool
@@ -165,7 +203,7 @@ class RenderedQuoteCard(BaseModel):
     graphic_variant: str = "default"
     text_scale: float = 1.0
     vertical_position: Literal["upper", "center", "lower"] = "center"
-    format: Literal["4x5", "1x1"]
+    format: Literal["4x5", "1x1", "9x16"]
     width: int
     height: int
     svg: str | None
@@ -178,9 +216,11 @@ class RenderedQuoteCard(BaseModel):
     editorial_responsibility: Literal["caller"]
     declaration: dict[str, object] | None = None
     editor_state: EditorState | None = None
+    ribbon_layout: dict[str, object] | None = None
+    composition_previews: list[dict[str, object]] = Field(default_factory=list)
 
 
-class CompactQuoteCardOutput(BaseModel):
+class CompactQuoteCardOutput(GrammarFields):
     """Compact structured output shared with the model and the MCP App.
 
     The default wire payload preserves legacy ``svg`` and ``svg_data_uri`` fields
@@ -196,7 +236,7 @@ class CompactQuoteCardOutput(BaseModel):
     graphic_variant: str = "default"
     text_scale: float = 1.0
     vertical_position: Literal["upper", "center", "lower"] = "center"
-    format: Literal["4x5", "1x1"]
+    format: Literal["4x5", "1x1", "9x16"]
     width: int
     height: int
     svg_sha256: str | None = None
@@ -207,6 +247,8 @@ class CompactQuoteCardOutput(BaseModel):
     editorial_responsibility: Literal["caller"]
     declaration: dict[str, object] | None = None
     editor_state: EditorState | None = None
+    ribbon_layout: dict[str, object] | None = None
+    composition_previews: list[dict[str, object]] = Field(default_factory=list)
 
 
 class PreviewQuoteCardOutput(CompactQuoteCardOutput):
@@ -382,6 +424,7 @@ def quote_card_builder_open_workspace() -> WorkspaceOpenOutput:
         "Use 1–3 short emphasis ranges, usually only two style types from bold, italic, and highlight. Emphasize the central claim, not every word or a whole long line. Respect an explicit plain layout or user-supplied lines/styles, including an empty styles list; never rewrite an existing quote's user-authored layout unless asked. Style offsets are zero-based Unicode code-point indexes with an exclusive end, measured against text exactly as lines joined by newline. If text already contains newlines and lines is omitted, those rows are used. Keep short quotes visually strong without forcing extra lines or styles. Example layout for the supplied sentence: ‘L’IA aiuta / a chiarire i problemi / e a valutare / le opzioni; / il giudizio / e la responsabilità / restano alle persone.’ "
         "Default missing attribution to none and palette to neutral without asking. Preserve a named attribution only when supplied by the user or verified in the source. "
         "Ask only when the source cannot be read or the user's intent/content remains materially ambiguous. "
+        "For a requested Nastri/ribbons card, use visual_grammar='ribbons' and supply three genuinely different native composition_candidates with proposal_source='model', or preserve the user's chosen composition. The model chooses path geometry, crossings, text area and color roles; all text remains editable. A missing scene produces explicitly labelled demo proposals. Inline size uses type='size' and scale 0.5–2.5. Visual warnings are advisory and preserve user choices. "
         "The user chooses style in the editor; use Blocks, Cutouts, Constellations, or Gradient only as an "
         "optional preselection volunteered by the user. Do not use image generation or a local "
         "filesystem. Do not ask for quote, attribution, or palette confirmation when the user said to proceed. Call this tool exactly once and do not "
@@ -433,17 +476,25 @@ def quote_card_builder_open_editor(
         title="Palette profile",
         description="Defaults to the neutral palette. Use custom only when the user supplied or explicitly chose custom colors.",
     ),
-    style: Annotated[Literal["blocks", "cutouts", "constellations", "gradient"], Field(
+    style: Annotated[Literal["blocks", "cutouts", "constellations", "gradient", "ribbons"], Field(
         title="Style preselection (optional)",
         description=(
             "Optional preselection volunteered by the user. The user can choose Blocks, Cutouts, "
-            "Constellations, or Gradient in the editor; defaults to Blocks. Do not accept a generic style label."
+            "Constellations, Gradient, or Nastri (ribbons) in the editor; defaults to Blocks. Do not accept a generic style label."
         ),
     )] = "blocks",
-    format: Annotated[Literal["4x5", "1x1"], Field(title="Initial format", description="Optional initial format: 4x5 portrait or 1x1 square.")] = "4x5",
+    format: Annotated[Literal["4x5", "1x1", "9x16"], Field(title="Initial format", description="Optional initial format: 4x5, 1x1, or 9x16.")] = "4x5",
     palette: Annotated[PaletteInput | None, Field(title="Custom palette colors", description="Required only when a custom palette was supplied or explicitly chosen.")] = None,
     transformation: Literal["VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"] = Field(default="VERBATIM", description="How the card text relates to its source."),
     evidence_status: Literal["VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"] = Field(default="USER_SUPPLIED", description="Use VERIFIED only when exact wording is checked against an accessible source."),
+    visual_grammar: Literal["ribbons"] | None = None,
+    composition: Annotated[dict[str, object] | None, Field(description=GrammarFields.model_fields["composition"].description)] = None,
+    composition_candidates: Annotated[list[dict[str, object]] | None, Field(max_length=3, description=GrammarFields.model_fields["composition_candidates"].description)] = None,
+    proposal_source: Literal["model", "demo"] | None = None,
+    quote_font_size: Annotated[float | None, Field(ge=8, le=720)] = None,
+    author_font_size: Annotated[float | None, Field(ge=8, le=720)] = None,
+    presentation: dict[str, object] | None = None,
+    reuse_composition: dict[str, object] | None = None,
 ) -> PreviewQuoteCardOutput:
     """Render the initial snapshot once; the widget handles later data calls."""
     if profile_mode == "custom" and palette is None:
@@ -462,6 +513,7 @@ def quote_card_builder_open_editor(
         "cutouts": ("editorial", "cutouts"),
         "constellations": ("contextual", "constellations"),
         "gradient": ("editorial", "gradient"),
+        "ribbons": ("editorial", "default"),
     }
     direction, graphic_variant = style_map[style]
     request = PreviewQuoteCardInput(
@@ -480,11 +532,19 @@ def quote_card_builder_open_editor(
         styles=styles,
         alt_text="",
         output_image=False,
+        visual_grammar="ribbons" if style == "ribbons" else visual_grammar,
+        composition=composition,
+        composition_candidates=composition_candidates or [],
+        proposal_source=proposal_source,
+        quote_font_size=quote_font_size,
+        author_font_size=author_font_size,
+        presentation=presentation,
+        reuse_composition=reuse_composition,
     )
     result = _render_request(request, profile_mode)
-    # Keep the initial envelope readable by older cached editor instances.
-    # Subsequent v1.40 data calls opt into compact_output=True.
-    structured = _wire_payload(_compact_output(result), legacy_svg=True)
+    # Keep legacy styles readable by cached clients. Native Nastri SVGs embed
+    # fonts and belong only in UI metadata, alongside their gallery proofs.
+    structured = _wire_payload(_compact_output(result), legacy_svg=result.visual_grammar != "ribbons")
     return CallToolResult(
         content=[TextContent(type="text", text=json.dumps(_summary(result), ensure_ascii=False, indent=2))],
         structuredContent=structured,
@@ -493,12 +553,12 @@ def quote_card_builder_open_editor(
     )
 
 
-class EditorPatch(BaseModel):
+class EditorPatch(GrammarFields):
     text: str | None = Field(default=None, min_length=1, max_length=600)
     attribution: str | None = Field(default=None, max_length=160)
     transformation: Literal["VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"] | None = None
     evidence_status: Literal["VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"] | None = None
-    format: Literal["4x5", "1x1"] | None = None
+    format: Literal["4x5", "1x1", "9x16"] | None = None
     profile_mode: Literal["neutral", "custom"] | None = None
     palette: PaletteInput | None = None
     direction: Literal["editorial", "statement", "contextual"] | None = None
@@ -510,6 +570,8 @@ class EditorPatch(BaseModel):
     lines: list[str] | None = None
     styles: list[StyleRange] | None = Field(default=None, max_length=64)
     alt_text: str | None = Field(default=None, max_length=400)
+    presentation: dict[str, object] | None = None
+    reuse_composition: dict[str, object] | None = None
 
 
 @apps.tool(
@@ -537,6 +599,11 @@ def quote_card_builder_update_editor(
 ) -> CallToolResult:
     """Merge and render a revision-checked patch, then deliver it through standard MCP Apps tool-input."""
     changes = patch.model_dump(exclude_unset=True)
+    if changes.get("presentation") is not None:
+        for key in GrammarFields.model_fields:
+            if key in changes["presentation"] and key not in changes:
+                changes[key] = changes["presentation"][key]
+        changes.pop("presentation")
     if not changes:
         raise ValueError("The update patch must contain at least one changed field.")
     merged = base_snapshot.model_dump(mode="python")
@@ -550,7 +617,7 @@ def quote_card_builder_update_editor(
                 continue
             first = new_text.find(selected)
             if first >= 0 and new_text.find(selected, first + 1) < 0:
-                remapped.append({"start": first, "end": first + len(selected), "type": style.type})
+                remapped.append({**style.model_dump(), "start": first, "end": first + len(selected)})
         return remapped
 
     if "text" in changes and changes["text"] != base_snapshot.text:
@@ -597,6 +664,8 @@ def quote_card_builder_update_editor(
         lines=state.lines,
         styles=state.styles,
         alt_text=state.alt_text,
+        **{key: getattr(state, key) for key in GrammarFields.model_fields},
+        reuse_composition=changes.get("reuse_composition"),
     )
     rendered = _render_request(request, state.profile_mode)
     compact = _wire_payload(_compact_output(rendered), legacy_svg=False)
@@ -605,7 +674,7 @@ def quote_card_builder_update_editor(
         "base_revision": base_revision,
         "base_snapshot": base_snapshot.model_dump(mode="json"),
         "patch": changes,
-        "editor_state": state.model_dump(mode="json"),
+        "editor_state": rendered.editor_state.model_dump(mode="json"),
         "editor_revision": base_revision + 1,
     })
     return CallToolResult(
@@ -738,6 +807,7 @@ async def serve_remote_png(request: Request) -> Response:
 def _editor_state(
     request: PreviewQuoteCardInput,
     profile_mode: Literal["neutral", "custom"] | None = None,
+    rendered: RenderedQuoteCard | None = None,
 ) -> EditorState:
     """Build the transport-level snapshot without duplicating rendering logic."""
     return EditorState(
@@ -757,6 +827,8 @@ def _editor_state(
         lines=request.lines,
         styles=request.styles or [],
         alt_text=request.alt_text,
+        **{key: getattr(rendered, key) if rendered is not None and rendered.rendered else getattr(request, key)
+           for key in GrammarFields.model_fields},
     )
 
 
@@ -767,7 +839,7 @@ def _render_request(
     result = RenderedQuoteCard.model_validate(
         render_preview(request.model_dump(exclude={"output_image"}, exclude_none=True))
     )
-    return result.model_copy(update={"editor_state": _editor_state(request, profile_mode)})
+    return result.model_copy(update={"editor_state": _editor_state(request, profile_mode, result)})
 
 
 def _compact_output(
@@ -784,12 +856,14 @@ def _wire_payload(result: BaseModel, *, legacy_svg: bool = False) -> dict[str, o
     if not legacy_svg:
         payload.pop("svg", None)
         payload.pop("svg_data_uri", None)
+        for preview in payload.get("composition_previews", []):
+            preview.pop("svg", None)
     return payload
 
 
 def _svg_meta(result: RenderedQuoteCard) -> dict[str, object]:
     """Keep the UI-only SVG in the MCP result metadata envelope."""
-    return {"quoteCard": {"svg": result.svg}} if result.svg else {"quoteCard": {}}
+    return {"quoteCard": {"svg": result.svg, "composition_previews": result.composition_previews}} if result.svg else {"quoteCard": {}}
 
 
 def _summary(result: RenderedQuoteCard | BaseModel) -> dict[str, object]:
@@ -827,7 +901,7 @@ def _summary(result: RenderedQuoteCard | BaseModel) -> dict[str, object]:
 )
 def preview_quote_card(
     text: str = Field(min_length=1, max_length=600, description="Quote card text."),
-    format: Annotated[Literal["4x5", "1x1"], Field(description="Card format: 4x5 portrait or 1x1 square.")] = "4x5",
+    format: Annotated[Literal["4x5", "1x1", "9x16"], Field(description="Card format: 4x5, 1x1, or 9x16.")] = "4x5",
     attribution: Annotated[str, Field(max_length=160, description="Optional visible attribution.")] = "",
     transformation: Literal["VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"] = "VERBATIM",
     evidence_status: Literal["VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"] = "USER_SUPPLIED",
@@ -843,6 +917,14 @@ def preview_quote_card(
     alt_text: Annotated[str, Field(max_length=400, description="Optional replacement for the automatic alt text.")] = "",
     output_image: Annotated[bool, Field(description="Compatibility option: when true, also include ImageContent in the MCP response.")] = False,
     compact_output: Annotated[bool, Field(description="Use the compact _meta SVG envelope used by the current UI; omit for legacy UI compatibility.")] = False,
+    visual_grammar: Literal["ribbons"] | None = None,
+    composition: dict[str, object] | None = None,
+    composition_candidates: Annotated[list[dict[str, object]] | None, Field(max_length=3)] = None,
+    proposal_source: Literal["model", "demo"] | None = None,
+    quote_font_size: Annotated[float | None, Field(ge=8, le=720)] = None,
+    author_font_size: Annotated[float | None, Field(ge=8, le=720)] = None,
+    presentation: dict[str, object] | None = None,
+    reuse_composition: dict[str, object] | None = None,
 ) -> PreviewQuoteCardOutput:
     request = PreviewQuoteCardInput(
         text=text,
@@ -860,6 +942,14 @@ def preview_quote_card(
         lines=lines,
         styles=styles,
         alt_text=alt_text,
+        visual_grammar=visual_grammar,
+        composition=composition,
+        composition_candidates=composition_candidates or [],
+        proposal_source=proposal_source,
+        quote_font_size=quote_font_size,
+        author_font_size=author_font_size,
+        presentation=presentation,
+        reuse_composition=reuse_composition,
     )
     result = _render_request(request)
     compact_output_flag = compact_output if isinstance(compact_output, bool) else False
@@ -914,7 +1004,7 @@ def preview_quote_card(
 )
 def produce_quote_card(
     text: str = Field(min_length=1, max_length=600, description="Quote card text."),
-    format: Annotated[Literal["4x5", "1x1"], Field(description="Card format: 4x5 portrait or 1x1 square.")] = "4x5",
+    format: Annotated[Literal["4x5", "1x1", "9x16"], Field(description="Card format: 4x5, 1x1, or 9x16.")] = "4x5",
     attribution: Annotated[str, Field(max_length=160, description="Optional visible attribution.")] = "",
     transformation: Literal["VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"] = "VERBATIM",
     evidence_status: Literal["VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"] = "USER_SUPPLIED",
@@ -929,6 +1019,14 @@ def produce_quote_card(
     styles: Annotated[list[StyleRange] | None, Field(max_length=64)] = None,
     alt_text: Annotated[str, Field(max_length=400)] = "",
     compact_output: Annotated[bool, Field(description="Use the compact _meta SVG envelope used by the current UI; omit for legacy UI compatibility.")] = False,
+    visual_grammar: Literal["ribbons"] | None = None,
+    composition: dict[str, object] | None = None,
+    composition_candidates: Annotated[list[dict[str, object]] | None, Field(max_length=3)] = None,
+    proposal_source: Literal["model", "demo"] | None = None,
+    quote_font_size: Annotated[float | None, Field(ge=8, le=720)] = None,
+    author_font_size: Annotated[float | None, Field(ge=8, le=720)] = None,
+    presentation: dict[str, object] | None = None,
+    reuse_composition: dict[str, object] | None = None,
 ) -> ProduceQuoteCardOutput:
     request = PreviewQuoteCardInput(
         text=text,
@@ -947,6 +1045,14 @@ def produce_quote_card(
         styles=styles,
         alt_text=alt_text,
         output_image=False,
+        visual_grammar=visual_grammar,
+        composition=composition,
+        composition_candidates=composition_candidates or [],
+        proposal_source=proposal_source,
+        quote_font_size=quote_font_size,
+        author_font_size=author_font_size,
+        presentation=presentation,
+        reuse_composition=reuse_composition,
     )
     preview = _render_request(request)
     produced = bool(preview.valid and preview.rendered and preview.svg and preview.svg_sha256)
@@ -1008,7 +1114,7 @@ def _validated_png(blob: str) -> bytes:
             if kind != b"IHDR" or length != 13:
                 raise ValueError("Missing PNG header.")
             width, height, depth, color, compression, filtering, interlace = struct.unpack(">IIBBBBB", chunk)
-            if (width, height) not in ((1440, 1440), (1440, 1800)) or depth != 8 or color not in (2, 6) or (compression, filtering, interlace) != (0, 0, 0):
+            if (width, height) not in ((1440, 1440), (1440, 1800), (1440, 2560)) or depth != 8 or color not in (2, 6) or (compression, filtering, interlace) != (0, 0, 0):
                 raise ValueError("Unsupported PNG dimensions or encoding.")
             expected = (width * (4 if color == 6 else 3) + 1) * height
         elif kind == b"IHDR":

@@ -1,8 +1,22 @@
+# Prova web MCP Nastri — 1.8.11 / UI v1.58
+
+14 ottobre 2026. Il servizio web è aggiornato e il plugin personale **Quote Card Builder TEST MCP** contiene la skill web. Endpoint invariato: `https://quote-card-builder-mcp-960066178304.europe-west8.run.app/mcp`, autenticazione None. Non installare il pacchetto stdio locale per questa prova.
+
+Aprire [la scheda del plugin](https://chatgpt.com/plugins/plugin_asdk_app_6acdf4f176e081918544ae00a8326edd), aggiornare la connessione MCP e avviare una nuova chat. È la [procedura di refresh indicata da OpenAI](https://developers.openai.com/plugins/build/app-quickstart#next-steps). Verificare il badge **v1.58**.
+
+Prompt di prova: «Usa Quote Card Builder TEST MCP. Crea tre composizioni Nastri diverse per “Le idee migliori diventano utili quando le condividiamo”. Senza autore. Palette acid/pop: primary #3524FF, accent #FF47CA, background #DAFF00, text #072743. Apri l’editor per sceglierne una». La frase è sintetica e la palette sperimentale, non un’attribuzione o identità ufficiale.
+
+Scegliere una scena, modificare grassetto/highlight/dimensione di una selezione e dimensioni di citazione/autore; scegliere un formato e scaricare PNG. Un contrasto insufficiente o una dimensione eccessiva deve produrre solo avvisi descrittivi senza bloccare il download. Salvare una base, riusarla con una frase nuova e senza ereditare autore/selezioni vecchie; provare export/import JSON. Per una nuova proposta creativa dalla chat richiamare il plugin e chiedere tre nuove composizioni dalla bozza corrente: il modello deve usare l’update revisionato e conservare la palette. Le varianti dall’editor sono invece demo dichiarate.
+
+475 test senza skip, smoke SDK canary/produzione e download PNG nei tre formati passano. Il 14 ottobre l’utente ha confermato «ok funziona» nel test ChatGPT; questa attestazione manuale non sostituisce una prova automatizzata di tutte le funzioni del client. Palette e geometria riusabili, senza sincronizzazione cloud o upload di font/logo; un formato per ogni download. Evidenze in RELEASE-STATUS.md.
+
+## Storico 1.8.10 e precedenti
+
 # Quote Card Builder — test MCP remoto
 
-## Servizio corrente 1.8.10 / UI v1.57
+## Storico — Servizio 1.8.10 / UI v1.57
 
-La revisione `quote-card-builder-mcp-00122-yoc` riceve il 100% del traffico. L’endpoint non cambia: `https://quote-card-builder-mcp-960066178304.europe-west8.run.app/mcp`, autenticazione None.
+La revisione `quote-card-builder-mcp-00122-yoc` riceveva il 100% del traffico prima della 1.8.11. L’endpoint non cambia: `https://quote-card-builder-mcp-960066178304.europe-west8.run.app/mcp`, autenticazione None.
 
 La composizione iniziale privilegia 6–9 righe brevi per frasi medio-lunghe, enfasi selettiva e testo fonte intatto. La firma è più discreta: 46,8 px sulla canvas da 1440 px. La didascalia UI usa `.qcb-preview-caption`, così il suo font da 9 px non si applica più alla firma nell’SVG.
 

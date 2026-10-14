@@ -2,9 +2,9 @@
 
 <!-- impeccable:product-schema 1 -->
 
-Stato del documento: rilascio v1.0.1; addendum candidato locale 1.8.2
-Data: 15 agosto 2026
-Ambito: skill Codex, con primo nucleo editoriale riutilizzabile
+Stato del documento: requisiti originari v1.0.1 e storico locale; addendum web MCP 1.8.11 / UI v1.58
+Data: 15 agosto 2026; aggiornamento 14 ottobre 2026
+Ambito: skill Codex, Visual Review Studio locale e pacchetto web MCP, con contratti distinti
 
 ## Platform
 
@@ -24,12 +24,12 @@ Quote Card Builder non compete con un canvas libero. Unisce selezione editoriale
 
 ## Operating Context
 
-La skill può aprire il Visual Review Studio web locale su `127.0.0.1` oppure usare il plugin MCP locale. Il nuovo workspace Extension apre un editor vuoto; il flusso MCP conversazionale continua ad aprire l’editor con i dati già scelti. Il Visual Review Studio locale gestisce 4:5, 1:1 e 9:16 e profili locali espliciti. Il workspace MCP produce 4:5 o 1:1 con palette scelta nell’editor; non trasferisce i profili locali.
+La skill può aprire il Visual Review Studio locale su `127.0.0.1` oppure usare il plugin MCP disponibile. Il workspace apre un editor vuoto; il flusso MCP conversazionale apre l’editor con i dati già scelti. Il Visual Review Studio locale gestisce 4:5, 1:1 e 9:16 e profili locali espliciti. Il web MCP 1.8.11 produce un PNG in 4:5, 1:1 o 9:16 e aggiunge Nastri, basi sul dispositivo e progetto JSON. Non trasferisce automaticamente i profili locali con font e logo.
 
 ## Capabilities and Constraints
 
 - editor vincolato, non canvas grafico libero;
-- font e logo del brand, fonte e dimensioni protetti durante la revisione; palette della card modificabile esplicitamente dall’utente;
+- font e logo del brand e fonte protetti durante la revisione; palette modificabile esplicitamente; Nastri permette dimensioni manuali indipendenti per citazione/autore e relative per selezione;
 - profili di brand locali riutilizzabili, esportabili come JSON e scelti sempre esplicitamente;
 - profili limitati a nome, colori, font e logo, senza contenuti editoriali;
 - alt text automatico con sostituzione facoltativa nel pannello avanzato `Accessibilità`;
@@ -37,7 +37,7 @@ La skill può aprire il Visual Review Studio web locale su `127.0.0.1` oppure us
 - PNG come consegna predefinita e SVG come fallback dichiarato quando manca un convertitore;
 - nessuna deduzione automatica del brand da fonte, memoria o profilo personale.
 
-## Addendum — workspace MCP locale candidato 1.8.2
+## Storico — workspace MCP locale candidato 1.8.2
 
 Questo addendum descrive il sorgente locale candidato e l'installazione personale. Non dichiara
 che la versione sia stata pubblicata o distribuita su un servizio remoto.
@@ -79,7 +79,7 @@ workspace, in New Card, negli input senza palette e nei draft ripristinati che n
 scelta. La modifica del testo conserva la palette neutra o una palette personalizzata esplicita.
 La versione è live su Cloud Run; l’installazione locale confermata resta 1.8.3. La chat ChatGPT già aperta poteva mostrare UI v1.52 in cache; il client è stato ricaricato per la versione successiva.
 
-## Addendum — MCP remoto live 1.8.7/UI v1.54
+## Storico — MCP remoto 1.8.7/UI v1.54
 
 La versione live preimposta l'attribuzione come “nessuna” nei nuovi workspace, New Card, input senza
 attribuzione e bozze legacy con attribuzione vuota, così l'utente può visualizzare il testo senza una
@@ -175,7 +175,7 @@ Quando incontro un passaggio interessante o ho un'idea da pubblicare, voglio tra
 3. **Persona citata, autore del testo, editore e brand sono ruoli distinti.** Non usare un logo o una firma come attribuzione implicita.
 4. **Il brand non si inferisce.** Usare solo un profilo fornito o approvato nel lavoro corrente; il profilo neutro richiede una scelta esplicita.
 5. **L'utente è il garante editoriale.** Può cambiare testo, classificazione, prova e attribuzione.
-6. **Solo la qualità tecnica e visuale è bloccante.** Le incongruenze editoriali sono segnalazioni consultive.
+6. **Negli editor bloccano soltanto gli errori tecnici.** Le osservazioni visuali ed editoriali sono consultive; gli avvisi visuali non hanno pulsanti di correzione. Il renderer CLI standalone mantiene separatamente il default `quality_policy: strict`.
 7. **Il core deve essere indipendente dal formato.** Evidenze e brand potranno servire anche Carousel Builder e Infographic Builder.
 
 ## 5. Obiettivi
@@ -461,7 +461,7 @@ Il core condiviso deve esporre contratti stabili, non decisioni di layout. Quote
 
 - Nessuna dipendenza obbligatoria per il Content/Evidence Core oltre alla libreria standard Python.
 - Manifest leggibile e versionato.
-- Errori strutturali, tecnici e visuali bloccanti, espliciti e azionabili.
+- Errori strutturali e tecnici bloccanti quando impediscono la produzione; avvisi visuali descrittivi e non bloccanti negli editor. Il renderer CLI standalone mantiene i controlli visuali bloccanti con `quality_policy: strict` predefinito.
 - Nessuna rete richiesta per validare fonti già acquisite.
 - Nessun asset personale incorporato nella skill.
 - Informazioni progressive: flusso essenziale in `SKILL.md`, dettagli nei riferimenti.
@@ -561,3 +561,10 @@ Estrazione formale di Content/Evidence Core e Brand Identity Core per il riuso f
 2. Il profilo neutro deve essere incluso nella skill? Default proposto: sì, ma attivabile solo con scelta esplicita.
 3. La provenance sheet deve essere pubblica o interna? Default proposto: interna, esportabile su richiesta.
 4. Quando un testo `AI_GENERATED` può essere firmato dall'utente come autore? Default proposto: solo dopo approvazione esplicita della formulazione, registrata separatamente dall'attribuzione della fonte.
+
+
+## Addendum 1.8.11 — pacchetto web MCP Nastri
+
+La grammatica Nastri è portata nel contratto del server web e nel frontend MCP v1.58, distinti dal Visual Review Studio locale. Il modello può fornire tre scene numeriche native; il client conserva palette e geometria, permette scelta e formattazioni granulari e rende esplicita l’origine model/demo delle proposte. Supporta 4:5, 1:1 e 9:16, citazione e autore con dimensioni indipendenti, size multiplier per selezione, basi locali e JSON per trasferimento esplicito. Non promette sincronizzazione fra dispositivi o un brand kit con caricamento di font/logo.
+
+Gli avvisi visivi degli editor locale e MCP sono descrittivi e non bloccano produzione o download. I dati e l’hash della preview devono restare validi. Il renderer CLI standalone mantiene `quality_policy: strict` come default; il Visual Review Studio usa `advisory`. Il pacchetto web usa streamable HTTP; non richiede uv, Python o l’esecuzione locale della skill. Una base web conserva anche citazione, attribuzione e formattazioni; la base di stile locale conserva soltanto design e preferenze. Il JSON web trasferisce esplicitamente la card completa. Le scene native viaggiano nello snapshot degli aggiornamenti dalla chat. Stato di distribuzione e verifiche in RELEASE-STATUS.md.

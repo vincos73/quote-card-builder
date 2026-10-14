@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import tempfile
 import unittest
 import zipfile
@@ -23,7 +24,7 @@ class PluginPackageTests(unittest.TestCase):
         def changed_project(path, *args, **kwargs):
             content = original_read(path, *args, **kwargs)
             if path == ROOT / "pyproject.toml":
-                return content.replace('version = "1.8.10"', 'version = "0.0.0"')
+                return re.sub(r'(?m)^version = "[^"]+"$', 'version = "0.0.0"', content, count=1)
             return content
 
         with patch.object(Path, "read_text", changed_project):
@@ -35,7 +36,7 @@ class PluginPackageTests(unittest.TestCase):
         manifest = json.loads(
             (ROOT / "plugin" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(manifest["version"], "1.8.10")
+        self.assertEqual(manifest["version"], BUILD_PLUGIN._skill_version())
         self.assertEqual(manifest["interface"]["capabilities"], ["Interactive", "Read"])
         self.assertIn("quote card", manifest["interface"]["shortDescription"].lower())
         self.assertIn("one populated editor", manifest["interface"]["longDescription"].lower())
@@ -65,6 +66,9 @@ class PluginPackageTests(unittest.TestCase):
             self.assertTrue((skill_root / "scripts" / "mcp_server.py").is_file())
             self.assertTrue((skill_root / "scripts" / "mcp_quote_card.py").is_file())
             self.assertTrue((skill_root / "scripts" / "mcp_app.py").is_file())
+            self.assertTrue((skill_root / "scripts" / "visual_grammars.py").is_file())
+            self.assertTrue((skill_root / "scripts" / "grammar_sessions.py").is_file())
+            self.assertTrue((skill_root / "scripts" / "inspect_render.py").is_file())
             self.assertTrue((skill_root / "assets" / "card-editor" / "fonts" / "Barlow-Regular.ttf").is_file())
             self.assertTrue((skill_root / "assets" / "card-editor" / "fonts" / "Orbitron-Variable.ttf").is_file())
             self.assertTrue((skill_root / "assets" / "card-editor" / "fonts" / "Barlow-Regular-latin.woff2").is_file())
@@ -85,7 +89,6 @@ class PluginPackageTests(unittest.TestCase):
             self.assertIn("quote_card_builder_open_editor", skill_text)
             self.assertIn("quote_card_builder_open_workspace", skill_text)
             self.assertIn("apri subito l'editor con quella frase", skill_text)
-            self.assertIn("workspace locale", skill_text)
             self.assertIn("produce_quote_card", skill_text)
             self.assertIn("La sola apertura", skill_text)
             self.assertIn("La palette non è mai tono o mood", skill_text)

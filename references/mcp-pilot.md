@@ -1,17 +1,26 @@
-# MCP pilot locale
+# MCP — contratto attuale e storico del pilot locale
+
+## Web MCP attuale — 1.8.11 / UI v1.58
+
+Il server web e l’editor MCP attuali aggiungono Nastri ai quattro stili precedenti. Il modello progetta tre scene numeriche diverse; il client può anche offrire prove deterministiche etichettate demo. Citazione e autore hanno dimensioni indipendenti, mentre le parole selezionate possono usare styles di tipo size con scale 0.5–2.5. I formati sono 4:5, 1:1 e 9:16, uno per Download PNG. Il contratto completo di scene, formattazioni e riuso è in [ribbons-web-mcp.md](ribbons-web-mcp.md).
+
+Gli avvisi visuali degli editor locale e MCP sono descrittivi e non bloccano preview o export; gli errori tecnici che impediscono il rendering restano bloccanti. Il Visual Review Studio locale esporta con quality_policy advisory. Il renderer CLI standalone mantiene invece strict come default: questa policy distinta non rende obbligatorie le correzioni negli editor.
+
+Le basi web sul dispositivo conservano la card completa, contenuto e formattazioni inclusi; il progetto JSON la trasferisce esplicitamente. La base di stile locale esclude invece citazione e selezioni. Il web non sincronizza account/dispositivi e non permette upload di font o logo. Con una nuova frase, il riuso resetta intervalli e provenienza; l’autore è quello del campo facoltativo del dialogo, eventualmente precompilato e svuotabile. Un follow-up solo testuale conserva i campi non richiesti.
+
+Le sezioni Storico riportano versioni e risultati precedenti: i loro riferimenti a risorse UI, traffico e controlli non descrivono lo stato corrente. Lo stato di distribuzione e le prove della 1.8.11 sono in RELEASE-STATUS.md.
 
 Questa integrazione coordina l'ingresso globale nel workspace e quello guidato dalla conversazione,
 con tool UI interni per preview e produzione e un fallback esplicito:
 `quote_card_builder_open_editor` apre l'interfaccia una volta, `preview_quote_card` ne aggiorna
 i dati senza rimontarla e `produce_quote_card` genera l'SVG canonico dopo il clic
-esplicito dell'utente su **Genera** nel flusso locale; l'interfaccia lo converte in PNG.
+esplicito dell’utente su **Download PNG** nell’editor MCP v1.58; l’interfaccia lo converte in PNG. Il precedente flusso locale stdio 1.8.3 aveva due azioni separate, Genera e Download PNG.
 `quote_card_builder_headless` è visibile al modello soltanto come percorso di recupero: richiede
 `ui_unavailable: true`, restituisce la preview come risorsa SVG esplicita e richiede approvazione
 del chiamante più l'hash della preview corrente per la produzione.
 Il server MCP gira via stdio nel pacchetto locale e via Streamable HTTP nel servizio remoto; usa
 il renderer Python esistente come unica fonte di verità.
-Il server non rasterizza direttamente PNG, non salva sessioni, non pubblica contenuti e non
-modifica l’installazione personale. Solo il launcher stdio locale abilita `--local-file-delivery`: il tool privato `quote_card_builder_save_png`, richiamato da Download PNG, salva il PNG esatto in `~/Downloads/Quote Card Builder`. Il servizio HTTP rifiuta questa opzione e il suo salvataggio locale resta disabilitato.
+Il server non rasterizza direttamente PNG e non archivia sessioni o basi della card; non modifica l’installazione personale. Il tool di export HTTP può pubblicare temporaneamente il PNG rasterizzato dal client e restituire il suo link di download. Solo il launcher stdio locale abilita `--local-file-delivery`: il tool privato `quote_card_builder_save_png`, richiamato da Download PNG, salva il PNG esatto in `~/Downloads/Quote Card Builder`. Il servizio HTTP rifiuta questa opzione e il suo salvataggio locale resta disabilitato.
 
 ## Storico — MCP remoto 1.8.8 / UI v1.56
 
@@ -47,7 +56,7 @@ Il servizio remoto live conserva l'endpoint `https://quote-card-builder-mcp-9600
 
 Nel workspace remoto, un solo clic su **Download PNG** produce e salva il PNG. Non c'è un passaggio separato **Genera** e non c'è l'azione **Send PNG to chat**. Questo flusso UI v1.52 è distinto dall'installazione locale 1.8.3, che mantiene il proprio percorso **Genera** seguito da **Download PNG** e salva in `~/Downloads/Quote Card Builder`.
 
-## Workspace Extension candidato locale 1.8.3
+## Storico — Workspace Extension locale 1.8.3
 
 Il sorgente candidato aggiunge il tool globale e di thread `quote_card_builder_open_workspace`, con input
 vuoto `{}` e risorsa UI `ui://quote-card-builder/workspace/v1.50.html`. Apre l'editor inattivo:
@@ -59,8 +68,7 @@ conversazioni, associazione a file o menzioni, né applicazione automatica di mo
 La risorsa workspace 1.50 è un riferimento della candidata locale e non prova che il server remoto
 o un plugin installato la servano.
 
-Il workspace MCP mantiene i formati 4:5 e 1:1. Il formato 9:16, i profili salvati e l'export
-multiformato restano funzioni del Visual Review Studio locale. I riferimenti alle risorse v1.40
+Il workspace della precedente installazione locale 1.8.3 manteneva 4:5 e 1:1. Il web 1.8.11 aggiunge 9:16 e basi sul dispositivo; i profili completi con font/logo e l’export Tutti/ZIP restano funzioni del Visual Review Studio locale. I riferimenti alle risorse v1.40
 più avanti descrivono la versione documentata in quello storico tecnico e non sono aggiornati per
 rappresentare una risorsa remota corrente.
 
@@ -84,16 +92,13 @@ montata o che un editor necessario non è disponibile, quando il tool headless �
 chiamante può rispettarne il consenso. La sola assenza del server MCP non è una ragione per
 scegliere il percorso headless quando l'editor locale è operativo.
 
-Una futura variante esclusivamente MCP potrà dichiarare `dependencies.tools` in `agents/openai.yaml`
-soltanto insieme a un endpoint approvato e mantenuto. La skill condivisa non dichiara oggi quella
-dipendenza perché il formato la tratta come requisito, mentre questo pilot supporta anche il
-runtime locale senza MCP.
+Il pacchetto web in `web-plugin/` è la variante esclusivamente MCP e collega l’endpoint mantenuto tramite `mcp.json`. La skill condivisa resta utilizzabile anche con runtime locale senza MCP; non confondere il suo adattatore opzionale con i requisiti del pacchetto web.
 
 ## Input
 
-### MCP remoto live 1.8.10 / UI v1.57 — composizione mobile iniziale
+### Storico — MCP remoto 1.8.10 / UI v1.57, composizione mobile iniziale
 
-La revisione `quote-card-builder-mcp-00122-yoc` riceve il 100% del traffico. Risorsa corrente: `ui://quote-card-builder/workspace/v1.57.html`. La firma usa il rapporto 0,0325 della larghezza della card; il CSS della didascalia dell’interfaccia è separato dall’SVG per conservare la tipografia nell’anteprima e nel PNG. Controlli mirati PASS; prova visiva ChatGPT e download a cura dell’utente.
+La revisione `quote-card-builder-mcp-00122-yoc` riceveva il 100% del traffico della 1.8.10. Risorsa di quella versione: `ui://quote-card-builder/workspace/v1.57.html`. La firma usa il rapporto 0,0325 della larghezza della card; il CSS della didascalia dell’interfaccia è separato dall’SVG per conservare la tipografia nell’anteprima e nel PNG. Controlli mirati PASS; prova visiva ChatGPT e download a cura dell’utente.
 
 Le stesse regole editoriali valgono per l'editor MCP e per il Visual Review Studio locale. Con una citazione già scelta e una richiesta chiara di procedere, prepara un'apertura già impaginata in una sola chiamata `quote_card_builder_open_editor`; non chiedere prima conferma degli a capo o dei trattamenti. L'impaginazione non autorizza riscritture: mantieni parole, punteggiatura, negazioni e cautele della citazione. Mantieni `VERBATIM` e lo stato di prova già stabilito quando cambi soltanto righe o stili. Per i follow-up che chiedono soltanto una nuova disposizione, rispetta le righe già composte finché l'utente non chiede di cambiarle.
 
@@ -113,7 +118,9 @@ restano alle persone.
 
 Per questa proposta, applica il grassetto soltanto a “L’IA” e l'evidenziazione soltanto a “giudizio”. Passa le righe in `lines` e imposta `text` alla loro unione con newline (`\n`), senza aggiungere marcatori Markdown. Gli intervalli in `styles` restano metadati separati: gli offset contano i caratteri Unicode e i newline, non le unità UTF-16 di JavaScript. Una modifica di layout soltanto non cambia testo né classificazioni editoriali.
 
-L'input è un oggetto con schema esplicito:
+### Input attuale 1.8.11
+
+L’input è un oggetto con schema esplicito. La tabella copre i campi comuni; per le scene Nastri e i controlli granulari usare [ribbons-web-mcp.md](ribbons-web-mcp.md):
 
 | Campo | Tipo | Default | Note |
 | --- | --- | --- | --- |
@@ -122,14 +129,15 @@ L'input è un oggetto con schema esplicito:
 | `profile_mode` | enum | `neutral` | facoltativo; `custom` soltanto se l'utente fornisce o sceglie esplicitamente una palette; usato da `quote_card_builder_open_editor` |
 | `transformation` | enum | `VERBATIM` | `VERBATIM`, `EDITED`, `PARAPHRASE`, `AI_GENERATED` |
 | `evidence_status` | enum | `USER_SUPPLIED` | stato della prova editoriale dichiarato dal chiamante |
-| `style` | enum | `blocks` | preselezione facoltativa: `blocks`, `cutouts`, `constellations`, `gradient`; la scelta resta nell'editor |
+| `style` | enum | `blocks` | preselezione facoltativa: `blocks`, `cutouts`, `constellations`, `gradient`, `ribbons`; con Nastri passare anche le scene native |
+| `format` | enum | `4x5` | `4x5`, `1x1` o `9x16`, uno per output web |
 | `palette` | oggetto o nullo | nullo | scelta esplicita `{name, colors}`; `colors` contiene `primary`, `accent`, `background`, `text` in formato `#RRGGBB` |
 | `lines` | lista di stringhe | una riga | almeno una riga; devono ricostruire `text`; nessun limite fisso oltre ai 600 caratteri di `text` |
-| `styles` | lista | assente | intervalli `{start,end,type}` con offset Unicode |
+| `styles` | lista | assente | intervalli `{start,end,type}` con offset Unicode; `size` aggiunge `scale` 0.5–2.5 e richiede Nastri |
 | `alt_text` | stringa | automatico | sostituzione facoltativa, massimo 400 caratteri |
 
-Il profilo neutro canonico (`#072743`, `#E3F4FF`, `#FEFDFB`, `#323232`, Arial) è il default
-del tool di apertura (`profile_mode: neutral`); il tool dati conserva la palette omessa
+La palette neutra canonica (`#072743`, `#E3F4FF`, `#FEFDFB`, `#323232`) è il default; gli stili precedenti usano Arial e Nastri usa Barlow incorporato. Il profilo neutro è predefinito
+nel tool di apertura (`profile_mode: neutral`); il tool dati conserva la palette omessa
 come fallback tecnico interno alla UI. In alternativa
 il chiamante può trasferire una palette esplicita con nome e quattro colori. Il server non
 inferisce, salva o recupera automaticamente un'identità di brand.
@@ -142,7 +150,7 @@ navigazione dell'host, seleziona una citazione esatta e chiama una sola volta
 attribuzione o palette. Usa l'attribuzione fornita o verificata; se manca, “nessuna”. La palette
 neutra è predefinita. Il server non acquisisce URL. Le richieste ambigue o le fonti non leggibili
 richiedono soltanto il chiarimento necessario. La palette non è tono o mood; lo stile resta una
-scelta nell'editor fra Blocks, Cutouts, Constellations e Gradient.
+scelta nell’editor fra Blocks, Cutouts, Constellations, Gradient e Nastri. Per Nastri il modello prepara tre scene native diverse con la stessa frase e palette, passando visual_grammar ribbons, composition_candidates, composition e proposal_source model; le variazioni deterministiche dell’editor sono demo dichiarate.
 
 Per le successive modifiche esplicite in chat, il modello passa la revisione e lo snapshot completo
 della bozza corrente a `quote_card_builder_update_editor`, insieme alla patch dei soli campi richiesti.
@@ -208,12 +216,12 @@ il valore esatto senza newline o contenuto aggiuntivo.
 
 ## Output
 
-Il risultato strutturato contiene `valid`, `rendered`, `format` (`4x5` o `1x1`), dimensioni
+Il risultato strutturato contiene `valid`, `rendered`, `format` (`4x5`, `1x1` o `9x16`), dimensioni
 del rapporto selezionato, `profile`, `svg_sha256`, `alt_text`, `warnings`, `errors`, la
 dichiarazione `editorial_responsibility: caller` e `editor_state`, lo snapshot esplicito di
 frase, attribuzione, profilo, palette e controlli che ripopola il form anche quando il bridge
 dell'host consegna soltanto il risultato. Le chiamate della nuova UI con `compact_output: true`
-omettono SVG e data URI dal JSON e leggono `_meta.quoteCard.svg`. Per compatibilità, l'apertura
+omettono SVG e data URI dal JSON e leggono `_meta.quoteCard.svg`; per Nastri la galleria SVG arriva in `_meta.quoteCard.composition_previews`, mentre lo stato conserva geometria, proposte e dimensioni manuali. Per compatibilità, l'apertura
 iniziale e le chiamate senza questa opzione conservano `svg` e `svg_data_uri` nel risultato
 strutturato. `produce_quote_card` aggiunge
 `produced`, `filename` e `mime_type`. Il fallback headless aggiunge `action`, `ui_unavailable`,
@@ -272,7 +280,7 @@ il client MCP si collega a `http://127.0.0.1:9090/mcp`. Questi comandi non richi
 credenziali Google e non creano un servizio Cloud Run.
 La CI costruisce inoltre l'immagine senza autenticarsi a un registry, eseguire push o deploy.
 
-## Stato del servizio remoto
+## Storico — stato del servizio remoto e pacchetto stdio
 
 Il servizio personale usa l'endpoint
 `https://quote-card-builder-mcp-960066178304.europe-west8.run.app/mcp`. Revisione, digest,
@@ -287,9 +295,9 @@ validator locale. Avvia `uv run --frozen python scripts/mcp_server.py` con `cwd`
 automaticamente anche `mcp_quote_card.py`, `mcp_app.py`, `requirements-mcp.txt`, il progetto e il
 lockfile nella skill inclusa.
 
-## MCP App: preview visuale opzionale
+## Storico — MCP App v1.50 della versione locale 1.8.3
 
-Il vertical slice ora include una MCP App portabile per host compatibili con MCP Apps.
+Il vertical slice 1.8.3 includeva la MCP App portabile descritta in questa sezione. Le sue azioni Generate/Download/Send e i due formati sono storici; il web v1.58 usa Download PNG in un solo passaggio e include Nastri e 9:16.
 La risorsa UI ha URI stabile versionato
 `ui://quote-card-builder/preview/v1.50.html`, MIME type
 `text/html;profile=mcp-app` e viene collegata al tool tramite
@@ -344,7 +352,7 @@ produce una singola card 4:5 o 1:1 e non sostituisce l'export PNG multi-formato 
 Studio locale. Collegare direttamente l'endpoint Cloud Run verifica il solo server MCP, non il
 comportamento completo del plugin.
 
-## Decisione per il prossimo incremento
+## Storico — decisione per l’incremento del servizio remoto
 
 La prossima fase resta un **solo servizio Python**: il processo MCP e il renderer canonico
 vivono nello stesso container e l'adattatore continua a chiamare `render_quote_card.py`.

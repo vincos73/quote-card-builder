@@ -21,6 +21,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import rasterize
+from visual_grammars import (
+    cubic_point, demo_compositions, normalize_composition, normalize_grammar_presentation,
+)
 
 DIRECTIONS = ("editorial", "statement", "contextual")
 GRAPHIC_VARIANTS = {
@@ -31,7 +34,7 @@ GRAPHIC_VARIANTS = {
 TRANSFORMATIONS = {"VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"}
 EVIDENCE_STATUSES = {"VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"}
 ATTRIBUTION_ROLES = {"speaker", "author", "publisher", "none"}
-STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent", "outline"}
+STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent", "outline", "size"}
 # Hollow-glyph stroke as a fraction of the row's own font size, so the same
 # span reads identically at every format's fitted size -- and in a Poster row
 # drawn 1.12x larger than its neighbours. Expressed here and resolved to
@@ -174,7 +177,8 @@ def validate_text_styles(
         return
     for index, style in enumerate(styles):
         item_path = f"{path}[{index}]"
-        if not isinstance(style, dict) or set(style) != {"start", "end", "type"}:
+        expected = {"start", "end", "type", "scale"} if isinstance(style, dict) and style.get("type") == "size" else {"start", "end", "type"}
+        if not isinstance(style, dict) or set(style) != expected:
             add_error(errors, item_path, "shape", "Ogni intervallo richiede start, end e type.")
             continue
         start, end, kind = style.get("start"), style.get("end"), style.get("type")
@@ -182,8 +186,13 @@ def validate_text_styles(
             add_error(errors, item_path, "offset", "Start ed end devono essere interi.")
         elif not 0 <= start < end <= len(text):
             add_error(errors, item_path, "range", "L'intervallo deve ricadere nel testo corrente.")
-        if kind not in STYLE_TYPES:
-            add_error(errors, f"{item_path}.type", "enum", "Usare bold, italic, underline, highlight, accent o outline.")
+        if not isinstance(kind, str) or kind not in STYLE_TYPES:
+            add_error(errors, f"{item_path}.type", "enum", "Usare bold, italic, underline, highlight, accent, outline o size.")
+        if kind == "size":
+            scale = style.get("scale")
+            if (not isinstance(scale, (int, float)) or isinstance(scale, bool)
+                    or not math.isfinite(scale) or not .5 <= scale <= 2.5):
+                add_error(errors, f"{item_path}.scale", "range", "Usare una scala da 0.5 a 2.5.")
 
 
 def require_dict(value: Any, path: str, errors: list[dict[str, str]]) -> dict[str, Any]:
@@ -315,6 +324,15 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
     if not isinstance(presentation, dict):
         add_error(errors, "presentation", "type", "La presentazione deve essere un oggetto.")
     else:
+        try:
+            normalize_grammar_presentation(presentation)
+        except ValueError as error:
+            add_error(errors, "presentation.composition", "grammar", str(error))
+        if presentation.get("visual_grammar") != "ribbons" and any(
+            isinstance(style, dict) and style.get("type") == "size"
+            for style in (styles if isinstance(styles, list) else [])
+        ):
+            add_error(errors, "content.styles", "grammar", "La dimensione locale è disponibile nella grammatica Nastri.")
         if not graphic_seed_allowed(presentation.get("graphic_seed", 0)):
             add_error(errors, "presentation.graphic_seed", "range", "Usare un seed intero da 0 a 999999.")
         graphic_mode = presentation.get("graphic_mode", "auto")
@@ -374,7 +392,12 @@ def validate_visual_manifest(data: Any, manifest_dir: Path) -> list[dict[str, st
         # a colour pair that this card never paints. Editorial/Gradient uses
         # its full-field surface, checked conservatively below.
         graphic_variant = presentation.get("graphic_variant", "default") if isinstance(presentation, dict) else "default"
-        if (direction == "editorial" and graphic_variant == "gradient"
+        if isinstance(presentation, dict) and presentation.get("visual_grammar") == "ribbons":
+            composition = presentation.get("composition") or {}
+            foreground = colors.get(composition.get("text_role", "text"), colors["text"])
+            background = colors.get(composition.get("background_role", "background"), colors["background"])
+            checks = {"ribbons_text": (foreground, background)}
+        elif (direction == "editorial" and graphic_variant == "gradient"
                 and presentation.get("graphic_mode", "auto") != "hidden"):
             checks: dict[str, tuple[str, str]] = {}
             safety = gradient_render_safety(
@@ -1763,6 +1786,477 @@ def last_text_line(lines: list[str]) -> str:
     return next((line for line in reversed(lines) if line), "")
 
 
+def _pixel_box(box: dict[str, float], width: int, height: int) -> dict[str, float]:
+    return {"x": box["x"] * width, "y": box["y"] * height,
+            "width": box["width"] * width, "height": box["height"] * height}
+
+
+def _ribbon_face_metrics(font: dict[str, Any], manifest_dir: Path) -> dict[str, dict[str, float] | None]:
+    """Load each painted face, rather than measuring bold with regular ink."""
+    faces: dict[str, dict[str, float] | None] = {}
+    for key, field in (("regular", "regular_path"), ("bold", "bold_path"), ("italic", "italic_path")):
+        candidates = [resolve_asset(font[field], manifest_dir)] if font.get(field) else []
+        if key == "regular":
+            candidates.extend(_system_font_candidates(font.get("family", "")))
+        elif key == "bold":
+            candidates.extend(_system_bold_font_candidates(font.get("family", "")))
+        faces[key] = _resolve_char_widths(candidates)
+    return faces
+
+
+def _ribbon_rows(
+    text: str, styles: list[dict[str, Any]], font_size: float, box: dict[str, float],
+    faces: dict[str, dict[str, float] | None], hard_lines: list[str] | None = None,
+    *, tracking: float = QUOTE_TRACKING_EM,
+) -> list[dict[str, Any]]:
+    """Word wrap the actual styled advances and assign variable baselines.
+
+    A fragment owns its exact canonical offsets, measurement and size.
+    Its highlight is generated from that fragment after the final wrapping.
+    """
+    chars: list[dict[str, Any]] = []
+    for offset, char in enumerate(text):
+        active = [style for style in styles if style["start"] <= offset < style["end"]]
+        types = {style["type"] for style in active}
+        scale = next((float(style["scale"]) for style in reversed(active) if style["type"] == "size"), 1.0)
+        size = font_size * scale
+        face = "bold" if "bold" in types else "italic" if "italic" in types else "regular"
+        metrics = faces.get(face) or faces.get("regular")
+        advance = (metrics.get(char, metrics.get(" ", .28) if char.isspace() else .6)
+                   if metrics else visual_units(char, bold="bold" in types)) * size
+        chars.append({"char": char, "offset": offset, "font_size": size,
+                      "types": sorted(types), "advance": max(0.0, advance),
+                      "tracking": tracking * size})
+
+    def measured(start: int, end: int) -> float:
+        return sum(item["advance"] for item in chars[start:end]) + sum(
+            item["tracking"] for item in chars[start:max(start, end - 1)]
+        )
+
+    ranges: list[tuple[int, int]] = []
+    breaks = list(re.finditer(r"\r\n|\r|\n", text))
+    if breaks:
+        # Canonical newlines are hard breaks, even when old saved lines no
+        # longer match. Keep original offsets for every formatted fragment.
+        cursor = 0
+        for match in breaks:
+            ranges.append((cursor, match.start()))
+            cursor = match.end()
+        ranges.append((cursor, len(text)))
+    elif hard_lines and len(hard_lines) > 1:
+        cursor = 0
+        for line in hard_lines:
+            if not line.strip():
+                ranges.append((cursor, cursor))
+                continue
+            start = text.find(line.strip(), cursor)
+            if start < 0:
+                # Canonical text remains authoritative if stale line splits
+                # arrive from a saved base after a new text was supplied.
+                ranges = [(0, len(text))]
+                break
+            end = start + len(line.strip())
+            ranges.append((start, end))
+            cursor = end
+        if normalize_spaces(" ".join(text[start:end] for start, end in ranges)) != normalize_spaces(text):
+            # Stale or incomplete line lists must not silently discard words.
+            ranges = [(0, len(text))]
+    else:
+        ranges = [(0, len(text))]
+    wrapped: list[tuple[int, int]] = []
+    for paragraph_start, paragraph_end in ranges:
+        tokens = [(paragraph_start + match.start(), paragraph_start + match.end())
+                  for match in re.finditer(r"\S+", text[paragraph_start:paragraph_end])]
+        if not tokens:
+            wrapped.append((paragraph_start, paragraph_start))
+            continue
+        start, end = tokens[0]
+        for token_start, token_end in tokens[1:]:
+            if measured(start, token_end) <= box["width"]:
+                end = token_end
+            else:
+                wrapped.append((start, end))
+                start, end = token_start, token_end
+        wrapped.append((start, end))
+
+    rows = []
+    previous_size = 0.0
+    baseline = box["y"]
+    for row_index, (start, end) in enumerate(wrapped):
+        items = chars[start:end]
+        maximum = max((item["font_size"] for item in items), default=font_size)
+        baseline += maximum * .82 if row_index == 0 else previous_size * .28 + maximum * .82 + font_size * .10
+        fragments: list[dict[str, Any]] = []
+        cursor_x = box["x"]
+        for item in items:
+            signature = (item["font_size"], tuple(item["types"]))
+            if fragments and fragments[-1]["signature"] == signature:
+                fragment = fragments[-1]
+                fragment["text"] += item["char"]
+                fragment["end"] = item["offset"] + 1
+                fragment["width"] += item["advance"] + item["tracking"]
+            else:
+                fragments.append({"text": item["char"], "start": item["offset"],
+                                  "end": item["offset"] + 1, "font_size": item["font_size"],
+                                  "types": item["types"], "width": item["advance"] + item["tracking"],
+                                  "signature": signature, "x": cursor_x, "y": baseline})
+            cursor_x += item["advance"] + item["tracking"]
+        for fragment in fragments:
+            fragment["width"] -= tracking * fragment["font_size"]
+            del fragment["signature"]
+        rows.append({"text": text[start:end], "start": start, "end": end,
+                     "x": box["x"], "y": baseline, "font_size": maximum,
+                     "width": max(0.0, measured(start, end)), "fragments": fragments})
+        previous_size = maximum
+    return rows
+
+
+def _rows_bounds(rows: list[dict[str, Any]], box: dict[str, float]) -> dict[str, float]:
+    nonempty = [row for row in rows if row["text"]]
+    if not nonempty:
+        return {"x": box["x"], "y": box["y"], "width": 0.0, "height": 0.0}
+    top = min(row["y"] - row["font_size"] * .82 for row in nonempty)
+    bottom = max(row["y"] + row["font_size"] * .28 for row in nonempty)
+    return {"x": box["x"], "y": top,
+            "width": max(row["width"] for row in nonempty), "height": bottom - top}
+
+
+def ribbon_layout(
+    data: dict[str, Any], manifest_dir: Path, width: int | None = None,
+    height: int | None = None, *, render_options: dict[str, Any] | None = None,
+    font_size_override: float | None = None,
+) -> dict[str, Any]:
+    """Shared measurement used by preview, rendering and production QA.
+
+    Explicit sizes are never shrunk. A failed fit produces actionable
+    warnings alongside the requested drawing, so the editor can fix it.
+    """
+    width = width or data["canvas"]["width"]
+    height = height or data["canvas"]["height"]
+    options = {**(data.get("presentation") or {}), **(render_options or {})}
+    normalized = normalize_grammar_presentation(options)
+    composition = normalized["composition"]
+    boxes = {key: _pixel_box(composition[key], width, height)
+             for key in ("quote_box", "author_box", "logo_box")}
+    faces = _ribbon_face_metrics(data["brand"]["font"], manifest_dir)
+    activate_font_metrics(data["brand"]["font"], manifest_dir)
+    content = data["content"]
+    text = content["text"]
+    styles = list(content.get("styles") or [])
+    emphasis = content.get("emphasis", "")
+    if emphasis and not styles:
+        start = text.find(emphasis)
+        if start >= 0:
+            styles = [{"start": start, "end": start + len(emphasis), "type": "bold"}]
+    hard_lines = content.get("lines")
+    def rows_at(size: float) -> list[dict[str, Any]]:
+        return _ribbon_rows(text, styles, size, boxes["quote_box"], faces, hard_lines)
+    def contained(bounds: dict[str, float], box: dict[str, float]) -> bool:
+        return (bounds["x"] >= box["x"] - .1 and bounds["y"] >= box["y"] - .1
+                and bounds["x"] + bounds["width"] <= box["x"] + box["width"] + .1
+                and bounds["y"] + bounds["height"] <= box["y"] + box["height"] + .1)
+    def fits(rows: list[dict[str, Any]]) -> bool:
+        bounds = _rows_bounds(rows, boxes["quote_box"])
+        return contained(bounds, boxes["quote_box"])
+    explicit = normalized.get("quote_font_size")
+    if explicit is not None:
+        font_size = explicit
+        fit_mode = "ribbons_explicit"
+    elif font_size_override is not None:
+        font_size = float(font_size_override)
+        fit_mode = "ribbons_shared_fit"
+    else:
+        low, high = 1.0, width * .22
+        for _ in range(32):
+            middle = (low + high) / 2
+            if fits(rows_at(middle)):
+                low = middle
+            else:
+                high = middle
+        scale = max(.8, min(1.0, float(options.get("text_scale", 1.0))))
+        font_size = math.floor(low * .995 * scale * 10) / 10
+        fit_mode = "ribbons_styled_max_fit"
+    rows = rows_at(font_size)
+    quote_bounds = _rows_bounds(rows, boxes["quote_box"])
+    attribution = content.get("attribution") or {}
+    author = attribution.get("label", "") if attribution.get("role") != "none" else ""
+    author_font_size = normalized.get("author_font_size", width * ATTRIBUTION_FONT_SIZE_RATIO)
+    # Author has independent typography and can naturally occupy two lines.
+    author_rows = _ribbon_rows(author, [], author_font_size, boxes["author_box"], faces,
+                               author.splitlines(), tracking=0.0) if author else []
+    author_bounds = _rows_bounds(author_rows, boxes["author_box"])
+    warnings: list[dict[str, str]] = []
+    colors = data["brand"]["colors"]
+    ground, ink = colors[composition["background_role"]], colors[composition["text_role"]]
+    marker = colors[composition["highlight_role"]]
+    marker_ink = max(colors.values(), key=lambda color: contrast_ratio(color, marker))
+    if contrast_ratio(ink, ground) < 4.5:
+        add_error(warnings, "presentation.composition.text_role", "text_contrast",
+                  "Il colore del testo non garantisce contrasto sul fondo scelto.")
+    if any("highlight" in fragment["types"] for row in rows for fragment in row["fragments"]):
+        if contrast_ratio(marker_ink, marker) < 4.5:
+            add_error(warnings, "presentation.composition.highlight_role", "highlight_contrast",
+                      "Nessun colore della palette rende leggibile il testo sull'highlight.")
+    if any("accent" in fragment["types"] and "highlight" not in fragment["types"]
+           for row in rows for fragment in row["fragments"]):
+        if contrast_ratio(marker, ground) < 4.5:
+            add_error(warnings, "content.styles", "accent_contrast",
+                      "Il testo colorato non ha abbastanza contrasto sul fondo.")
+    if any("outline" in fragment["types"] and "highlight" not in fragment["types"]
+           for row in rows for fragment in row["fragments"]):
+        if contrast_ratio(ink, ground) < 7:
+            add_error(warnings, "content.styles", "outline_contrast",
+                      "Il testo a contorno richiede maggiore contrasto sul fondo.")
+    for name, rows_value, bounds, box in (
+        ("quote", rows, quote_bounds, boxes["quote_box"]),
+        ("author", author_rows, author_bounds, boxes["author_box"]),
+    ):
+        if not contained(bounds, box):
+            add_error(warnings, f"presentation.{name}_font_size", f"{name}_overflow",
+                      "Il testo non entra nell'area assegnata." if name == "quote"
+                      else "L’attribuzione non entra nell’area assegnata.")
+        if name == "quote" and any("outline" in fragment["types"] and fragment["font_size"] < width * .045
+                                   for row in rows_value for fragment in row["fragments"]):
+            add_error(warnings, "content.styles", "outline_too_small", "Il contorno selezionato è troppo piccolo per essere leggibile.")
+    def overlaps(first: dict[str, float], second: dict[str, float]) -> bool:
+        return (first["width"] > 0 and first["height"] > 0 and second["width"] > 0 and second["height"] > 0
+                and min(first["x"] + first["width"], second["x"] + second["width"]) > max(first["x"], second["x"])
+                and min(first["y"] + first["height"], second["y"] + second["height"]) > max(first["y"], second["y"]))
+    if overlaps(quote_bounds, author_bounds):
+        add_error(warnings, "presentation.composition.author_box", "author_overlaps_quote", "L'autore si sovrappone alla citazione.")
+    if options.get("logo_mode", "auto") != "hidden" and data["brand"].get("logo"):
+        if overlaps(quote_bounds, boxes["logo_box"]) or overlaps(author_bounds, boxes["logo_box"]):
+            add_error(warnings, "presentation.composition.logo_box", "logo_overlaps_text", "Il logo si sovrappone al testo.")
+    geometry_codes = {"quote_overflow", "author_overflow", "author_overlaps_quote", "logo_overlaps_text"}
+    return {"lines": [row["text"] for row in rows], "font_size": font_size,
+            "author_font_size": author_font_size, "rows": rows, "author_rows": author_rows,
+            **boxes, "bounds": {"quote": quote_bounds, "author": author_bounds, "logo": boxes["logo_box"]},
+            "warnings": warnings, "valid": not warnings,
+            "geometry_valid": not any(warning["code"] in geometry_codes for warning in warnings), "fitting": fit_mode,
+            "metric": "font_metrics_ttf" if faces.get("regular") else "deterministic_heuristic"}
+
+
+def _ribbon_path(path: dict[str, Any], width: int, height: int) -> str:
+    points = path["points"]
+    pieces = [f'M {points[0][0] * width:.2f} {points[0][1] * height:.2f}']
+    for index in range(1, len(points), 3):
+        pieces.append("C " + " ".join(f"{point[0] * width:.2f} {point[1] * height:.2f}"
+                                        for point in points[index:index + 3]))
+    return " ".join(pieces)
+
+
+def _split_ribbon_cubic(points: list[list[float]], t: float) -> tuple[list[list[float]], list[list[float]]]:
+    """Exact de Casteljau subdivision, keeping editable curve coordinates."""
+    def mix(first: list[float], last: list[float]) -> list[float]:
+        return [first[axis] + (last[axis] - first[axis]) * t for axis in (0, 1)]
+    a, b, c = (mix(points[index], points[index + 1]) for index in range(3))
+    d, e = mix(a, b), mix(b, c)
+    middle = mix(d, e)
+    return [points[0], a, d, middle], [middle, e, c, points[3]]
+
+
+def _ribbon_crossing_path(
+    over: dict[str, Any], under: dict[str, Any], crossing: dict[str, Any], width: int, height: int,
+) -> dict[str, Any] | None:
+    """Cover one connected stroke intersection without clipping its middle.
+
+    A fixed circle cuts shallow intersections into visible steps. Locate the
+    contiguous part of the upper curve approaching the lower stroke instead,
+    and redraw that exact Bézier portion through the lower stroke's mask.
+    Separate intersections along the same upper path remain separate.
+    """
+    radius = (over["width_ratio"] + under["width_ratio"]) * width / 2 + 4
+    step = max(3.0, radius / 4)
+
+    def distance(point: tuple[float, float], start: tuple[float, float], end: tuple[float, float]) -> float:
+        dx, dy = end[0] - start[0], end[1] - start[1]
+        square = dx*dx + dy*dy
+        t = max(0.0, min(1.0, ((point[0] - start[0])*dx + (point[1] - start[1])*dy) / square)) if square else 0
+        return math.hypot(point[0] - start[0] - t*dx, point[1] - start[1] - t*dy)
+
+    def flatten(path: dict[str, Any]) -> list[tuple[float, tuple[float, float]]]:
+        points = [[point[0] * width, point[1] * height] for point in path["points"]]
+        result = [(0.0, tuple(points[0]))]
+        def visit(curve: list[list[float]], start: float, end: float, depth: int = 0) -> None:
+            first, last = tuple(curve[0]), tuple(curve[3])
+            flatness = max(distance(tuple(curve[1]), first, last), distance(tuple(curve[2]), first, last))
+            if depth >= 12 or (flatness <= 1 and math.dist(first, last) <= step):
+                result.append((end, last))
+                return
+            left, right = _split_ribbon_cubic(curve, .5)
+            middle = (start + end) / 2
+            visit(left, start, middle, depth + 1)
+            visit(right, middle, end, depth + 1)
+        for segment in range((len(points) - 1) // 3):
+            visit(points[segment * 3:segment * 3 + 4], float(segment), float(segment + 1))
+        return result
+
+    upper, lower = flatten(over), flatten(under)
+    # Index nearby line pieces so long arbitrary paths do not need a full
+    # Cartesian scan on every preview. Flatness contributes <1px of error.
+    cells: dict[tuple[int, int], list[tuple[tuple[float, float], tuple[float, float]]]] = {}
+    for (_, first), (_, last) in zip(lower, lower[1:]):
+        for cell_x in range(math.floor((min(first[0], last[0]) - radius) / radius),
+                            math.floor((max(first[0], last[0]) + radius) / radius) + 1):
+            for cell_y in range(math.floor((min(first[1], last[1]) - radius) / radius),
+                                math.floor((max(first[1], last[1]) + radius) / radius) + 1):
+                cells.setdefault((cell_x, cell_y), []).append((first, last))
+    intervals: list[tuple[int, int]] = []
+    start = None
+    for index, (_, point) in enumerate(upper):
+        nearby = cells.get((math.floor(point[0] / radius), math.floor(point[1] / radius)), [])
+        active = any(distance(point, first, last) <= radius for first, last in nearby)
+        if active and start is None:
+            start = index
+        if start is not None and (not active or index == len(upper) - 1):
+            intervals.append((max(0, start - 1), index))
+            start = None
+    if not intervals:
+        return None
+    anchor = crossing["segment"] + crossing["t"]
+    first, last = min(intervals, key=lambda pair: max(upper[pair[0]][0] - anchor, anchor - upper[pair[1]][0], 0))
+    start_parameter, end_parameter = upper[first][0], upper[last][0]
+    sliced: list[list[float]] = []
+    for segment in range((len(over["points"]) - 1) // 3):
+        low, high = max(0.0, start_parameter - segment), min(1.0, end_parameter - segment)
+        if high <= low:
+            continue
+        curve = over["points"][segment * 3:segment * 3 + 4]
+        if high < 1:
+            curve, _ = _split_ribbon_cubic(curve, high)
+        if low > 0:
+            _, curve = _split_ribbon_cubic(curve, low / high)
+        sliced.extend(curve if not sliced else curve[1:])
+    return {**over, "points": sliced} if sliced else None
+
+
+def _ribbon_text(
+    rows: list[dict[str, Any]], colors: dict[str, str], composition: dict[str, Any],
+    *, author: bool = False,
+) -> str:
+    ink = colors[composition["text_role"]]
+    highlight = colors[composition["highlight_role"]]
+    highlight_ink = max(colors.values(), key=lambda color: contrast_ratio(color, highlight))
+    marks, texts = [], []
+    for row in rows:
+        for fragment in row["fragments"]:
+            types = set(fragment["types"])
+            size, x, y, fragment_width = (fragment[key] for key in ("font_size", "x", "y", "width"))
+            fill = highlight_ink if "highlight" in types else highlight if "accent" in types else ink
+            if "highlight" in types:
+                marks.append(f'<rect class="highlight-marker" x="{x - size * .025:.2f}" y="{y - size * .79:.2f}" '
+                             f'width="{fragment_width + size * .05:.2f}" height="{size * .98:.2f}" rx="{size * .045:.2f}" fill="{highlight}"/>')
+            attrs = ' font-weight="700"' if "bold" in types else ' font-weight="400"'
+            attrs += ' font-style="italic"' if "italic" in types else ""
+            if "underline" in types:
+                attrs += ' text-decoration="underline"'
+            if "outline" in types and "highlight" not in types:
+                attrs += f' stroke="{fill}" stroke-width="{size * OUTLINE_STROKE_EM:.2f}" stroke-linejoin="round"'
+                fill = "none"
+            kind = "meta attribution source-field" if author else "quote"
+            tracking = 0 if author else QUOTE_TRACKING_EM
+            texts.append(f'<text class="{kind}" x="{x:.2f}" y="{y:.2f}" font-size="{size:.2f}" '
+                         f'fill="{fill}"{attrs} xml:space="preserve" style="letter-spacing:{tracking}em;white-space:pre" '
+                         f'data-start="{fragment["start"]}" data-end="{fragment["end"]}" '
+                         f'data-text-styles="{" ".join(sorted(types))}" '
+                         f'data-measured-width="{fragment_width:.4f}">{html.escape(fragment["text"])}</text>')
+    return "".join(marks + texts)
+
+
+def render_ribbon_svg(
+    data: dict[str, Any], manifest_dir: Path, *, render_options: dict[str, Any] | None = None,
+    font_size_override: float | None = None,
+) -> str:
+    """Render chosen editable paths; the preview and export share this function."""
+    width, height = data["canvas"]["width"], data["canvas"]["height"]
+    options = {**(data.get("presentation") or {}), **(render_options or {})}
+    composition = normalize_grammar_presentation(options)["composition"]
+    layout = ribbon_layout(data, manifest_dir, render_options=render_options, font_size_override=font_size_override)
+    colors, brand = data["brand"]["colors"], data["brand"]
+    background = colors[composition["background_role"]]
+    ink = colors[composition["text_role"]]
+    family = card_font_stack(brand["font"]["family"])
+    # Measurements use sfnt glyph advances, so do not let platform-specific
+    # kerning/ligature substitutions move the highlight boundaries later.
+    css = font_css(brand["font"], manifest_dir) + (
+        f".quote,.meta{{font-family:{family};font-synthesis:weight;"
+        "font-kerning:none;font-variant-ligatures:none;}"
+    )
+    protected = []
+    # Protect ink that actually exists, rather than cutting entire unused
+    # layout lanes out of the drawing. An absent author's declared area is
+    # still reserved; when present, its protection grows with its real text.
+    # Curves stay the user's chosen curves when typography is edited.
+    for key in ("quote_box", "author_box", "logo_box"):
+        if key == "logo_box" and options.get("logo_mode", "auto") == "hidden":
+            continue
+        if key == "quote_box":
+            box = layout["bounds"]["quote"]
+        elif key == "author_box" and layout["author_rows"]:
+            box = layout["bounds"]["author"]
+        elif key == "logo_box":
+            asset = logo_data(brand, manifest_dir, light=relative_luminance(background) < .2)
+            if not asset:
+                continue
+            lane = layout[key]
+            logo_width = min(lane["width"], lane["height"] * asset[1])
+            box = {**lane, "width": logo_width, "height": logo_width / asset[1]}
+        else:
+            box = layout[key]
+        if not box["width"] or not box["height"]:
+            continue
+        pad = width * .012
+        protected.append(f'<rect x="{box["x"] - pad:.2f}" y="{box["y"] - pad:.2f}" '
+                         f'width="{box["width"] + 2*pad:.2f}" height="{box["height"] + 2*pad:.2f}" '
+                         f'rx="{pad * 1.5:.2f}" fill="black"/>')
+    definitions = [f'<mask id="ribbon-clearance" maskUnits="userSpaceOnUse" x="0" y="0" width="{width}" height="{height}">'
+                   f'<rect width="{width}" height="{height}" fill="white"/>{"".join(protected)}</mask>']
+    by_id = {path["id"]: path for path in composition["ribbons"]}
+    def stroke(path: dict[str, Any], extra: str = "") -> str:
+        return (f'<path class="ribbon" data-ribbon-id="{path["id"]}" d="{_ribbon_path(path, width, height)}" '
+                f'fill="none" stroke="{colors[path["color_role"]]}" stroke-width="{path["width_ratio"] * width:.2f}" '
+                f'stroke-linecap="round" stroke-linejoin="round"{extra}/>')
+    drawings = [stroke(path) for path in composition["ribbons"]]
+    for index, crossing in enumerate(composition["crossings"]):
+        over, under = by_id[crossing["over"]], by_id[crossing["under"]]
+        portion = _ribbon_crossing_path(over, under, crossing, width, height)
+        if portion is None:
+            continue
+        mask_id = f"ribbon-crossing-{index}"
+        definitions.append(
+            f'<mask id="{mask_id}" maskUnits="userSpaceOnUse" x="0" y="0" width="{width}" height="{height}">'
+            f'<path d="{_ribbon_path(under, width, height)}" fill="none" stroke="white" '
+            f'stroke-width="{under["width_ratio"] * width:.2f}" stroke-linecap="round" stroke-linejoin="round"/></mask>'
+        )
+        drawings.append(stroke(portion, f' mask="url(#{mask_id})" data-over="{over["id"]}" data-under="{under["id"]}"'))
+    graphic = "" if options.get("graphic_mode", "auto") == "hidden" else (
+        f'<g class="ribbon-geometry" mask="url(#ribbon-clearance)">{"".join(drawings)}</g>'
+    )
+    box = layout["logo_box"]
+    logo = ""
+    if options.get("logo_mode", "auto") != "hidden":
+        asset = logo_data(brand, manifest_dir, light=relative_luminance(background) < .2)
+        if asset:
+            logo_width = min(box["width"], box["height"] * asset[1])
+            logo = logo_image(asset, x=box["x"], y=box["y"], width=logo_width)
+    attribution = data["content"].get("attribution") or {}
+    label = attribution.get("label", "") if attribution.get("role") != "none" else ""
+    desc = data["content"].get("alt_text", "").strip() or default_alt_text(data["content"]["text"], label, data.get("source"))
+    attrs = " ".join(f'data-{key.replace("_", "-")}="{html.escape(json.dumps(layout[key]), quote=True)}"'
+                     for key in ("quote_box", "author_box", "logo_box"))
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
+            f'role="img" aria-labelledby="title desc" data-visual-grammar="ribbons" '
+            f'data-composition-id="{composition["id"]}" data-layout-valid="{str(layout["valid"]).lower()}" '
+            f'data-geometry-valid="{str(layout["geometry_valid"]).lower()}" '
+            f'data-layout-warnings="{html.escape(json.dumps(layout["warnings"]), quote=True)}" {attrs}>'
+            f'<title id="title">{html.escape("Nastri — " + brand["name"])}</title><desc id="desc">{html.escape(desc)}</desc>'
+            f'<style>{css}</style><defs>{"".join(definitions)}</defs>'
+            f'<rect width="{width}" height="{height}" fill="{background}"/>{graphic}{logo}'
+            f'{_ribbon_text(layout["rows"], colors, composition)}'
+            f'{_ribbon_text(layout["author_rows"], colors, composition, author=True)}</svg>\n')
+
+
 def render_svg(
     data: dict[str, Any],
     manifest_dir: Path,
@@ -1771,6 +2265,8 @@ def render_svg(
     font_size_override: float | None = None,
     render_options: dict[str, Any] | None = None,
 ) -> str:
+    if {**(data.get("presentation") or {}), **(render_options or {})}.get("visual_grammar") == "ribbons":
+        return render_ribbon_svg(data, manifest_dir, render_options=render_options, font_size_override=font_size_override)
     width = data["canvas"]["width"]
     height = data["canvas"]["height"]
     content = data["content"]

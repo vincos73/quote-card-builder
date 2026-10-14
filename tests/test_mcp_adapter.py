@@ -406,7 +406,6 @@ class McpAdapterTests(unittest.TestCase):
         self.assertIn("event.preventDefault()", html)
         self.assertIn("formatting preserved", html)
         self.assertIn('className = "editor-line"', html)
-        self.assertIn("newline is part of the text model", html)
         self.assertNotIn("styles = []; clearProduction()", html)
         self.assertIn("signature !== currentSignature()", html)
         self.assertIn("function schedulePreview(delay = 160)", html)
@@ -732,7 +731,9 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual("", ui_tool.input_schema["properties"]["attribution"]["default"])
         self.assertEqual("neutral", ui_tool.input_schema["properties"]["profile_mode"]["default"])
         self.assertEqual(
-            {"text", "lines", "styles", "attribution", "profile_mode", "style", "format", "palette", "transformation", "evidence_status"},
+            {"text", "lines", "styles", "attribution", "profile_mode", "style", "format", "palette", "transformation", "evidence_status",
+             "visual_grammar", "composition", "composition_candidates", "proposal_source", "quote_font_size", "author_font_size",
+             "presentation", "reuse_composition"},
             set(ui_tool.input_schema["properties"]),
         )
         self.assertEqual("Open Quote Card Builder", ui_tool.title)
@@ -1047,7 +1048,6 @@ class McpProtocolTests(unittest.TestCase):
         self.assertNotIn(">Generate<", html)
         self.assertNotIn('id="download"', html)
         self.assertIn('id="remoteLink"', html)
-        self.assertIn("appendRun(line.length, previous)", html)
         self.assertIn("result.editor_state", html)
         self.assertIn("bridge?.uploadFile", html)
         self.assertIn('data-style="bold"', html)

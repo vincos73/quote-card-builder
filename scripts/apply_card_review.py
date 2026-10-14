@@ -18,7 +18,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 from quote_card_contract import MAX_LINES
-from render_quote_card import GRAPHIC_VARIANTS, graphic_seed_allowed
+from render_quote_card import GRAPHIC_VARIANTS, graphic_seed_allowed, validate_text_styles
+from visual_grammars import GRAMMAR_PRESENTATION_KEYS, normalize_grammar_presentation
+from grammar_sessions import proposal_metadata
 
 
 DIRECTIONS = {"editorial", "statement", "contextual"}
@@ -143,11 +145,11 @@ def _validate_state(state: dict[str, Any], manifest: Path, feedback: Path, data:
         raise ReviewError("Questo feedback è già stato applicato.")
 
 
-def _validate_lines(lines: Any, text: str, path: str) -> list[str]:
-    if not isinstance(lines, list) or not 1 <= len(lines) <= MAX_LINES or any(
+def _validate_lines(lines: Any, text: str, path: str, limit: int = MAX_LINES) -> list[str]:
+    if not isinstance(lines, list) or not 1 <= len(lines) <= limit or any(
         not isinstance(line, str) for line in lines
     ):
-        raise ReviewError(f"{path}.lines deve contenere da 1 a {MAX_LINES} stringhe.")
+        raise ReviewError(f"{path}.lines deve contenere da 1 a {limit} stringhe.")
     if not any(line.strip() for line in lines):
         raise ReviewError(f"{path}.lines deve contenere almeno una riga di testo.")
     if _normalise(" ".join(lines)) != _normalise(text):
@@ -156,7 +158,7 @@ def _validate_lines(lines: Any, text: str, path: str) -> list[str]:
 
 
 def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
-    allowed = {"feedback_id", "submitted_at", "base_revision", "action", "editorial_responsibility", "content", "direction", "emphasis", "presentation", "formats", "brand", "overall_note"}
+    allowed = {"feedback_id", "submitted_at", "base_revision", "action", "editorial_responsibility", "content", "direction", "emphasis", "presentation", "formats", "brand", "overall_note", "composition_candidates", "proposal_source"}
     extra = set(feedback) - allowed
     if extra:
         raise ReviewError("Feedback contiene campi non applicabili: " + ", ".join(sorted(extra)))
@@ -218,20 +220,10 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
         raise ReviewError(f"content.alt_text non può superare {ALT_TEXT_MAX_LENGTH} caratteri.")
     styles = target_content.get("styles")
     if styles is not None:
-        if not isinstance(styles, list) or len(styles) > 64:
-            raise ReviewError("content.styles deve essere una lista con al massimo 64 intervalli.")
-        for index, style in enumerate(styles):
-            if not isinstance(style, dict) or set(style) != {"start", "end", "type"}:
-                raise ReviewError(f"content.styles[{index}] richiede start, end e type.")
-            start, end, kind = style.get("start"), style.get("end"), style.get("type")
-            if (
-                not isinstance(start, int) or isinstance(start, bool)
-                or not isinstance(end, int) or isinstance(end, bool)
-                or not 0 <= start < end <= len(target_text)
-            ):
-                raise ReviewError(f"content.styles[{index}] non ricade nel testo corrente.")
-            if kind not in STYLE_TYPES:
-                raise ReviewError(f"content.styles[{index}].type non ammesso.")
+        style_errors: list[dict[str, str]] = []
+        validate_text_styles(styles, target_text, style_errors)
+        if style_errors:
+            raise ReviewError("; ".join(item["message"] for item in style_errors))
 
     if "direction" in feedback and feedback["direction"] not in DIRECTIONS:
         raise ReviewError("direction non ammessa.")
@@ -243,8 +235,14 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
         raise ReviewError("overall_note deve essere una stringa.")
 
     presentation = feedback.get("presentation", {})
-    if not isinstance(presentation, dict) or set(presentation) - {"logo_mode", "graphic_mode", "graphic_variant", "graphic_seed", "output_mode"}:
+    if not isinstance(presentation, dict) or set(presentation) - ({"logo_mode", "graphic_mode", "graphic_variant", "graphic_seed", "output_mode"} | GRAMMAR_PRESENTATION_KEYS):
         raise ReviewError("Sono consentite solo modifiche di presentazione previste.")
+    try:
+        if set(presentation) & GRAMMAR_PRESENTATION_KEYS:
+            normalize_grammar_presentation(presentation)
+        proposal_metadata(feedback)
+    except ValueError as exc:
+        raise ReviewError(str(exc)) from exc
     if not graphic_seed_allowed(presentation.get("graphic_seed", 0)):
         raise ReviewError("presentation.graphic_seed deve essere un intero da 0 a 999999.")
     if "logo_mode" in presentation and presentation["logo_mode"] not in LOGO_MODES:
@@ -276,7 +274,7 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
     # already invalid line split in one of the other production formats.
     if not text_changed:
         for item in existing:
-            _validate_lines(item.get("lines"), target_text, f"manifest.formats[{item['id']}]")
+            _validate_lines(item.get("lines"), target_text, f"manifest.formats[{item['id']}]", 64 if presentation.get("visual_grammar", manifest.get("presentation", {}).get("visual_grammar")) == "ribbons" else MAX_LINES)
     elif {item.get("id") for item in formats if isinstance(item, dict)} != existing_ids:
         raise ReviewError("Una modifica al testo deve aggiornare gli a capo di tutti i formati.")
     for item in formats:
@@ -289,7 +287,7 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
         if not (set(item) - {"id"}):
             raise ReviewError("Ogni formato deve includere almeno una modifica.")
         if "lines" in item:
-            _validate_lines(item["lines"], target_text, f"formats[{ident}]")
+            _validate_lines(item["lines"], target_text, f"formats[{ident}]", 64 if presentation.get("visual_grammar", manifest.get("presentation", {}).get("visual_grammar")) == "ribbons" else MAX_LINES)
         elif text_changed:
             raise ReviewError("Una modifica al testo richiede lines per ogni formato.")
         if "text_scale" in item:
@@ -340,14 +338,23 @@ def _apply_patch(manifest: dict[str, Any], feedback: dict[str, Any]) -> bool:
     emphasis_patch = {"emphasis": feedback["emphasis"]} if "emphasis" in feedback else {}
     for section, patch, keys in (
         ("content", emphasis_patch, ("emphasis",)),
-        ("presentation", feedback.get("presentation", {}), ("logo_mode", "graphic_mode", "graphic_variant", "graphic_seed", "output_mode")),
+        ("presentation", feedback.get("presentation", {}), ("logo_mode", "graphic_mode", "graphic_variant", "graphic_seed", "output_mode", "visual_grammar", "composition", "quote_font_size", "author_font_size")),
     ):
         if patch:
             target = manifest.setdefault(section, {})
+            if section == "presentation" and {"logo_mode", "graphic_mode", "graphic_variant", "graphic_seed", "output_mode"} <= set(patch):
+                for key in GRAMMAR_PRESENTATION_KEYS - set(patch):
+                    if key in target:
+                        del target[key]
+                        changed = True
             for key in keys:
                 if key in patch and target.get(key) != patch[key]:
                     target[key] = patch[key]
                     changed = True
+    for key, value in proposal_metadata(feedback).items():
+        if manifest.get(key) != value:
+            manifest[key] = value
+            changed = True
     by_id = {item["id"]: item for item in manifest["formats"]}
     for patch in feedback.get("formats", []):
         target = by_id[patch["id"]]
