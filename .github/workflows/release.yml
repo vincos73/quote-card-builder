@@ -38,13 +38,17 @@ jobs:
       - name: Build package
         run: |
           mkdir -p dist
-          git archive --format=zip --output=dist/quote-card-builder.zip HEAD SKILL.md README.md PRODUCT.md DESIGN.md requirements-mcp.txt pyproject.toml uv.lock agents assets references scripts tests
+          git archive --format=zip --output=dist/quote-card-builder.zip HEAD SKILL.md README.md PRODUCT.md DESIGN.md requirements-mcp.txt pyproject.toml uv.lock Dockerfile .dockerignore agents assets references scripts tests web-plugin
           python scripts/build_plugin_package.py --output dist/quote-card-builder-plugin.zip
+          python scripts/build_web_plugin_package.py --output dist/quote-card-builder-web.zip
+          python scripts/build_web_server_package.py --output dist/quote-card-builder-web-server.zip
           unzip -t dist/quote-card-builder.zip
           unzip -t dist/quote-card-builder-plugin.zip
+          unzip -t dist/quote-card-builder-web.zip
+          unzip -t dist/quote-card-builder-web-server.zip
           cd dist
-          sha256sum quote-card-builder.zip quote-card-builder-plugin.zip > SHA256SUMS.txt
+          sha256sum quote-card-builder.zip quote-card-builder-plugin.zip quote-card-builder-web.zip quote-card-builder-web-server.zip > SHA256SUMS.txt
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/quote-card-builder.zip dist/quote-card-builder-plugin.zip dist/SHA256SUMS.txt --title "Quote Card Builder ${GITHUB_REF_NAME}" --generate-notes
+        run: gh release create "${GITHUB_REF_NAME}" dist/quote-card-builder.zip dist/quote-card-builder-plugin.zip dist/quote-card-builder-web.zip dist/quote-card-builder-web-server.zip dist/SHA256SUMS.txt --title "Quote Card Builder ${GITHUB_REF_NAME}" --generate-notes

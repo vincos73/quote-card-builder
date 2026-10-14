@@ -77,6 +77,79 @@ def production_manifest(proof_path):
 
 
 class ProductionManifestTests(unittest.TestCase):
+    def test_quality_policy_is_explicit_and_only_relaxes_visual_validation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir); proof_path = root / "proof.png"; proof_path.write_bytes(b"proof")
+            data = production_manifest(proof_path)
+            data["brand"]["colors"]["primary"] = data["brand"]["colors"]["background"]
+            self.assertIn("contrast", {issue["code"] for issue in PACK.validate_production_manifest(data, root)})
+            data["quality_policy"] = "advisory"
+            self.assertEqual([], PACK.validate_production_manifest(data, root))
+            for invalid_policy in ("ignore", True, {}):
+                data["quality_policy"] = invalid_policy
+                self.assertIn("quality_policy", {issue["path"] for issue in PACK.validate_production_manifest(data, root)})
+
+    def test_advisory_keeps_schema_assets_ratio_and_content_integrity_errors(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir); proof_path = root / "proof.png"; proof_path.write_bytes(b"proof")
+            cases = (
+                ("schema", "schema_version", lambda data: data.update(schema_version="0.4")),
+                ("hash", "approval.content_sha256", lambda data: data["approval"].update(content_sha256="wrong")),
+                ("font", "brand.font.regular_path", lambda data: data["brand"]["font"].update(regular_path=str(root / "missing.ttf"))),
+                ("ratio", "formats[0]", lambda data: data["formats"][0].update(height=1500)),
+                ("text", "formats[0].lines", lambda data: data["formats"][0].update(lines=["Testo diverso"])),
+            )
+            for name, expected_path, change in cases:
+                with self.subTest(name=name):
+                    data = production_manifest(proof_path); data["quality_policy"] = "advisory"; change(data)
+                    self.assertIn(expected_path, {issue["path"] for issue in PACK.validate_production_manifest(data, root)})
+                    with self.assertRaises(RuntimeError):
+                        PACK.render_pack(data, root / "manifest.json", root / name, "never", None, None, "keep")
+
+    def test_advisory_legacy_card_exports_bad_contrast_and_retains_visual_findings(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir); proof_path = root / "proof.png"; proof_path.write_bytes(b"proof")
+            data = production_manifest(proof_path); data["quality_policy"] = "advisory"
+            data["brand"]["colors"]["primary"] = data["brand"]["colors"]["background"]
+            original = json.dumps(data, sort_keys=True)
+            result = PACK.render_pack(data, root / "manifest.json", root / "output", "never", None, None, "keep")
+            self.assertEqual(original, json.dumps(data, sort_keys=True))
+            self.assertEqual(3, len(result["formats"]))
+            qa = json.loads(Path(result["qa_report"]).read_text())
+            self.assertEqual("advisory", qa["quality_policy"])
+            self.assertFalse(qa["checks"]["visual_checks_passed"])
+            self.assertTrue({"contrast", "text_contrast"}.issubset({issue["code"] for issue in qa["warnings"]}))
+            self.assertEqual({"4x5", "1x1", "9x16"}, {issue["format"] for issue in qa["warnings"]})
+            self.assertTrue(all(issue["severity"] == "advisory" for issue in qa["warnings"]))
+            finalized, errors = FINALIZE.finalize(qa, Path(result["qa_report"]), "test")
+            self.assertEqual([], errors)
+            self.assertEqual(qa["warnings"], finalized["warnings"])
+
+    def test_advisory_records_collisions_and_overflow_from_legacy_svg_inspection(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir); proof_path = root / "proof.png"; proof_path.write_bytes(b"proof")
+            data = production_manifest(proof_path); data["quality_policy"] = "advisory"
+            findings = [{"code": "decoration_overlaps_text", "message": "Un segno si sovrappone al testo."},
+                        {"code": "text_outside_safe_area", "message": "Il testo supera l'area assegnata."}]
+            with mock.patch.object(PACK.inspector, "inspect_render", return_value=findings):
+                result = PACK.render_pack(data, root / "manifest.json", root / "output", "never", None, None, "keep")
+            self.assertEqual(6, len(result["visual_warnings"]))
+            self.assertEqual({item["code"] for item in findings}, {item["code"] for item in result["visual_warnings"]})
+
+    def test_advisory_keeps_failed_gradient_audit_without_blocking_export(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir); proof_path = root / "proof.png"; proof_path.write_bytes(b"proof")
+            data = production_manifest(proof_path); data["quality_policy"] = "advisory"
+            data["approval"]["direction"] = "editorial"
+            data["presentation"].update(graphic_variant="gradient", logo_mode="hidden")
+            failed_audit = {"passed": False, "logo_status": "hidden"}
+            with mock.patch.object(PACK.proof, "gradient_render_safety", return_value=failed_audit):
+                result = PACK.render_pack(data, root / "manifest.json", root / "output", "never", None, None, "keep")
+            qa = json.loads(Path(result["qa_report"]).read_text())
+            self.assertEqual(failed_audit, qa["checks"]["gradient_contrast"])
+            self.assertIn("gradient_contrast", {issue["code"] for issue in qa["warnings"]})
+            self.assertFalse(qa["checks"]["visual_checks_passed"])
+
     def test_accepts_approved_multi_format_manifest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             proof_path = Path(temp_dir) / "proof.png"

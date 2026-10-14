@@ -59,3 +59,42 @@ choices, ignores a replayed tool input, keeps later manual edits, seeds a fresh
 widget, and yields to a conflicting restored draft.
 Run `workspace.cjs` separately to verify the local delivery path; the remote
 test asserts that it never invokes the local PNG save tool.
+
+## Local ribbon editor smoke test
+
+This separate test opens the actual local `card-editor` and its HTTP server,
+with three numeric compositions, committed Barlow font files and the Vincos
+logo. It uses a fresh isolated directory for the project, saved styles, brand
+profiles and browser evidence. It never changes active user configuration or
+starts a Codex chatbot. It does not verify the native Codex or ChatGPT host.
+
+Choose a fresh output directory and a Node runtime with `playwright`, `sharp`
+and Google Chrome available. In the first terminal:
+
+```sh
+NODE_PATH=/path/to/node_modules uv run --frozen python tests/browser/ribbons_host.py --output-dir /tmp/qcb-ribbons-smoke --node /path/to/node --node-modules /path/to/node_modules
+```
+
+In another terminal:
+
+```sh
+NODE_PATH=/path/to/node_modules QCB_RIBBON_OUTPUT=/tmp/qcb-ribbons-smoke /path/to/node tests/browser/ribbons.cjs
+```
+
+The host selects an available localhost port and writes `ready.json`. The test
+reads that file; `QCB_RIBBON_URL` can override the URL but must still target
+localhost. The optional host `--brand-assets` flag accepts the v05 asset folder
+containing `fonts/barlow` and `logo` for that exact experimental palette. Without
+it, the test uses only committed assets and a dark version of the same palette.
+Missing required fonts or logos are reported as an error, rather than silently
+substituted. Use a new output directory for each full test and stop the host
+with Ctrl-C afterwards.
+
+Assertions cover all three composition thumbnails, selection, automatic size
+freezing, local span size, bold, highlights on wrapped lines, an optional author,
+draft recovery, saved base reuse, varied geometry, Unicode replacement without
+stale emphasis, project JSON import/export, explicit overflow warnings and local
+PNG export. The approved SVG must remain identical to the selected preview, and
+the exported PNG must match a Chrome rendering of that preview pixel for pixel.
+`report.json`, `text-metrics.json`, `pixel-comparison.json`, screenshots and PNGs
+record the observed result; structural QA does not certify artistic quality.

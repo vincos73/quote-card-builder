@@ -1,54 +1,29 @@
 # Quote Card Builder plugin
 
-This is the Quote Card Builder plugin package for ChatGPT and Codex.
+This folder describes the local stdio plugin package for ChatGPT and Codex. Its bundled skill remains in Italian. The generated `skills/quote-card-builder/` copy comes from the canonical repository root; use `scripts/build_plugin_package.py` rather than editing that copy separately.
 
-The included skill remains in Italian and guides the user through quote selection and visual review. The plugin includes a local MCP server and interactive app; the plugin metadata is in English.
+The hosted web package is separate: `web-plugin/` connects through streamable HTTP and includes an English skill for the remote editor. Build it with `python3 scripts/build_web_plugin_package.py`. It requires no local Python executor. Installing the stdio package does not publish or install the web package; neither operation proves public Plugin Directory availability.
 
-The contents of `skills/quote-card-builder/` are generated from the canonical skill at the repository root. Do not edit that copy separately; use `scripts/build_plugin_package.py` to create a synchronized package.
+## Current web MCP — 1.8.11 / UI v1.58
 
-In release 1.8.8/UI v1.56, a populated URL open and two consecutive updates in the native editor were verified; the current remote version is 1.8.10/UI v1.57. For clear create/proceed intent from a readable URL, the host reads the source and opens one populated editor. The server does not fetch URLs. Missing attribution defaults to none unless supplied by the user or verified in the source; the neutral palette is the default. Subsequent explicit chat edits use the revision-checked `quote_card_builder_update_editor` tool to preserve unspecified editor choices. In ChatGPT, mention the plugin in every follow-up to make its update tool available. Production, browser, and native evidence is recorded in the repository's `RELEASE-STATUS.md`. Automated browser tests use a simulated MCP Apps host.
+The remote server is live at 100% of production traffic. Nastri joins Blocks, Cutouts, Constellations and Gradient. The model can supply three different native numeric scenes; the user chooses and refines the selected scene in the same editor. Deterministic editor variations are labeled as demos and do not invoke a model.
 
-Version 1.8.10/UI v1.57 is live at 100% of production traffic. Short semantic lines make initial quotes more readable on smartphones without rewriting the source. Attribution is smaller; UI caption CSS is scoped so it no longer changes SVG attribution in the preview. Two focused tests and the remote version/resource/render checks passed. Native ChatGPT and download visual checks are left to the user. See `RELEASE-STATUS.md` for evidence and limits.
-The model can also call it with `{}` when the user selects the plugin without a quote, opening an
-empty editor. The user edits the quote; absent attribution defaults to none and neutral palette stays selected. Explicit named attribution is preserved, while an intentional named-but-empty choice remains incomplete. `quote_card_builder_open_editor` opens a fullscreen content tab for a quote already
-selected or sourced in conversation. In the local 1.8.3 installation, Generate PNG precedes Download PNG.
-The remote v1.57 workspace has one Download PNG action that generates and saves the file;
-it has no Send PNG to chat action. The remote server returns an empty state; unless a draft is
-recovered, UI v1.57 shows the editable four-line sample quote with bold, italic, and highlighted text,
-with no author name. Neutral palette is the default when no explicit palette choice exists; formatting
-and whitespace edits preserve the demo choices. If explicit quote
-content arrives while the demo is untouched, it replaces the sample. For a clear proceed request, the model selects a source quote and opens the populated editor without asking for quote, attribution, or palette confirmation. The workspace can recover its draft locally; it does
-not sync drafts across devices or conversations, associate project files or mentions, or apply
-model-suggested edits automatically. Local installation does not imply remote publication.
+The editor supports 4:5, 1:1 and 9:16, one format per PNG download. Nastri provides independent quote and author sizes and a relative size for selected words, alongside the existing text formatting controls. Visual warnings are descriptive, without correction buttons, and do not block preview or download. Invalid data or a technical failure that prevents creating the file remains an error.
 
-The plugin's MCP server starts through `.mcp.json` with
-`uv run --frozen` from the bundled skill directory, using its included `pyproject.toml` and
-`uv.lock`. For the guided conversational editor, the skill uses supplied or source-verified attribution and defaults to none and the neutral palette. It does not ask for tone or style and does not replace the
-app with direct file generation unless the host explicitly reports that the UI cannot mount; in
-that case the dedicated headless fallback requires an explicit production approval. If the user names a style spontaneously, it is only
-passed as an editor preselection.
-`quote_card_builder_open_editor` opens one interface with a 4:5 or 1:1 SVG preview based on
-those choices. `preview_quote_card` is the data tool called by the UI to refresh the same
-preview without opening another component. `produce_quote_card` is called only by the
-**Generate PNG** button and prepares a capability-based delivery action. **Download PNG** uses the
-local UI-private `quote_card_builder_save_png` action to save the exact canvas PNG in
-`~/Downloads/Quote Card Builder`. With the `openai/files` host capability it also opens the saved
-file using `openai/files/open`. **Send PNG to chat** sends that existing absolute file path via
-`ui/message` for a Markdown image and download link. This is enabled only by the local stdio
-launcher flag `--local-file-delivery`; HTTP rejects this flag and cannot save local PNGs. Remote
-hosts retain native `ui/download-file`, ChatGPT file URLs, and browser Blob compatibility paths.
-The UI exposes Blocks, Cutouts,
-Constellations, and Gradient, with deterministic pattern variations and an explicit editable
-palette in addition to the neutral profile.
+Web bases are saved on the client/device when storage is available and include the card content, attribution and formatting as well as palette and geometry. Project JSON transfers the full card explicitly. New-quote reuse resets stale ranges and provenance; attribution comes from the optional reuse-dialog field, which may be prefilled and can be cleared. A text-only chat edit preserves unrequested fields. There is no account or device sync and no upload of brand fonts or logos. The local Visual Review Studio has a different style-base format that excludes quote and ranges.
 
-The skill remains the orchestrator of the full Visual Review Studio workflow. The thin MCP adapter does not
-replace the canonical Python renderer or the complete Visual Review Studio workflow. The MCP
-dependency is pinned in `skills/quote-card-builder/pyproject.toml` and locked in
-`skills/quote-card-builder/uv.lock`; follow the
-[pilot documentation](skills/quote-card-builder/references/mcp-pilot.md) for local testing.
-The server also includes an optional MCP App HTML resource. App calls keep the canonical SVG in
-`_meta.quoteCard.svg` and return compact structured state; when a host genuinely cannot mount the
-iframe, the model-visible `quote_card_builder_headless` tool returns an explicit SVG resource.
-Production through that fallback requires `ui_unavailable=true`, caller approval, and the SHA-256
-of the current preview. The package does not include Cloud Run
-deployment configuration, remote authentication, or storage.
+For clear create/proceed intent from a readable URL, the host reads the source and opens one populated editor. The server does not fetch URLs. Missing attribution defaults to none unless supplied by the user or verified in the source; the neutral palette is the default. Follow-up chat edits use `quote_card_builder_update_editor` with the complete current snapshot and revision, preserving unspecified choices and rejecting stale updates. In ChatGPT, mention the plugin again when a follow-up needs its tool.
+
+`quote_card_builder_open_workspace` with `{}` opens an empty workspace. When no draft is recovered, the UI shows a labeled editable example without an author. `quote_card_builder_open_editor` opens the populated editor once; `preview_quote_card` refreshes it without mounting another app. The current **Download PNG** action calls `produce_quote_card`, rasterizes the canonical SVG and initiates delivery with one click. It has no separate Generate or Send PNG to chat action. SVG and proposal images travel in MCP metadata; the model context keeps numeric scene data.
+
+On 14 October 2026, the user confirmed that the ChatGPT test worked. This is user-reported operation, not a new automated test of the complete native host flow. The 475-test suite and remote protocol/PNG smoke evidence have their own scope. See [RELEASE-STATUS.md](../RELEASE-STATUS.md) and the [web ribbon reference](../references/ribbons-web-mcp.md) for the evidence and limits.
+
+## Local transport and historical installation
+
+The local package starts through `.mcp.json` using `uv run --frozen` from its bundled skill directory, with the included `pyproject.toml` and `uv.lock`. Only the stdio launcher enables `--local-file-delivery`; HTTP rejects that option. The UI-private `quote_card_builder_save_png` saves the exact canvas PNG to `~/Downloads/Quote Card Builder` and can open the confirmed file through `openai/files/open` when supported. Remote delivery uses host download capabilities and a verified temporary HTTPS link when required.
+
+The user's installed local version remains **1.8.3**, with its older UI and **Generate PNG** followed by **Download PNG**. Its two-format interface and Send PNG to chat action are historical capabilities of that installation, not the current web UI. The Visual Review Studio is a separate local editor, with multi-format ZIP export and explicit local brand profiles.
+
+Both current editors treat visual quality warnings as advisory; the local Visual Review Studio exports with `quality_policy: advisory`. The standalone CLI renderer retains `quality_policy: strict` as its default and can reject visual defects. Do not apply that standalone policy to the user's editor choices.
+
+When a host genuinely cannot mount the app, `quote_card_builder_headless` provides an explicit SVG preview resource. Production through that fallback requires `ui_unavailable=true`, caller approval and the SHA-256 of the current preview. The fallback does not establish that a PNG was delivered. The local plugin package does not include the hosted deployment configuration or remote account storage.

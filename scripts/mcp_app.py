@@ -9,10 +9,11 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 
-QUOTE_CARD_APP_VERSION = "v1.57"
-QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.57.html"
-QUOTE_CARD_WORKSPACE_RESOURCE = "ui://quote-card-builder/workspace/v1.57.html"
+QUOTE_CARD_APP_VERSION = "v1.58"
+QUOTE_CARD_PREVIEW_RESOURCE = "ui://quote-card-builder/preview/v1.58.html"
+QUOTE_CARD_WORKSPACE_RESOURCE = "ui://quote-card-builder/workspace/v1.58.html"
 QUOTE_CARD_LEGACY_PREVIEW_RESOURCES = (
+    "ui://quote-card-builder/preview/v1.57.html",
     "ui://quote-card-builder/preview/v1.56.html",
     "ui://quote-card-builder/preview/v1.55.html",
     "ui://quote-card-builder/preview/v1.26.html",
@@ -94,7 +95,7 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       * { box-sizing:border-box; }
       html { min-width:320px; background:var(--deep); scrollbar-color:var(--lavender) var(--deep); }
       body { min-width:320px; margin:0; padding:0; background:var(--deep); color:var(--lavender-light); font-size:14px; line-height:1.4; }
-      button, input, select { font:inherit; }
+      button, input, select, textarea { font:inherit; }
       button { cursor:pointer; }
       .shell { display:grid; gap:0; border:1px solid var(--seam-strong); background:var(--chrome); }
       .app-header { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:68px; padding:14px 18px; border-bottom:1px solid var(--seam); background:var(--deep); }
@@ -108,7 +109,8 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       legend { float:left; width:100%; margin:0 0 2px; padding:0; color:var(--lavender); font-family:var(--mono); font-size:10px; font-weight:500; letter-spacing:.045em; text-transform:uppercase; }
       fieldset > legend + * { clear:both; }
       label { display:grid; gap:6px; color:var(--lavender-light); font-family:var(--mono); font-size:10px; font-weight:500; letter-spacing:.02em; text-transform:uppercase; }
-      input, select, .editor { width:100%; min-height:38px; padding:9px 10px; border:1px solid var(--seam-strong); border-radius:0; background:var(--deep); color:var(--lavender-light); }
+      input, select, textarea, .editor { width:100%; min-height:38px; padding:9px 10px; border:1px solid var(--seam-strong); border-radius:0; background:var(--deep); color:var(--lavender-light); }
+      textarea { resize:vertical; }
       input::placeholder, .editor:empty::before { color:var(--lavender); opacity:.88; }
       .editor { min-height:104px; outline:none; overflow:visible; overflow-wrap:anywhere; white-space:pre-wrap; font-family:var(--ui); font-size:16px; line-height:1.45; caret-color:var(--signal); text-transform:none; }
       .editor-line { display:block; min-height:1.45em; }
@@ -119,7 +121,7 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       .editor .style-accent { color:var(--signal); }
       .editor .style-highlight { background:var(--signal); color:var(--ink); }
       .editor .style-outline { color:transparent; -webkit-text-stroke:.6px var(--lavender-light); }
-      input:focus, select:focus, .editor:focus, button:focus-visible { border-color:var(--signal); outline:2px solid var(--signal); outline-offset:2px; }
+      input:focus, select:focus, textarea:focus, .editor:focus, button:focus-visible { border-color:var(--signal); outline:2px solid var(--signal); outline-offset:2px; }
       .grid-2 { display:grid; gap:10px; grid-template-columns:repeat(2,minmax(0,1fr)); }
       .palette { display:grid; gap:8px; }
       .palette-row { display:grid; grid-template-columns:minmax(84px,.7fr) 52px minmax(92px,1fr); align-items:center; gap:8px; padding:7px 8px; border:1px solid var(--seam); background:var(--deep); }
@@ -173,6 +175,27 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       .direct-download { min-height:38px; padding:9px 12px; border:1px solid var(--seam-strong); background:transparent; color:var(--lavender-light); font-family:var(--mono); font-size:9px; text-decoration:underline; text-underline-offset:3px; }
       .direct-download[hidden] { display:none; }
       .hint { margin:0; color:var(--lavender); font-size:11px; line-height:1.35; }
+      .ribbon-proposals { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+      .ribbon-proposal { min-width:0; padding:5px; border:1px solid var(--seam-strong); background:var(--deep); color:var(--lavender-light); text-align:left; }
+      .ribbon-proposal[aria-pressed=true] { border-color:var(--signal); }
+      .ribbon-thumb { display:grid; place-items:center; aspect-ratio:4/5; overflow:hidden; }
+      .ribbon-thumb img { display:block; width:100%; height:100%; object-fit:contain; }
+      .ribbon-proposal > span:last-child { display:block; margin-top:5px; font-family:var(--mono); font-size:10px; overflow-wrap:anywhere; }
+      .ribbon-actions { display:flex; flex-wrap:wrap; gap:6px; }
+      .ribbon-actions button { min-height:38px; padding:7px 10px; border:1px solid var(--seam-strong); background:var(--deep); color:var(--lavender-light); font-family:var(--mono); font-size:10px; }
+      .selection-size { display:grid; grid-template-columns:minmax(0,1fr) 90px auto; align-items:end; gap:8px; }
+      .size-field { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:6px; }
+      .card-library { padding:14px; border-bottom:1px solid var(--seam); }
+      .card-library summary { cursor:pointer; color:var(--lavender); font-family:var(--mono); font-size:10px; text-transform:uppercase; }
+      .library-content { display:grid; gap:10px; padding-top:12px; }
+      .saved-base { display:grid; gap:6px; padding:9px; border:1px solid var(--seam-strong); }
+      .saved-base strong { font-family:var(--mono); font-size:11px; }
+      .reuse-form { display:grid; gap:10px; }
+      .warnings-panel { padding:12px 14px; border-top:1px solid var(--seam); background:var(--deep); }
+      .warnings-panel h2 { margin:0; color:var(--lavender-light); font-family:var(--mono); font-size:11px; font-weight:500; }
+      .warnings-panel ul { margin:8px 0 0; padding-left:18px; color:var(--lavender); font-size:11px; }
+      .warnings-panel li { margin:4px 0; }
+      .ribbon-controls[hidden], .ribbon-proposals[hidden], .selection-size[hidden], .reuse-form[hidden], .warnings-panel[hidden], .legacy-composition[hidden], .ribbon-actions[hidden], #projectJsonLabel[hidden] { display:none; }
       ::selection { background:var(--signal); color:var(--ink); }
       @media (max-width:560px) {
         .app-header { align-items:flex-start; gap:10px; min-height:0; }
@@ -215,9 +238,14 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
             </div>
             <div id="text" class="editor" contenteditable="true" role="textbox" aria-labelledby="quote-label" aria-multiline="true" data-placeholder="Write the quote to display"></div>
           </div>
+          <div id="selectionSizeControl" class="selection-size ribbon-actions" hidden>
+            <span class="hint">Selected words · relative size</span>
+            <label>Percent <input id="selectionSize" type="number" min="50" max="250" step="5" value="100"></label>
+            <button id="selectionSizeApply" type="button">Apply</button>
+          </div>
           <p class="hint" id="demoHelper" data-demo-only hidden>È un esempio: sostituiscilo con la tua frase.</p>
           <label data-workspace-only>Attribution choice <select id="attributionDecision"><option value="">Choose…</option><option value="named">Name or source</option><option id="demoNoneOption" value="none" selected>No attribution</option></select></label>
-          <label>Attribution <input id="attribution" maxlength="160" placeholder="Name or leave blank"></label>
+          <label>Attribution <textarea id="attribution" maxlength="160" rows="2" placeholder="Name or leave blank"></textarea></label>
           <p class="hint">Select words in the quote and use B, I, U, A, O, or H. The canonical renderer preserves the selected ranges.</p>
         </fieldset>
 
@@ -228,6 +256,7 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
             <button type="button" data-style-choice="cutouts" aria-pressed="false">Cutouts</button>
             <button type="button" data-style-choice="constellations" aria-pressed="false">Constellations</button>
             <button type="button" data-style-choice="gradient" aria-pressed="false">Gradient</button>
+            <button type="button" data-style-choice="ribbons" aria-pressed="false">Nastri</button>
             <button class="plain-style" type="button" data-style-choice="plain" aria-pressed="false">Hide pattern</button>
           </div>
           <p class="hint" id="styleHint">Blocks selected. Vary the pattern to explore another deterministic composition.</p>
@@ -238,13 +267,44 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
           </div>
         </fieldset>
 
+        <fieldset id="ribbonCompositions" class="ribbon-controls" hidden>
+          <legend>Nastri compositions</legend>
+          <p class="hint" id="ribbonSource"></p>
+          <div id="ribbonProposals" class="ribbon-proposals" aria-label="Choose a Nastri composition"></div>
+          <div class="ribbon-actions"><button id="ribbonVariations" type="button">New demo variations</button></div>
+        </fieldset>
+
         <fieldset>
           <legend>Composition</legend>
-          <label for="format">Format <select id="format"><option value="4x5" selected>4:5 portrait</option><option value="1x1">1:1 square</option></select></label>
-          <div class="range-row"><label for="scale">Scale from maximum</label><output id="scaleValue" for="scale">100%</output></div>
-          <input id="scale" type="range" min="80" max="100" value="100" step="1">
-          <div class="range-row"><label for="position">Vertical position</label><select id="position"><option value="upper">Upper</option><option value="center" selected>Center</option><option value="lower">Lower</option></select></div>
+          <label for="format">Format <select id="format"><option value="4x5" selected>4:5 portrait</option><option value="1x1">1:1 square</option><option value="9x16">9:16 story</option></select></label>
+          <div id="legacyScale" class="legacy-composition"><div class="range-row"><label for="scale">Scale from maximum</label><output id="scaleValue" for="scale">100%</output></div>
+          <input id="scale" type="range" min="80" max="100" value="100" step="1"></div>
+          <div id="legacyPosition" class="range-row legacy-composition"><label for="position">Vertical position</label><select id="position"><option value="upper">Upper</option><option value="center" selected>Center</option><option value="lower">Lower</option></select></div>
+          <div id="ribbonSizes" class="grid-2 ribbon-controls ribbon-actions" hidden>
+            <div class="size-field"><label>Quote size · card px <input id="quoteFontSize" type="number" min="8" max="720" step="1" placeholder="Auto"></label><button id="quoteSizeAuto" type="button">Auto</button></div>
+            <div class="size-field"><label>Author size · card px <input id="authorFontSize" type="number" min="8" max="720" step="1" placeholder="Auto"></label><button id="authorSizeAuto" type="button">Auto</button></div>
+          </div>
+          <p id="ribbonSizeNote" class="hint ribbon-controls" hidden></p>
         </fieldset>
+        <details class="card-library" id="cardLibrary">
+          <summary>Saved bases &amp; project JSON</summary>
+          <div class="library-content">
+            <p class="hint">Bases stay on this device when storage is available. Export a project JSON to reuse it in another browser; there is no account sync.</p>
+            <label>Base name <input id="baseName" maxlength="80" placeholder="e.g. My Nastri cards"></label>
+            <div class="ribbon-actions"><button id="saveBase" type="button">Save Nastri base</button><button id="exportProject" type="button">Export project JSON</button><button id="importProject" type="button">Import project JSON</button></div>
+            <input id="projectFile" type="file" accept="application/json,.json" hidden>
+            <label id="projectJsonLabel" hidden>Project JSON <textarea id="projectJson" rows="6" spellcheck="false"></textarea></label>
+            <div id="projectJsonActions" class="ribbon-actions" hidden><button id="copyProjectJson" type="button">Copy JSON</button><a id="projectDownload" class="direct-download" download="quote-card-project.json" hidden>Download JSON</a></div>
+            <p class="hint" id="baseFeedback" role="status"></p>
+            <div id="savedBases"></div>
+            <div id="reuseForm" class="reuse-form" hidden>
+              <strong id="reuseTitle"></strong>
+              <label>Quote <textarea id="reuseText" maxlength="600" rows="4"></textarea></label>
+              <label>Author · optional <textarea id="reuseAuthor" maxlength="160" rows="2"></textarea></label>
+              <div class="ribbon-actions"><button id="reuseConfirm" type="button">Use base</button><button id="reuseCancel" type="button">Cancel</button></div>
+            </div>
+          </div>
+        </details>
 
         <fieldset>
           <legend>Card palette</legend>
@@ -271,6 +331,7 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       <div class="delivery" id="delivery" hidden><strong id="deliveryName">PNG ready</strong><div class="delivery-actions"><a class="direct-download" id="remoteLink" href="#" target="_blank" rel="noopener" hidden>Open PNG download link</a></div></div>
       <section class="preview" aria-label="Quote card preview"><div id="image" class="svg-preview" role="img" aria-label="" hidden></div><div class="qcb-preview-caption" id="meta"></div></section>
       <div class="errors" id="errors" role="alert" hidden></div>
+      <section id="warningsPanel" class="warnings-panel" aria-labelledby="warningsTitle" aria-live="polite" hidden><h2 id="warningsTitle">Avvisi · <span id="warningsCount">0</span></h2><ul id="warningsList"></ul></section>
     </main>
     <script>__QCB_HOST_CONTEXT__</script>
     <script>__QCB_TOOL_RESULTS__</script>
@@ -283,6 +344,10 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       const form = $("form"), text = $("text"), attribution = $("attribution"), attributionDecision = $("attributionDecision"), paletteDecision = $("paletteDecision");
       const direction = { value: "editorial" }, paletteName = $("paletteName"), palette = $("palette"), palettePreset = $("palettePreset");
       const format = $("format"), scale = $("scale"), scaleValue = $("scaleValue"), position = $("position");
+      const quoteFontSize = $("quoteFontSize"), authorFontSize = $("authorFontSize"), selectionSize = $("selectionSize");
+      let ribbonComposition = null, ribbonCandidates = [], ribbonProposalSource = null, ribbonPreviews = [], ribbonLayout = null;
+      let pendingReuseComposition = null, savedSelection = null, reuseBaseId = null, reuseMode = "card";
+      let projectDownloadUrl = "";
       const submit = $("submit"), produce = $("produce"), status = $("status"), image = $("image"), meta = $("meta"), errors = $("errors"), toolbarStatus = $("toolbarStatus");
       const delivery = $("delivery"), deliveryName = $("deliveryName"), remoteLink = $("remoteLink");
       const allowedDownloadOrigins = new Set(__QCB_REDIRECT_ORIGINS__);
@@ -294,6 +359,7 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
         cutouts:{ direction:"editorial", variant:"cutouts", label:"Cutouts" },
         constellations:{ direction:"contextual", variant:"constellations", label:"Constellations" },
         gradient:{ direction:"editorial", variant:"gradient", label:"Gradient" },
+        ribbons:{ direction:"editorial", variant:"default", grammar:"ribbons", label:"Nastri" },
         plain:{ direction:"editorial", variant:"default", hidden:true, label:"Hide pattern" },
       };
       const palettePresets = {
@@ -320,7 +386,7 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       const hexPattern = /^#[0-9a-f]{6}$/i;
       function pointLength(value) { return Array.from(String(value || "")).length; }
       function cpOffset(value, utf16Index) { return pointLength(String(value || "").slice(0, utf16Index)); }
-      function normalizeStyles(value) { const grouped = new Map(); (Array.isArray(value) ? value : []).forEach((item) => { if (!item || !["bold","italic","underline","highlight","accent","outline"].includes(item.type) || !Number.isInteger(item.start) || !Number.isInteger(item.end) || item.start >= item.end) return; if (!grouped.has(item.type)) grouped.set(item.type, []); grouped.get(item.type).push({ start:item.start, end:item.end, type:item.type }); }); const merged = []; grouped.forEach((ranges, type) => { ranges.sort((first, second) => first.start - second.start || first.end - second.end); ranges.forEach((range) => { const previous = merged.at(-1); if (previous?.type === type && range.start <= previous.end) previous.end = Math.max(previous.end, range.end); else merged.push({ ...range }); }); }); return merged.sort((first, second) => first.start - second.start || first.end - second.end || first.type.localeCompare(second.type)); }
+      function normalizeStyles(value) { const grouped = new Map(); (Array.isArray(value) ? value : []).forEach((item) => { if (!item || !["bold","italic","underline","highlight","accent","outline","size"].includes(item.type) || !Number.isInteger(item.start) || !Number.isInteger(item.end) || item.start >= item.end) return; if (item.type === "size" && (!Number.isFinite(item.scale) || item.scale < .5 || item.scale > 2.5)) return; const key = item.type === "size" ? `size:${item.scale}` : item.type; if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push({ start:item.start, end:item.end, type:item.type, ...(item.type === "size" ? {scale:item.scale} : {}) }); }); const merged = []; grouped.forEach((ranges) => { ranges.sort((first, second) => first.start - second.start || first.end - second.end); ranges.forEach((range) => { const previous = merged.at(-1); if (previous?.type === range.type && previous.scale === range.scale && range.start <= previous.end) previous.end = Math.max(previous.end, range.end); else merged.push({ ...range }); }); }); return merged.sort((first, second) => first.start - second.start || first.end - second.end || first.type.localeCompare(second.type)); }
       const blockTags = new Set(["DIV", "P", "LI", "BLOCKQUOTE", "PRE"]);
       function isPlaceholderBreak(parent, child) { return parent?.nodeType === Node.ELEMENT_NODE && blockTags.has(parent.tagName) && parent.childNodes.length === 1 && child?.nodeType === Node.ELEMENT_NODE && child.tagName === "BR"; }
       function blockSeparatorBefore(parent, index) { if (index <= 0) return ""; const child = parent.childNodes[index], previous = parent.childNodes[index - 1]; if (child?.nodeType !== Node.ELEMENT_NODE || !blockTags.has(child.tagName)) return ""; return previous?.nodeType === Node.ELEMENT_NODE && previous.tagName === "BR" ? "" : "\n"; }
@@ -423,6 +489,7 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
         const fragment = document.createDocumentFragment();
         let globalOffset = 0;
         lines.forEach((line, lineIndex) => {
+          const lineLength = pointLength(line);
           const block = document.createElement("div");
           block.className = "editor-line";
           if (!line) {
@@ -436,19 +503,21 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
               if (!signature) block.appendChild(document.createTextNode(content));
               else {
                 const span = document.createElement("span");
-                span.className = signature.split(" ").map((kind) => `style-${kind}`).join(" ");
+                span.className = signature.split(" ").filter((kind) => !kind.startsWith("size:")).map((kind) => `style-${kind}`).join(" ");
+                const size = signature.split(" ").find((kind) => kind.startsWith("size:"));
+                if (size) span.style.fontSize = `${Number(size.slice(5))}em`;
                 span.textContent = content;
                 block.appendChild(span);
               }
             };
-            for (let index = 0; index < line.length; index += 1) {
-              const signature = styles.filter((item) => item.start <= globalOffset + index && item.end > globalOffset + index).map((item) => item.type).sort().join(" ");
+            for (let index = 0; index < lineLength; index += 1) {
+              const signature = styles.filter((item) => item.start <= globalOffset + index && item.end > globalOffset + index).map((item) => item.type === "size" ? `size:${item.scale}` : item.type).sort().join(" ");
               if (signature !== previous) { appendRun(index, previous); runStart = index; previous = signature; }
             }
-            appendRun(line.length, previous);
+            appendRun(lineLength, previous);
           }
           fragment.appendChild(block);
-          globalOffset += line.length + (lineIndex < lines.length - 1 ? 1 : 0);
+          globalOffset += lineLength + (lineIndex < lines.length - 1 ? 1 : 0);
         });
         text.replaceChildren(fragment);
         restoreSelection(selectedRange);
@@ -483,7 +552,7 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
           const covered = oldVisible.map((entry, ordinal) => ({ ...entry, ordinal })).filter((entry) => entry.index >= item.start && entry.index < item.end);
           if (!covered.length) return [];
           const first = newVisible[covered[0].ordinal], last = newVisible[covered.at(-1).ordinal];
-          return first && last ? [{ start:first.index, end:last.index + 1, type:item.type }] : [];
+          return first && last ? [{ ...item, start:first.index, end:last.index + 1 }] : [];
         }));
       }
       function remapStylesAfterEdit(oldValue, newValue, currentStyles) {
@@ -522,6 +591,22 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       function trimRangeWhitespace(range) { if (!range) return null; const chars = Array.from(textValue()); let start = range.start, end = range.end; while (start < end && /\s/.test(chars[start])) start += 1; while (end > start && /\s/.test(chars[end - 1])) end -= 1; return start < end ? { start, end } : null; }
       function rangeCovered(kind, range) { let cursor = range.start; normalizeStyles(styles).filter((item) => item.type === kind).forEach((item) => { if (item.end <= cursor || item.start > cursor) return; cursor = Math.max(cursor, item.end); }); return cursor >= range.end; }
       function subtractRange(item, range) { if (!overlap(item, range)) return [item]; const next = []; if (item.start < range.start) next.push({ ...item, end:range.start }); if (item.end > range.end) next.push({ ...item, start:range.end }); return next; }
+      function applySelectionSize() {
+        const range = trimRangeWhitespace(selection() || savedSelection);
+        if (!range || !isRibbonStyle()) { toolbarStatus.textContent = "Select words before changing their size"; return; }
+        const relative = Number(selectionSize.value) / 100;
+        if (!Number.isFinite(relative) || relative < .5 || relative > 2.5) { toolbarStatus.textContent = "Selected text size uses 50–250%"; return; }
+        if (!quoteFontSize.value) {
+          const fitted = Number(ribbonLayout?.font_size);
+          if (!Number.isFinite(fitted) || fitted < 8 || fitted > 720) { toolbarStatus.textContent = "The quote size is not available yet"; return; }
+          quoteFontSize.value = String(Number(fitted.toFixed(2)));
+        }
+        styles = normalizeStyles(styles.flatMap((item) => item.type === "size" ? subtractRange(item, range) : [item]));
+        if (relative !== 1) styles = normalizeStyles([...styles, {...range, type:"size", scale:relative}]);
+        savedSelection = range; renderEditor(range); clearProduction();
+        toolbarStatus.textContent = "Selection size updated; other formatting preserved";
+        scheduleResize(); schedulePreview();
+      }
       function applyStyle(kind) {
         const range = trimRangeWhitespace(selection());
         if (!range) {
@@ -552,8 +637,8 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       function writePalette(value, rememberInitial = false) { if (!value?.colors) return; const colors = {}; Object.entries(paletteFields).forEach(([key, ids]) => { const color = normalizeHex(value.colors[key]); if (!color) return; colors[key] = color; $(ids[0]).value = color; $(ids[1]).value = color; }); if (Object.keys(colors).length !== 4) return; paletteName.value = String(value.name || "Custom palette"); if (rememberInitial) paletteInitial = { name:paletteName.value, colors:{ ...colors } }; syncPalettePreset(); }
       function samePalette(first, second) { return Object.keys(paletteFields).every((key) => normalizeHex(first?.colors?.[key]) === normalizeHex(second?.colors?.[key])); }
       function syncPalettePreset() { const current = readPalette(); if (samePalette(current, paletteInitial)) palettePreset.value = "initial"; else { const match = Object.entries(palettePresets).find(([, value]) => samePalette(current, value)); palettePreset.value = match?.[0] || "custom"; } }
-      function currentArguments() { const value = textValue(), style = selectedStyle(); return { text:value, format:format.value, attribution:attribution.value, styles:styles.length ? styles : [], lines:readLines(), direction:style.direction, graphic_mode:style.hidden ? "hidden" : "auto", graphic_variant:style.variant, graphic_seed:graphicSeed, text_scale:Number(scale.value) / 100, vertical_position:position.value, palette:readPalette(), transformation:draftTransformation, evidence_status:draftEvidenceStatus, alt_text:draftAltText }; }
-      function currentDraft() { return { ...currentArguments(), profile_mode:paletteDecision.value === "custom" ? "custom" : "neutral", transformation:draftTransformation, evidence_status:draftEvidenceStatus, alt_text:draftAltText, _editor_revision:editRevision, _editor_update_status:draftUpdateStatus, _applied_editor_updates:appliedUpdateFingerprints.slice(-20), _workspace:{ attributionDecision:attributionDecision.value, paletteDecision:paletteDecision.value, demoExample:demoChoices, demoAttributionChoice, demoPaletteChoice } }; }
+      function currentArguments() { const value = textValue(), style = selectedStyle(), ribbons = style.grammar === "ribbons"; return { text:value, format:format.value, attribution:attribution.value, styles:styles.length ? styles.filter((item) => ribbons || item.type !== "size") : [], lines:readLines(), direction:style.direction, graphic_mode:style.hidden ? "hidden" : "auto", graphic_variant:style.variant, graphic_seed:graphicSeed, text_scale:Number(scale.value) / 100, vertical_position:position.value, palette:readPalette(), transformation:draftTransformation, evidence_status:draftEvidenceStatus, alt_text:draftAltText, visual_grammar:ribbons ? "ribbons" : null, composition:ribbons ? ribbonComposition : null, composition_candidates:ribbons ? ribbonCandidates : [], proposal_source:ribbons ? ribbonProposalSource : null, quote_font_size:ribbons && quoteFontSize.value ? Number(quoteFontSize.value) : null, author_font_size:ribbons && authorFontSize.value ? Number(authorFontSize.value) : null, ...(ribbons && pendingReuseComposition ? {reuse_composition:pendingReuseComposition} : {}) }; }
+      function currentDraft() { const {reuse_composition, ...draft} = currentArguments(); return { ...draft, profile_mode:paletteDecision.value === "custom" ? "custom" : "neutral", transformation:draftTransformation, evidence_status:draftEvidenceStatus, alt_text:draftAltText, _editor_revision:editRevision, _editor_update_status:draftUpdateStatus, _applied_editor_updates:appliedUpdateFingerprints.slice(-20), _workspace:{ attributionDecision:attributionDecision.value, paletteDecision:paletteDecision.value, demoExample:demoChoices, demoAttributionChoice, demoPaletteChoice } }; }
       function resetDemoLabels() { demoNoneOption.textContent = demoAttributionChoice ? "Scelta demo: nessuna attribuzione" : "No attribution"; demoNeutralOption.textContent = demoPaletteChoice ? "Palette neutra demo" : "Neutral palette"; }
       function clearDemoChoicesOnEdit() {
         if (!demoChoices || textValue().replace(/\s+/gu, " ").trim() === demoQuote) return;
@@ -587,12 +672,8 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       }
       function customPaletteIsValid() { return Object.values(paletteFields).every((ids) => Boolean(normalizeHex($(ids[1]).value))); }
       function workspaceReadiness() {
-        if (!workspaceMode) return customPaletteIsValid() ? { ready:true, message:"" } : { ready:false, message:"Enter a valid six-digit hex value for every palette color." };
         if (!textValue().trim()) return { ready:false, message:"Write the quote to continue." };
-        if (!attributionDecision.value) return { ready:false, message:"Choose an attribution or explicitly choose no attribution." };
-        if (attributionDecision.value === "named" && !attribution.value.trim()) return { ready:false, message:"Add the attribution name or source." };
-        if (!paletteDecision.value) return { ready:false, message:"Choose the neutral palette or a custom palette." };
-        if (paletteDecision.value === "custom" && !customPaletteIsValid()) return { ready:false, message:"Enter a valid six-digit hex value for every custom palette color." };
+        if (!customPaletteIsValid()) return { ready:false, message:"Enter a valid six-digit hex value for every palette color." };
         return { ready:true, message:"Ready to preview." };
       }
       function syncWorkspaceReadiness(options = {}) {
@@ -606,9 +687,71 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       function clearProduction(invalidate = true) { if (invalidate) { editRevision += 1; if (hostState) { hostState.setDraft(currentDraft()); hostState.setImageIds([]); hostState.setPrivateContent({}); } actionSequence += 1; delete submit.dataset.busy; delete produce.dataset.busy; submit.disabled = false; produce.disabled = false; } if (deliveryUrl && deliveryUrl.startsWith("blob:")) URL.revokeObjectURL(deliveryUrl); deliveryUrl = ""; deliveryFileId = ""; deliveryFilename = ""; deliveryFile = null; preparedSignature = ""; remoteLink.hidden = true; remoteLink.removeAttribute("href"); delivery.hidden = true; syncWorkspaceReadiness({announce:invalidate}); }
       function selectedStyleKey() { return document.querySelector('[data-style-choice][aria-pressed="true"]')?.dataset.styleChoice || "blocks"; }
       function selectedStyle() { return styleOptions[selectedStyleKey()] || styleOptions.blocks; }
-      function styleKeyFromInput(input) { if (input?.graphic_mode === "hidden") return "plain"; if (styleOptions[input?.style] && !styleOptions[input.style].hidden) return input.style; const match = Object.entries(styleOptions).find(([, option]) => !option.hidden && option.direction === input?.direction && option.variant === input?.graphic_variant); return match?.[0] || "blocks"; }
-      function updateStyleState() { const selected = selectedStyle(); direction.value = selected.direction; $("styleHint").textContent = selected.hidden ? "Pattern hidden. Choose a style to restore it." : `${selected.label} selected. Vary the pattern to explore another deterministic composition.`; $("patternVariation").hidden = Boolean(selected.hidden); $("patternSeed").textContent = `Seed ${graphicSeed}`; $("patternPrevious").disabled = graphicSeed === 0; }
+      function styleKeyFromInput(input) { if (input?.visual_grammar === "ribbons" || input?.presentation?.visual_grammar === "ribbons" || input?.style === "ribbons") return "ribbons"; if (input?.graphic_mode === "hidden") return "plain"; if (styleOptions[input?.style] && !styleOptions[input.style].hidden) return input.style; const match = Object.entries(styleOptions).find(([, option]) => !option.hidden && !option.grammar && option.direction === input?.direction && option.variant === input?.graphic_variant); return match?.[0] || "blocks"; }
+      function updateStyleState() { const selected = selectedStyle(); direction.value = selected.direction; $("styleHint").textContent = selected.grammar === "ribbons" ? "Nastri uses the selected numeric composition; words, author and palette remain editable." : selected.hidden ? "Pattern hidden. Choose a style to restore it." : `${selected.label} selected. Vary the pattern to explore another deterministic composition.`; $("patternVariation").hidden = Boolean(selected.hidden || selected.grammar); $("patternSeed").textContent = `Seed ${graphicSeed}`; $("patternPrevious").disabled = graphicSeed === 0; const ribbons = selected.grammar === "ribbons"; ["ribbonCompositions","ribbonSizes","ribbonSizeNote","selectionSizeControl"].forEach((id) => { $(id).hidden = !ribbons; }); $("legacyScale").hidden = ribbons; $("legacyPosition").hidden = ribbons; $("saveBase").disabled = !ribbons || !ribbonComposition; }
       function setStyleChoice(key) { if (!styleOptions[key]) key = "blocks"; document.querySelectorAll("[data-style-choice]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.styleChoice === key))); updateStyleState(); }
+      function isRibbonStyle() { return selectedStyle().grammar === "ribbons"; }
+      function applyRibbonInput(input) {
+        const source = input.presentation && typeof input.presentation === "object" ? {...input.presentation, ...input} : input;
+        if (Object.prototype.hasOwnProperty.call(source, "composition")) ribbonComposition = source.composition && typeof source.composition === "object" ? structuredClone(source.composition) : null;
+        if (Array.isArray(source.composition_candidates)) ribbonCandidates = structuredClone(source.composition_candidates);
+        if (Object.prototype.hasOwnProperty.call(source, "proposal_source")) ribbonProposalSource = ["model","demo"].includes(source.proposal_source) ? source.proposal_source : null;
+        ["quote_font_size","author_font_size"].forEach((key) => { if (Object.prototype.hasOwnProperty.call(source, key)) (key === "quote_font_size" ? quoteFontSize : authorFontSize).value = Number.isFinite(source[key]) ? String(source[key]) : ""; });
+        if (ribbonComposition && isRibbonStyle()) pendingReuseComposition = null;
+        renderRibbonProposals(); updateStyleState();
+      }
+      function renderRibbonProposals() {
+        const container = $("ribbonProposals"); container.replaceChildren();
+        $("ribbonSource").textContent = ribbonProposalSource === "model" ? "Compositions designed by the model. Each choice keeps its exact geometry." : "Demo proposals: numeric examples, generated without calling a model from this editor.";
+        ribbonCandidates.forEach((composition) => {
+          const button = document.createElement("button"); button.type = "button"; button.className = "ribbon-proposal"; button.dataset.compositionId = composition.id;
+          button.setAttribute("aria-pressed", String(composition.id === ribbonComposition?.id));
+          const thumb = document.createElement("span"); thumb.className = "ribbon-thumb"; thumb.setAttribute("aria-hidden", "true");
+          const preview = ribbonPreviews.find((item) => item.id === composition.id);
+          if (typeof preview?.svg === "string") { const image = document.createElement("img"); image.alt = ""; image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(preview.svg)}`; thumb.append(image); }
+          else thumb.textContent = "Preview…";
+          const label = document.createElement("span"); label.textContent = composition.name || composition.id;
+          button.append(thumb, label); container.append(button);
+        });
+        if (!ribbonCandidates.length && ribbonComposition) { const note = document.createElement("p"); note.className = "hint"; note.textContent = `Current composition: ${ribbonComposition.name || ribbonComposition.id}.`; container.append(note); }
+      }
+      function renderRibbonState(result) {
+        ribbonLayout = result.ribbon_layout || null;
+        if (Array.isArray(result.composition_previews)) ribbonPreviews = result.composition_previews;
+        renderRibbonProposals();
+        if (isRibbonStyle()) $("ribbonSizeNote").textContent = `Quote: ${Number(ribbonLayout?.font_size || 0).toFixed(1)}px · Author: ${Number(ribbonLayout?.author_font_size || 0).toFixed(1)}px. Manual sizes stay fixed; layout observations appear under Avvisi.`;
+      }
+      function renderWarnings(items) {
+        const warnings = Array.isArray(items) ? [...items] : [];
+        if (workspaceMode && attributionDecision.value === "named" && !attribution.value.trim()) warnings.push({message:"The author field is blank; the card has no visible attribution."});
+        $("warningsPanel").hidden = !warnings.length; $("warningsCount").textContent = warnings.length;
+        const list = $("warningsList"); list.replaceChildren();
+        warnings.forEach((warning) => { const item = document.createElement("li"); item.textContent = typeof warning === "string" ? warning : String(warning.message || "Avviso sulla card."); list.append(item); });
+      }
+      function renderSavedBases() {
+        const container = $("savedBases"); container.replaceChildren();
+        (hostState?.listBases() || []).forEach((base) => {
+          const item = document.createElement("div"); item.className = "saved-base";
+          const name = document.createElement("strong"); name.textContent = base.name;
+          const actions = document.createElement("div"); actions.className = "ribbon-actions";
+          [["card","Reuse this card"],["style","Create in this style · demo"]].forEach(([mode,label]) => { const button = document.createElement("button"); button.type = "button"; button.dataset.baseId = base.id; button.dataset.reuseMode = mode; button.textContent = label; actions.append(button); });
+          item.append(name, actions); container.append(item);
+        });
+      }
+      function beginBaseReuse(id, mode) {
+        const base = hostState?.listBases().find((item) => item.id === id); if (!base) return;
+        reuseBaseId = id; reuseMode = mode;
+        $("reuseTitle").textContent = `${mode === "style" ? "Create in this style · demo" : "Reuse this card"} · ${base.name}`;
+        $("reuseText").value = textValue() || base.draft.text || ""; $("reuseAuthor").value = attribution.value;
+        $("reuseForm").hidden = false; $("reuseText").focus(); scheduleResize();
+      }
+      function acceptProjectDraft(draft, reuseComposition = null) {
+        pendingReuseComposition = reuseComposition;
+        const next = {...draft, _editor_revision:editRevision, _workspace:{attributionDecision:draft.attribution?.trim() ? "named" : "none", paletteDecision:draft.profile_mode === "neutral" ? "neutral" : "custom", demoExample:false}};
+        appliedUpdateFingerprints = []; draftUpdateStatus = ""; savedSelection = null; ribbonPreviews = []; ribbonLayout = null;
+        applyInput(next); initialContentObserved = true; demoChoices = false; demoAttributionChoice = false; demoPaletteChoice = false; resetDemoLabels(); demoHelper.hidden = true;
+        clearProduction(); schedulePreview(0); scheduleResize();
+      }
       const REQUEST_TIMEOUT_MS = 30000;
       function responseErrorMessage(value, fallback = "The host returned an error.") { const visited = new Set(); function visit(item) { if (item instanceof Error && item.message) return item.message; if (typeof item === "string" && item.trim()) return item.trim(); if (!item || typeof item !== "object" || visited.has(item)) return null; visited.add(item); if (item.message) { const message = visit(item.message); if (message) return message; } if (item.error) { const message = visit(item.error); if (message) return message; } if (item.data) { const message = visit(item.data); if (message) return message; } for (const key of ["call_tool_result", "mcp_tool_result", "result", "params"]) { const message = visit(item[key]); if (message) return message; } if (Array.isArray(item.content)) { for (const part of item.content) { if (part?.text) { const message = visit(part.text); if (message) return message; } } } return null; } return visit(value) || fallback; }
       function hasErrorEnvelope(value) { const visited = new Set(); function visit(item) { if (!item || typeof item !== "object" || visited.has(item)) return false; visited.add(item); if (item.isError === true || item.error) return true; return [item.result, item.params, item.toolResult, item.tool_result, item.output, item.call_tool_result, item.mcp_tool_result].some(visit); } return visit(value); }
@@ -622,8 +765,8 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       }
       function safeInlineSvg(svgText) { if (typeof svgText !== "string" || !svgText.trim()) return null; const parsed = new DOMParser().parseFromString(svgText, "image/svg+xml"); const root = parsed.documentElement; if (!root || root.nodeName.toLowerCase() !== "svg" || parsed.querySelector("parsererror")) return null; root.querySelectorAll("script, foreignObject").forEach((node) => node.remove()); root.querySelectorAll("*").forEach((node) => [...node.attributes].forEach((attribute) => { const name = attribute.name.toLowerCase(); const value = attribute.value.trim().toLowerCase(); if (name.startsWith("on") || ((name === "href" || name === "xlink:href") && !value.startsWith("#"))) node.removeAttribute(attribute.name); })); return document.importNode(root, true); }
       function isWorkspaceOpeningResult(result) { return workspaceMode && result?.mode === "workspace" && result?.workspace_state === "empty" && result?.rendered === false; }
-      function render(result) { if (isWorkspaceOpeningResult(result)) { status.textContent = "Start with a quote."; syncWorkspaceReadiness(); scheduleResize(); return; } if (!result || typeof result.valid !== "boolean" || typeof result.rendered !== "boolean") { errors.textContent = "The preview response was incomplete. Select Update preview to retry."; errors.hidden = false; status.textContent = "Preview response unavailable."; scheduleResize(); return; } if (result.editor_state) { const editorHadFocus = document.activeElement === text || text.contains(document.activeElement); const editorRange = editorHadFocus ? selectionRange() : null; const editorText = textValue(), editorSignature = currentSignature(); const editorState = { ...result.editor_state }; if (workspaceMode) { const suppliedWorkspace = editorState._workspace || {}; const preserveWorkspaceChoices = hasRendered || demoChoices || initialContentObserved || hostState?.hasRestoredDraft(); const suppliedPaletteDecision = editorState.profile_mode === "neutral" ? "neutral" : (editorState.profile_mode === "custom" ? "custom" : (editorState.palette?.colors || result.palette ? "custom" : "neutral")); editorState._workspace = { ...suppliedWorkspace, attributionDecision:preserveWorkspaceChoices ? attributionDecision.value : (suppliedWorkspace.attributionDecision || (typeof editorState.attribution === "string" && editorState.attribution.trim() ? "named" : "none")), paletteDecision:preserveWorkspaceChoices ? paletteDecision.value : (suppliedWorkspace.paletteDecision || suppliedPaletteDecision), demoExample:preserveWorkspaceChoices ? demoChoices : suppliedWorkspace.demoExample === true, demoAttributionChoice:preserveWorkspaceChoices ? demoAttributionChoice : suppliedWorkspace.demoAttributionChoice === true, demoPaletteChoice:preserveWorkspaceChoices ? demoPaletteChoice : suppliedWorkspace.demoPaletteChoice === true }; } if (hasRendered || hostState?.hasRestoredDraft()) { editorState.transformation = draftTransformation; editorState.evidence_status = draftEvidenceStatus; editorState.alt_text = draftAltText; } if (!editorState.palette && result.palette) editorState.palette = { name:result.profile || "Initial palette", colors:result.palette }; applyInput(editorState); if (editorHadFocus && editorRange && editorText === textValue() && editorSignature === currentSignature()) { text.focus({preventScroll:true}); restoreSelection(editorRange); } } hasRendered = true; if (hostState) { hostState.receiveToolResult(result); hostState.acceptToolInput(currentDraft()); } showErrors(result.errors); const svgNode = result.valid && result.rendered ? safeInlineSvg(result.svg) : null; if (!svgNode) { image.replaceChildren(); image.hidden = true; meta.textContent = "The preview is unavailable."; status.textContent = "Review the errors and try again."; syncWorkspaceReadiness({announce:true}); scheduleResize(); return; } if (result.format) format.value = result.format; image.replaceChildren(svgNode); image.setAttribute("aria-label", result.alt_text || "Quote card preview"); image.hidden = false; meta.textContent = `${result.profile} · ${selectedStyle().label} · ${result.format} · ${Math.round((result.text_scale || Number(scale.value) / 100) * 100)}% · ${result.vertical_position || position.value}`; status.textContent = result.produced ? "Quote card generated by the canonical renderer." : "Preview validated by the canonical renderer."; syncWorkspaceReadiness({announce:true}); scheduleResize(); }
-      function applyInput(params) { const input = params?.arguments || params; if (!input) return; if (["VERBATIM","EDITED","PARAPHRASE","AI_GENERATED"].includes(input.transformation)) draftTransformation = input.transformation; if (["VERIFIED","USER_SUPPLIED","UNVERIFIED","CONFLICT"].includes(input.evidence_status)) draftEvidenceStatus = input.evidence_status; if (typeof input.alt_text === "string") draftAltText = input.alt_text; if (typeof input._editor_update_status === "string") draftUpdateStatus = input._editor_update_status; if (Array.isArray(input._applied_editor_updates)) appliedUpdateFingerprints = input._applied_editor_updates.filter((item) => typeof item === "string").slice(-20); if (Number.isSafeInteger(input._editor_revision) && input._editor_revision >= 0) editRevision = input._editor_revision; if (workspaceMode) { demoChoices = input._workspace?.demoExample === true; demoAttributionChoice = demoChoices && (typeof input._workspace.demoAttributionChoice === "boolean" ? input._workspace.demoAttributionChoice : true); demoPaletteChoice = demoChoices && (typeof input._workspace.demoPaletteChoice === "boolean" ? input._workspace.demoPaletteChoice : true); demoHelper.hidden = !demoChoices; resetDemoLabels(); } if (Array.isArray(input.styles)) styles = normalizeStyles(input.styles); else if (input.styles === null) styles = []; if (typeof input.text === "string") setTextValue(input.text); else renderEditor(); if (["4x5", "1x1"].includes(input.format)) format.value = input.format; if (typeof input.attribution === "string") attribution.value = input.attribution; if (workspaceMode && input._workspace) { const storedAttributionDecision = input._workspace.attributionDecision; attributionDecision.value = ["named","none"].includes(storedAttributionDecision) ? storedAttributionDecision : (typeof input.attribution === "string" && input.attribution.trim() ? "named" : "none"); paletteDecision.value = input._workspace.paletteDecision === "custom" ? "custom" : "neutral"; } else if (workspaceMode) { attributionDecision.value = typeof input.attribution === "string" && input.attribution.trim() ? "named" : "none"; paletteDecision.value = input.profile_mode === "neutral" ? "neutral" : input.palette?.colors ? "custom" : "neutral"; } else { attributionDecision.value = attribution.value.trim() ? "named" : "none"; paletteDecision.value = input.profile_mode === "neutral" ? "neutral" : "custom"; } if (workspaceMode && attributionDecision.value === "none") attribution.value = ""; setStyleChoice(styleKeyFromInput(input)); if (Number.isInteger(input.graphic_seed) && input.graphic_seed >= 0 && input.graphic_seed <= 999999) graphicSeed = input.graphic_seed; if (input.palette?.colors) writePalette(input.palette, !hasRendered && !workspaceMode); else if (!hasRendered) writePalette(paletteInitial, true); if (workspaceMode && paletteDecision.value === "neutral") writePalette(canonicalNeutralPalette); if (typeof input.text_scale === "number") { scale.value = String(Math.round(input.text_scale * 100)); scaleValue.textContent = `${scale.value}%`; } if (typeof input.vertical_position === "string") position.value = input.vertical_position; attribution.disabled = workspaceMode && attributionDecision.value !== "named"; updateStyleState(); syncWorkspaceReadiness(); scheduleResize(); }
+      function render(result) { if (isWorkspaceOpeningResult(result)) { status.textContent = "Start with a quote."; syncWorkspaceReadiness(); scheduleResize(); return; } if (!result || typeof result.valid !== "boolean" || typeof result.rendered !== "boolean") { errors.textContent = "The preview response was incomplete. Select Update preview to retry."; errors.hidden = false; status.textContent = "Preview response unavailable."; scheduleResize(); return; } if (result.editor_state) { const editorHadFocus = document.activeElement === text || text.contains(document.activeElement); const editorRange = editorHadFocus ? selectionRange() : null; const editorText = textValue(), editorSignature = currentSignature(); const editorState = { ...result.editor_state }; if (workspaceMode) { const suppliedWorkspace = editorState._workspace || {}; const preserveWorkspaceChoices = hasRendered || demoChoices || initialContentObserved || hostState?.hasRestoredDraft(); const suppliedPaletteDecision = editorState.profile_mode === "neutral" ? "neutral" : (editorState.profile_mode === "custom" ? "custom" : (editorState.palette?.colors || result.palette ? "custom" : "neutral")); editorState._workspace = { ...suppliedWorkspace, attributionDecision:preserveWorkspaceChoices ? attributionDecision.value : (suppliedWorkspace.attributionDecision || (typeof editorState.attribution === "string" && editorState.attribution.trim() ? "named" : "none")), paletteDecision:preserveWorkspaceChoices ? paletteDecision.value : (suppliedWorkspace.paletteDecision || suppliedPaletteDecision), demoExample:preserveWorkspaceChoices ? demoChoices : suppliedWorkspace.demoExample === true, demoAttributionChoice:preserveWorkspaceChoices ? demoAttributionChoice : suppliedWorkspace.demoAttributionChoice === true, demoPaletteChoice:preserveWorkspaceChoices ? demoPaletteChoice : suppliedWorkspace.demoPaletteChoice === true }; } if (hasRendered || hostState?.hasRestoredDraft()) { editorState.transformation = draftTransformation; editorState.evidence_status = draftEvidenceStatus; editorState.alt_text = draftAltText; } if (!editorState.palette && result.palette) editorState.palette = { name:result.profile || "Initial palette", colors:result.palette }; applyInput(editorState); if (editorHadFocus && editorRange && editorText === textValue() && editorSignature === currentSignature()) { text.focus({preventScroll:true}); restoreSelection(editorRange); } } hasRendered = true; if (hostState) { hostState.receiveToolResult(result); hostState.acceptToolInput(currentDraft()); } showErrors(result.errors); if (typeof renderWarnings === "function") renderWarnings(result.warnings || []); if (typeof renderRibbonState === "function") renderRibbonState(result); const svgNode = result.rendered && !result.errors?.length ? safeInlineSvg(result.svg) : null; if (!svgNode) { image.replaceChildren(); image.hidden = true; meta.textContent = "The preview is unavailable."; status.textContent = "Review the errors and try again."; syncWorkspaceReadiness({announce:true}); scheduleResize(); return; } if (result.format) format.value = result.format; image.replaceChildren(svgNode); image.setAttribute("aria-label", result.alt_text || "Quote card preview"); image.hidden = false; meta.textContent = `${result.profile} · ${selectedStyle().label} · ${result.format} · ${Math.round((result.text_scale || Number(scale.value) / 100) * 100)}% · ${result.vertical_position || position.value}`; status.textContent = result.produced ? "Quote card generated by the canonical renderer." : "Preview ready."; syncWorkspaceReadiness({announce:true}); scheduleResize(); }
+      function applyInput(params) { const input = params?.arguments || params; if (!input) return; if (["VERBATIM","EDITED","PARAPHRASE","AI_GENERATED"].includes(input.transformation)) draftTransformation = input.transformation; if (["VERIFIED","USER_SUPPLIED","UNVERIFIED","CONFLICT"].includes(input.evidence_status)) draftEvidenceStatus = input.evidence_status; if (typeof input.alt_text === "string") draftAltText = input.alt_text; if (typeof input._editor_update_status === "string") draftUpdateStatus = input._editor_update_status; if (Array.isArray(input._applied_editor_updates)) appliedUpdateFingerprints = input._applied_editor_updates.filter((item) => typeof item === "string").slice(-20); if (Number.isSafeInteger(input._editor_revision) && input._editor_revision >= 0) editRevision = input._editor_revision; if (workspaceMode) { demoChoices = input._workspace?.demoExample === true; demoAttributionChoice = demoChoices && (typeof input._workspace.demoAttributionChoice === "boolean" ? input._workspace.demoAttributionChoice : true); demoPaletteChoice = demoChoices && (typeof input._workspace.demoPaletteChoice === "boolean" ? input._workspace.demoPaletteChoice : true); demoHelper.hidden = !demoChoices; resetDemoLabels(); } if (Array.isArray(input.styles)) styles = normalizeStyles(input.styles); else if (input.styles === null) styles = []; if (typeof input.text === "string") setTextValue(input.text); else renderEditor(); if (["4x5", "1x1", "9x16"].includes(input.format)) format.value = input.format; if (typeof input.attribution === "string") attribution.value = input.attribution; if (workspaceMode && input._workspace) { const storedAttributionDecision = input._workspace.attributionDecision; attributionDecision.value = ["named","none"].includes(storedAttributionDecision) ? storedAttributionDecision : (typeof input.attribution === "string" && input.attribution.trim() ? "named" : "none"); paletteDecision.value = input._workspace.paletteDecision === "custom" ? "custom" : "neutral"; } else if (workspaceMode) { attributionDecision.value = typeof input.attribution === "string" && input.attribution.trim() ? "named" : "none"; paletteDecision.value = input.profile_mode === "neutral" ? "neutral" : input.palette?.colors ? "custom" : "neutral"; } else { attributionDecision.value = attribution.value.trim() ? "named" : "none"; paletteDecision.value = input.profile_mode === "neutral" ? "neutral" : "custom"; } if (workspaceMode && attributionDecision.value === "none") attribution.value = ""; setStyleChoice(styleKeyFromInput(input)); if (Number.isInteger(input.graphic_seed) && input.graphic_seed >= 0 && input.graphic_seed <= 999999) graphicSeed = input.graphic_seed; if (input.palette?.colors) writePalette(input.palette, !hasRendered && !workspaceMode); else if (!hasRendered) writePalette(paletteInitial, true); if (workspaceMode && paletteDecision.value === "neutral") writePalette(canonicalNeutralPalette); if (typeof input.text_scale === "number") { scale.value = String(Math.round(input.text_scale * 100)); scaleValue.textContent = `${scale.value}%`; } if (typeof input.vertical_position === "string") position.value = input.vertical_position; attribution.disabled = workspaceMode && attributionDecision.value !== "named"; if (typeof applyRibbonInput === "function") applyRibbonInput(input); updateStyleState(); syncWorkspaceReadiness(); scheduleResize(); }
       async function svgToPngFile(svgText, filename) {
         const parsed = new DOMParser().parseFromString(svgText, "image/svg+xml");
         const root = parsed.documentElement;
@@ -930,7 +1073,7 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
         clearProduction(false);
         return true;
       }
-      const editorStateFields = ["text", "format", "attribution", "profile_mode", "transformation", "evidence_status", "direction", "graphic_mode", "graphic_variant", "graphic_seed", "text_scale", "vertical_position", "palette", "lines", "styles", "alt_text"];
+      const editorStateFields = ["text", "format", "attribution", "profile_mode", "transformation", "evidence_status", "direction", "graphic_mode", "graphic_variant", "graphic_seed", "text_scale", "vertical_position", "palette", "lines", "styles", "alt_text", "visual_grammar", "composition", "composition_candidates", "proposal_source", "quote_font_size", "author_font_size"];
       function stableJson(value) { if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`; return JSON.stringify(value); }
       function editorSnapshot(value) { const source = value && typeof value === "object" && !Array.isArray(value) ? value : {}; return Object.fromEntries(editorStateFields.map((key) => [key, Object.prototype.hasOwnProperty.call(source, key) ? source[key] : null])); }
       function editorUpdateFingerprint(result) { return stableJson({ base_revision:result.base_revision, base_snapshot:editorSnapshot(result.base_snapshot), patch:result.patch }); }
@@ -988,14 +1131,28 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
         if (resultChanged && result) receiveInitialResult(result);
       }
       document.querySelectorAll("[data-style]").forEach((button) => { button.addEventListener("mousedown", (event) => event.preventDefault()); button.addEventListener("click", () => applyStyle(button.dataset.style)); });
-      document.querySelectorAll("[data-style-choice]").forEach((button) => button.addEventListener("click", () => { setStyleChoice(button.dataset.styleChoice); clearProduction(); schedulePreview(0); }));
+      document.querySelectorAll("[data-style-choice]").forEach((button) => button.addEventListener("click", () => { setStyleChoice(button.dataset.styleChoice); if (!isRibbonStyle()) { styles = styles.filter((item) => item.type !== "size"); savedSelection = null; pendingReuseComposition = null; renderEditor(); } else renderRibbonProposals(); clearProduction(); schedulePreview(0); }));
+      $("selectionSizeApply").addEventListener("mousedown", (event) => event.preventDefault());
+      $("selectionSizeApply").addEventListener("click", applySelectionSize);
+      [quoteFontSize, authorFontSize].forEach((control) => control.addEventListener("input", () => { clearProduction(); schedulePreview(); }));
+      [["quoteSizeAuto",quoteFontSize],["authorSizeAuto",authorFontSize]].forEach(([id,control]) => $(id).addEventListener("click", () => { control.value = ""; clearProduction(); schedulePreview(0); }));
+      $("ribbonProposals").addEventListener("click", (event) => { const button = event.target.closest("[data-composition-id]"); const selected = ribbonCandidates.find((item) => item.id === button?.dataset.compositionId); if (!selected) return; ribbonComposition = structuredClone(selected); pendingReuseComposition = null; ribbonLayout = null; renderRibbonProposals(); clearProduction(); schedulePreview(0); });
+      $("ribbonVariations").addEventListener("click", () => { pendingReuseComposition = ribbonComposition ? structuredClone(ribbonComposition) : null; ribbonComposition = null; ribbonCandidates = []; ribbonPreviews = []; ribbonLayout = null; ribbonProposalSource = "demo"; graphicSeed = (graphicSeed + 1) % 1000000; renderRibbonProposals(); clearProduction(); schedulePreview(0); });
+      $("saveBase").addEventListener("click", () => { try { const base = hostState.saveBase($("baseName").value, currentDraft()); $("baseFeedback").textContent = `Base “${base.name}” saved on this device.`; renderSavedBases(); } catch (error) { $("baseFeedback").textContent = error.message; } scheduleResize(); });
+      $("savedBases").addEventListener("click", (event) => { const button = event.target.closest("[data-base-id]"); if (button) beginBaseReuse(button.dataset.baseId, button.dataset.reuseMode); });
+      $("reuseCancel").addEventListener("click", () => { $("reuseForm").hidden = true; scheduleResize(); });
+      $("reuseConfirm").addEventListener("click", () => { const base = hostState?.listBases().find((item) => item.id === reuseBaseId); if (!base || !$("reuseText").value.trim()) { $("baseFeedback").textContent = "A quote is required for reuse."; return; } const reused = QcbHostContext.reuseBase(base.draft, $("reuseText").value, $("reuseAuthor").value, reuseMode); acceptProjectDraft(reused.draft, reused.reuse_composition); $("reuseForm").hidden = true; $("baseFeedback").textContent = reuseMode === "style" ? "Demo variations in the saved style are loading; palette roles and ribbon widths are retained." : "Saved composition restored; a new quote starts with automatic size and fresh formatting."; });
+      $("exportProject").addEventListener("click", () => { const project = QcbHostContext.projectFromDraft(currentDraft(), $("baseName").value || "Quote card"); const serialized = JSON.stringify(project, null, 2); $("projectJson").value = serialized; $("projectJsonLabel").hidden = false; $("projectJsonActions").hidden = false; if (projectDownloadUrl) URL.revokeObjectURL(projectDownloadUrl); projectDownloadUrl = URL.createObjectURL(new Blob([serialized + "\n"], {type:"application/json"})); $("projectDownload").href = projectDownloadUrl; $("projectDownload").hidden = false; $("baseFeedback").textContent = "Project JSON ready to copy or download. It contains the card choices and exact numeric composition."; scheduleResize(); });
+      $("copyProjectJson").addEventListener("click", async () => { try { if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable"); await navigator.clipboard.writeText($("projectJson").value); $("baseFeedback").textContent = "Project JSON copied."; } catch (_) { $("projectJson").focus(); $("projectJson").select(); $("baseFeedback").textContent = "Project JSON selected; it can be copied with the keyboard."; } });
+      $("importProject").addEventListener("click", () => $("projectFile").click());
+      $("projectFile").addEventListener("change", async () => { const file = $("projectFile").files?.[0]; if (!file) return; const revision = editRevision; try { if (file.size > 2 * 1024 * 1024) throw new Error("The project exceeds 2 MB."); const draft = QcbHostContext.draftFromProject(JSON.parse(await file.text())); const {profile_mode, ...arguments_} = draft; const result = extractStructuredContent(await request("tools/call", {name:"preview_quote_card", arguments:{...arguments_, output_image:false, compact_output:true}})); if (!result?.rendered || result.errors?.length) throw new Error(result?.errors?.[0]?.message || "The project is not valid."); if (revision !== editRevision) throw new Error("The open draft changed during import; it was kept."); acceptProjectDraft({...draft, ...result.editor_state, profile_mode:draft.profile_mode}); render(result); $("baseFeedback").textContent = "Project restored with palette, formatting and exact composition."; } catch (error) { $("baseFeedback").textContent = `Project not loaded: ${error.message}`; } finally { $("projectFile").value = ""; scheduleResize(); } });
       attributionDecision.addEventListener("change", () => { demoAttributionChoice = false; resetDemoLabels(); if (attributionDecision.value === "none") attribution.value = ""; attribution.disabled = workspaceMode && attributionDecision.value !== "named"; if (attributionDecision.value === "named") attribution.focus(); clearProduction(); schedulePreview(0); });
       paletteDecision.addEventListener("change", () => { demoPaletteChoice = false; resetDemoLabels(); if (paletteDecision.value === "neutral") writePalette(canonicalNeutralPalette); clearProduction(); schedulePreview(0); });
       $("patternPrevious").addEventListener("click", () => { graphicSeed = (graphicSeed + 999999) % 1000000; updateStyleState(); clearProduction(); schedulePreview(0); });
       $("patternNext").addEventListener("click", () => { graphicSeed = (graphicSeed + 1) % 1000000; updateStyleState(); clearProduction(); schedulePreview(0); });
       palettePreset.addEventListener("change", () => { demoPaletteChoice = false; resetDemoLabels(); const chosen = palettePreset.value === "initial" ? (workspaceMode ? canonicalNeutralPalette : paletteInitial) : palettePresets[palettePreset.value]; if (chosen) writePalette(chosen); if (workspaceMode) paletteDecision.value = palettePreset.value === "initial" ? "neutral" : "custom"; clearProduction(); schedulePreview(0); });
       $("paletteReset").addEventListener("click", () => { demoPaletteChoice = false; resetDemoLabels(); writePalette(workspaceMode ? canonicalNeutralPalette : paletteInitial); if (workspaceMode) paletteDecision.value = "neutral"; clearProduction(); schedulePreview(0); });
-      format.addEventListener("change", () => { clearProduction(); scheduleResize(); schedulePreview(0); }); scale.addEventListener("input", () => { scaleValue.textContent = `${scale.value}%`; clearProduction(); scheduleResize(); schedulePreview(); }); position.addEventListener("change", () => { clearProduction(); schedulePreview(0); });
+      format.addEventListener("change", () => { ribbonLayout = null; clearProduction(); scheduleResize(); schedulePreview(0); }); scale.addEventListener("input", () => { scaleValue.textContent = `${scale.value}%`; clearProduction(); scheduleResize(); schedulePreview(); }); position.addEventListener("change", () => { clearProduction(); schedulePreview(0); });
       paletteName.addEventListener("input", () => { demoPaletteChoice = false; resetDemoLabels(); if (workspaceMode) paletteDecision.value = "custom"; clearProduction(); schedulePreview(); });
       Object.entries(paletteFields).forEach(([, ids]) => { const picker = $(ids[0]), hex = $(ids[1]); picker.addEventListener("input", () => { demoPaletteChoice = false; resetDemoLabels(); hex.value = picker.value.toUpperCase(); if (workspaceMode) paletteDecision.value = "custom"; syncPalettePreset(); clearProduction(); schedulePreview(); }); hex.addEventListener("input", () => { demoPaletteChoice = false; resetDemoLabels(); const value = normalizeHex(hex.value); hex.setAttribute("aria-invalid", String(!value)); if (value) picker.value = value; if (workspaceMode) paletteDecision.value = "custom"; syncPalettePreset(); clearProduction(); if (value) schedulePreview(); }); hex.addEventListener("blur", () => { const value = normalizeHex(hex.value); hex.value = value || picker.value.toUpperCase(); hex.removeAttribute("aria-invalid"); }); });
       $("rebalance").addEventListener("click", () => { const previous = textValue(); const words = previous.trim().split(/\s+/).filter(Boolean); if (words.length < 4) return; const target = Math.max(2, Math.ceil(words.length / 2)); const next = [words.slice(0, target).join(" "), words.slice(target).join(" ")].filter(Boolean).join("\n"); styles = remapStylesAfterEdit(previous, next, styles); setTextValue(next); clearDemoChoicesOnEdit(); clearProduction(); toolbarStatus.textContent = "Line breaks rebalanced: formatting preserved"; scheduleResize(); schedulePreview(); });
@@ -1016,9 +1173,9 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       });
       text.addEventListener("input", () => { const current = textValue(); const caret = selectionRange(); const bounded = pointLength(current) > 600 ? Array.from(current).slice(0, 600).join("") : current; styles = remapStylesAfterEdit(lastTextValue, bounded, styles); if (bounded !== current) text.textContent = bounded; // Ordinary typing keeps the native DOM intact; only over-limit text is rebuilt. Authored newlines are handled canonically in beforeinput.
         if (bounded !== current) renderEditor(caret); lastTextValue = bounded; clearDemoChoicesOnEdit(); clearProduction(); toolbarStatus.textContent = "Text updated: formatting preserved"; scheduleResize(); schedulePreview(); });
-      form.addEventListener("input", (event) => { if (event.target !== text && event.target !== scale) clearProduction(); });
-      form.addEventListener("change", clearProduction);
-      document.addEventListener("selectionchange", () => { if (document.activeElement === text || text.contains(document.activeElement)) toolbarStatus.textContent = selection() ? "Selection ready for formatting" : "Select part of the quote"; });
+      form.addEventListener("input", (event) => { if (event.target.closest(".card-library") || [text, scale, quoteFontSize, authorFontSize, selectionSize].includes(event.target)) return; clearProduction(); });
+      form.addEventListener("change", (event) => { if (!event.target.closest(".card-library") && event.target !== selectionSize) clearProduction(); });
+      document.addEventListener("selectionchange", () => { if (document.activeElement === text || text.contains(document.activeElement)) { const range = selection(); savedSelection = range; toolbarStatus.textContent = range ? "Selection ready for formatting" : "Select part of the quote"; if (range && isRibbonStyle()) { const sizes = styles.filter((item) => item.type === "size" && overlap(item, range)); const first = sizes[0]; selectionSize.value = first && sizes.every((item) => item.scale === first.scale) && rangeCovered("size", range) ? String(Math.round(first.scale * 100)) : sizes.length ? "" : "100"; } } });
       async function updatePreview() { const readiness = workspaceReadiness(); if (!readiness.ready) { errors.textContent = readiness.message; errors.hidden = false; status.textContent = readiness.message; syncWorkspaceReadiness(); return; } const arguments_ = currentArguments(), signature = currentSignature(), sequence = ++previewSequence, action = ++actionSequence, revision = editRevision; if (!arguments_.text.trim()) { errors.textContent = "Write or choose a quote before refreshing the preview."; errors.hidden = false; return; } submit.dataset.busy = "true"; produce.dataset.busy = "true"; submit.disabled = true; produce.disabled = true; errors.hidden = true; status.textContent = "Validating…"; try { const result = await request("tools/call", { name:"preview_quote_card", arguments:{ ...arguments_, output_image:false, compact_output:true } }); if (!isCurrentAction(action, revision) || signature !== currentSignature()) return; const structured = extractStructuredContent(result); if (!structured) throw new Error("The preview response was incomplete. Select Update preview to retry."); render(structured); } catch (error) { if (!isCurrentAction(action, revision)) return; errors.textContent = error?.message || "The preview was not refreshed. Try again."; errors.hidden = false; status.textContent = "The preview was not refreshed."; scheduleResize(); } finally { if (isCurrentAction(action, revision)) { delete submit.dataset.busy; delete produce.dataset.busy; submit.disabled = false; produce.disabled = false; syncWorkspaceReadiness(); scheduleResize(); } } }
       form.addEventListener("submit", (event) => { event.preventDefault(); window.clearTimeout(previewTimer); updatePreview(); });
       async function downloadLatestPng() {
@@ -1067,6 +1224,7 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
         window.clearTimeout(previewTimer);
         actionSequence += 1; editRevision += 1; draftTransformation = "VERBATIM"; draftEvidenceStatus = "USER_SUPPLIED"; draftAltText = ""; draftUpdateStatus = ""; hasRendered = false; initialContentObserved = true; demoChoices = false; demoAttributionChoice = false; demoPaletteChoice = false; resetDemoLabels(); demoHelper.hidden = true;
         styles = []; graphicSeed = 0; setTextValue(""); attribution.value = ""; attributionDecision.value = "none"; attribution.disabled = true; paletteDecision.value = "neutral";
+        ribbonComposition = null; ribbonCandidates = []; ribbonProposalSource = null; ribbonPreviews = []; ribbonLayout = null; pendingReuseComposition = null; savedSelection = null; quoteFontSize.value = ""; authorFontSize.value = ""; renderWarnings([]);
         format.value = "4x5"; scale.value = "100"; scaleValue.textContent = "100%"; position.value = "center"; setStyleChoice("blocks"); writePalette(canonicalNeutralPalette);
         clearProduction(false); image.replaceChildren(); image.hidden = true; meta.textContent = ""; errors.textContent = ""; errors.hidden = true;
         hostState?.clearDraft(); hostState?.setDraft(currentDraft());
@@ -1080,6 +1238,7 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
       attribution.disabled = workspaceMode;
       hostState = new QcbHostContext({ workspace:workspaceMode, openai:window.openai, request, document, onRestore:(draft) => { applyInput(draft); editRevision += 1; hostState?.setDraft(currentDraft()); }, onPersistenceStatus:(detail) => { if (!workspaceMode) return; $("workspaceStatus").textContent = detail.message; $("workspaceStatus").dataset.available = String(detail.available); } });
       hostState.initialize({hostContext:{theme:window.openai?.theme}});
+      renderSavedBases();
       const aliasPollTimer = window.setInterval(syncFromOpenAiAliases, 250);
       window.addEventListener("pagehide", () => { window.clearInterval(aliasPollTimer); hostState.flush(); hostState.destroy(); });
       syncFromOpenAiAliases(); renderEditor(); syncWorkspaceReadiness({announce:true}); scheduleResize(); let aliasChecks = 0; const aliasTimer = window.setInterval(() => { aliasChecks += 1; syncFromOpenAiAliases(); if (hasRendered) window.clearInterval(aliasTimer); else if (aliasChecks >= 20) { initialAliasGracePassed = true; if (hostInitialized) initializeDemoWorkspace(); window.clearInterval(aliasTimer); } }, 100);
@@ -1104,7 +1263,7 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
     </script>
   </body>
 </html>'''
-    return (
+    result = (
         html.replace("__QCB_FONT_FACES__", _embedded_font_faces())
         .replace("__QCB_HOST_THEME__", (ASSET_DIR / "host-theme.css").read_text(encoding="utf-8"))
         .replace("__QCB_HOST_CONTEXT__", (ASSET_DIR / "host-context.js").read_text(encoding="utf-8"))
@@ -1117,3 +1276,8 @@ def quote_card_preview_html(*, workspace: bool = False) -> str:
         .replace("__QCB_REDIRECT_ORIGINS__", json.dumps(QUOTE_CARD_DOWNLOAD_REDIRECT_DOMAINS))
         .replace("__QCB_REMOTE_EXPORT_ORIGIN__", json.dumps(_remote_export_origin()))
     )
+    # Indentation has no semantic role in this authored HTML/CSS/JavaScript.
+    # Keep the self-contained resource below the transport size budget without
+    # changing strings, user data, or cached-resource compatibility. Standalone
+    # comments in these authored scripts are omitted from the transport copy.
+    return "\n".join(line.lstrip() for line in result.splitlines() if not line.lstrip().startswith("//"))

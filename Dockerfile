@@ -19,6 +19,9 @@ COPY scripts/mcp_server.py \
      scripts/mcp_app.py \
      scripts/remote_png_store.py \
      scripts/render_quote_card.py \
+     scripts/visual_grammars.py \
+     scripts/grammar_sessions.py \
+     scripts/inspect_render.py \
      scripts/quote_card_contract.py \
      scripts/rasterize.py \
      ./scripts/

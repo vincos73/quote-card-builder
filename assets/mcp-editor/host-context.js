@@ -16,6 +16,9 @@
   const STATE_SCHEMA = "qcb-editor-state";
   const WORKSPACE_SCHEMA = "qcb-workspace-draft";
   const WORKSPACE_STORAGE_KEY = "quote-card-builder.workspace.v1";
+  const BASES_STORAGE_KEY = "quote-card-builder.bases.v1";
+  const PROJECT_SCHEMA = "qcb-card-project";
+  const EDITOR_FIELDS = ["text", "format", "attribution", "profile_mode", "transformation", "evidence_status", "direction", "graphic_mode", "graphic_variant", "graphic_seed", "text_scale", "vertical_position", "palette", "lines", "styles", "alt_text", "visual_grammar", "composition", "composition_candidates", "proposal_source", "quote_font_size", "author_font_size"];
   const DEFAULT_DEBOUNCE_MS = 160;
 
   function isObject(value) {
@@ -32,6 +35,52 @@
 
   function ownObject(value) {
     return isObject(value) ? value : {};
+  }
+
+  function cardSnapshot(value) {
+    const source = ownObject(value);
+    return clone(Object.fromEntries(EDITOR_FIELDS.filter((key) => Object.prototype.hasOwnProperty.call(source, key)).map((key) => [key, source[key]])));
+  }
+
+  function projectFromDraft(value, name = "Quote card") {
+    return { schema:PROJECT_SCHEMA, schemaVersion:1, name:String(name || "Quote card").slice(0, 80), draft:cardSnapshot(value) };
+  }
+
+  function draftFromProject(value) {
+    if (!isObject(value) || value.schema !== PROJECT_SCHEMA || value.schemaVersion !== 1 || !isObject(value.draft) || typeof value.draft.text !== "string") throw new Error("Use a Quote Card Builder project JSON exported from this editor.");
+    return cardSnapshot(value.draft);
+  }
+
+  function reuseBase(value, text, attribution, mode = "card") {
+    const draft = cardSnapshot(value);
+    const previous = String(draft.text || "");
+    const next = String(text || "");
+    const sameWords = previous.replace(/\s+/gu, " ").trim() === next.replace(/\s+/gu, " ").trim();
+    draft.text = next;
+    draft.lines = next.includes("\n") ? next.split("\n") : null;
+    draft.attribution = String(attribution || "");
+    if (!sameWords) {
+      draft.styles = [];
+      draft.quote_font_size = null;
+      draft.transformation = "VERBATIM";
+      draft.evidence_status = "USER_SUPPLIED";
+      draft.alt_text = "";
+    } else if (previous !== next) {
+      const before = Array.from(previous).map((char, index) => ({char, index})).filter((item) => !/\s/u.test(item.char));
+      const after = Array.from(next).map((char, index) => ({char, index})).filter((item) => !/\s/u.test(item.char));
+      draft.styles = (draft.styles || []).flatMap((style) => {
+        const indices = before.map((item, ordinal) => ({...item, ordinal})).filter((item) => item.index >= style.start && item.index < style.end);
+        return indices.length ? [{...style, start:after[indices[0].ordinal].index, end:after[indices.at(-1).ordinal].index + 1}] : [];
+      });
+    }
+    const reuseComposition = mode === "style" ? clone(draft.composition) : null;
+    if (mode === "style") {
+      draft.composition = null;
+      draft.composition_candidates = [];
+      draft.proposal_source = "demo";
+      draft.graphic_seed = ((Number(draft.graphic_seed) || 0) + 1) % 1000000;
+    }
+    return {draft, reuse_composition:reuseComposition};
   }
 
   function meaningfulContent(value) {
@@ -140,6 +189,35 @@
       if (this.storage) return this.storage;
       try { return this.root && this.root.localStorage ? this.root.localStorage : null; }
       catch (_) { return null; }
+    }
+
+    _baseStorage() {
+      if (this.storage) return this.storage;
+      try { return this.root && this.root.localStorage ? this.root.localStorage : null; }
+      catch (_) { return null; }
+    }
+
+    listBases() {
+      try {
+        const value = JSON.parse(this._baseStorage()?.getItem(BASES_STORAGE_KEY) || "null");
+        if (!isObject(value) || value.schema !== "qcb-card-bases" || value.schemaVersion !== 1 || !Array.isArray(value.bases)) return [];
+        return value.bases.filter((item) => isObject(item) && typeof item.id === "string" && typeof item.name === "string" && isObject(item.draft)).map((item) => ({id:item.id, name:item.name, draft:cardSnapshot(item.draft)}));
+      } catch (_) { return []; }
+    }
+
+    saveBase(name, value) {
+      const label = String(name || "").trim();
+      if (!label || label.length > 80) throw new Error("Name the base using 1–80 characters.");
+      const draft = cardSnapshot(value);
+      if (!draft.text?.trim() || !draft.composition || draft.visual_grammar !== "ribbons") throw new Error("Choose a Nastri composition before saving a base.");
+      const storage = this._baseStorage();
+      if (!storage || typeof storage.setItem !== "function") throw new Error("This host cannot save bases on the device. The project JSON remains available.");
+      const bases = this.listBases();
+      const previous = bases.find((item) => item.name === label);
+      const item = {id:previous?.id || `base-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name:label, draft};
+      const next = previous ? bases.map((base) => base.id === previous.id ? item : base) : [...bases, item];
+      storage.setItem(BASES_STORAGE_KEY, JSON.stringify({schema:"qcb-card-bases", schemaVersion:1, bases:next.slice(-50)}));
+      return clone(item);
     }
 
     _reportPersistence(available, message) {
@@ -280,7 +358,7 @@
       const palette = workspace.paletteDecision === "neutral" ? "neutral palette selected" :
         (workspace.paletteDecision === "custom" ? "custom palette selected" : "palette undecided");
       const format = typeof modelContent.format === "string" ? `format ${modelContent.format}` : "format undecided";
-      const editorFields = ["text", "format", "attribution", "profile_mode", "transformation", "evidence_status", "direction", "graphic_mode", "graphic_variant", "graphic_seed", "text_scale", "vertical_position", "palette", "lines", "styles", "alt_text"];
+      const editorFields = EDITOR_FIELDS;
       const snapshot = Object.fromEntries(editorFields.filter((key) => Object.prototype.hasOwnProperty.call(modelContent, key)).map((key) => [key, modelContent[key]]));
       const revision = Number.isSafeInteger(modelContent._editor_revision) ? modelContent._editor_revision : 0;
       const updateStatus = typeof modelContent._editor_update_status === "string" && modelContent._editor_update_status ? ` Update status: ${modelContent._editor_update_status}.` : "";
@@ -508,6 +586,12 @@
   QcbHostContext.STATE_SCHEMA = STATE_SCHEMA;
   QcbHostContext.WORKSPACE_SCHEMA = WORKSPACE_SCHEMA;
   QcbHostContext.WORKSPACE_STORAGE_KEY = WORKSPACE_STORAGE_KEY;
+  QcbHostContext.BASES_STORAGE_KEY = BASES_STORAGE_KEY;
+  QcbHostContext.EDITOR_FIELDS = EDITOR_FIELDS;
+  QcbHostContext.cardSnapshot = cardSnapshot;
+  QcbHostContext.projectFromDraft = projectFromDraft;
+  QcbHostContext.draftFromProject = draftFromProject;
+  QcbHostContext.reuseBase = reuseBase;
   QcbHostContext.create = (options) => new QcbHostContext(options);
   return QcbHostContext;
 });

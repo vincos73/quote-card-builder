@@ -32,6 +32,8 @@ import inspect_render as inspector
 import apply_card_review as review_applier
 import brand_profiles
 import saved_styles
+from visual_grammars import demo_compositions, normalize_grammar_presentation
+from grammar_sessions import complete_ribbon_formats, proposal_metadata
 from quote_card_contract import MAX_LINES
 
 MAX_BODY_BYTES = 250_000
@@ -133,7 +135,7 @@ def approval_feedback(draft: dict[str, Any], base_revision: int, overall_note: s
     as an approved batch, built in one place so the feedback shape and
     apply_card_review's CONTENT_KEYS whitelist cannot silently drift apart.
     """
-    return {
+    feedback = {
         "feedback_id": f"feedback-{secrets.token_hex(8)}", "submitted_at": now_iso(), "action": "approve",
         "base_revision": base_revision, "editorial_responsibility": "user",
         "content": {
@@ -147,6 +149,8 @@ def approval_feedback(draft: dict[str, Any], base_revision: int, overall_note: s
         "formats": [{"id": item["id"], "lines": item["lines"], "text_scale": item["text_scale"], "vertical_position": item["vertical_position"]} for item in draft["formats"]],
         "overall_note": overall_note,
     }
+    feedback.update(proposal_metadata(draft))
+    return feedback
 
 
 def record_and_apply_feedback(
@@ -219,9 +223,9 @@ def normalized_text(value: Any) -> str:
     return " ".join(value.split()) if isinstance(value, str) else ""
 
 
-def valid_lines(lines: Any, text: str, errors: list[str], field: str) -> list[str]:
-    if not isinstance(lines, list) or not (1 <= len(lines) <= MAX_LINES) or not all(isinstance(v, str) for v in lines):
-        error(errors, f"{field} deve contenere da 1 a {MAX_LINES} righe")
+def valid_lines(lines: Any, text: str, errors: list[str], field: str, limit: int = MAX_LINES) -> list[str]:
+    if not isinstance(lines, list) or not (1 <= len(lines) <= limit) or not all(isinstance(v, str) for v in lines):
+        error(errors, f"{field} deve contenere da 1 a {limit} righe")
         return []
     if not any(line.strip() for line in lines):
         error(errors, f"{field} deve contenere almeno una riga di testo")
@@ -273,6 +277,14 @@ def validate_manifest(data: Any) -> list[str]:
         or presentation.get("output_mode", "all") not in OUTPUT_MODES
         or not proof.graphic_seed_allowed(presentation.get("graphic_seed", 0))
     ): error(errors, "presentation non valida")
+    try:
+        normalize_grammar_presentation(presentation)
+        proposal_metadata(data)
+    except ValueError as exc:
+        error(errors, str(exc))
+    ribbons = isinstance(presentation, dict) and presentation.get("visual_grammar") == "ribbons"
+    if not ribbons and any(item.get("type") == "size" for item in content.get("styles", []) if isinstance(item, dict)):
+        error(errors, "La dimensione delle parole selezionate richiede lo stile Nastri.")
     formats = data.get("formats")
     if not isinstance(formats, list) or not (1 <= len(formats) <= MAX_FORMATS): return errors + ["formats deve contenere da 1 a 3 formati"]
     seen: set[str] = set()
@@ -286,7 +298,7 @@ def validate_manifest(data: Any) -> list[str]:
             if not isinstance(item.get(size), int) or isinstance(item.get(size), bool) or item[size] < 1: error(errors, f"{field}.{size} deve essere un intero positivo")
         expected_ratio = pack.FORMAT_RATIOS.get(item.get("id"))
         if expected_ratio and isinstance(item.get("width"), int) and isinstance(item.get("height"), int) and not math.isclose(item["width"] / item["height"], expected_ratio, rel_tol=.001): error(errors, f"{field} non rispetta il rapporto {item.get('id')}")
-        valid_lines(item.get("lines"), text, errors, f"{field}.lines")
+        valid_lines(item.get("lines"), text, errors, f"{field}.lines", 64 if ribbons else MAX_LINES)
         scale = item.get("text_scale")
         if not isinstance(scale, (int, float)) or isinstance(scale, bool) or not .80 <= scale <= 1.08: error(errors, f"{field}.text_scale deve essere tra 0.80 e 1.00; i valori legacy fino a 1.08 vengono limitati al massimo sicuro")
         if item.get("vertical_position") not in POSITIONS: error(errors, f"{field}.vertical_position non valida")
@@ -358,7 +370,11 @@ def session_model(
     model["palette_initial"] = copy.deepcopy(
         manifest.get("palette_initial", manifest["brand"]["colors"])
     )
-    model["limits"] = {"max_lines": MAX_LINES}
+    model["limits"] = {"max_lines": 64 if manifest["presentation"].get("visual_grammar") == "ribbons" else MAX_LINES}
+    # Keep the persisted baseline identical: adding UI formats here would
+    # invalidate the browser draft's signature on a prototype upgrade.
+    # The editor completes missing Nastri canvases after restoring its draft.
+    model.update(proposal_metadata(manifest))
     model["return_url"] = return_url
     return model
 
@@ -386,7 +402,7 @@ def with_palette_initial(manifest: dict[str, Any]) -> dict[str, Any]:
 
 def validate_draft(payload: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict): raise ValueError("Il draft deve essere un oggetto JSON")
-    allowed = {"base_revision", "text", "transformation", "evidence_status", "attribution", "direction", "emphasis", "styles", "styles_customized", "presentation", "formats", "action", "overall_note", "alt_text", "palette"}
+    allowed = {"base_revision", "text", "transformation", "evidence_status", "attribution", "direction", "emphasis", "styles", "styles_customized", "presentation", "formats", "action", "overall_note", "alt_text", "palette", "composition_candidates", "proposal_source"}
     if set(payload) - allowed: raise ValueError("Il draft contiene campi non modificabili")
     if payload.get("base_revision") != manifest["revision"]: raise RuntimeError("La revisione di base non coincide con il manifest")
     candidate = copy.deepcopy(manifest)
@@ -414,6 +430,10 @@ def validate_draft(payload: Any, manifest: dict[str, Any]) -> dict[str, Any]:
             else: candidate[key] = payload[key]
     if "palette" in payload:
         candidate["brand"]["colors"] = normalize_palette(payload["palette"])
+    candidate.update(proposal_metadata(payload))
+    if candidate["presentation"].get("visual_grammar") != "ribbons":
+        candidate.pop("composition_candidates", None)
+        candidate.pop("proposal_source", None)
     errors = validate_manifest(candidate)
     if errors: raise ValueError("; ".join(errors))
     return candidate
@@ -432,7 +452,8 @@ def render_preview(manifest: dict[str, Any], manifest_dir: Path) -> list[dict[st
             item["lines"], adapted, manifest_dir, manifest["direction"],
             item["width"], item["height"], item["text_scale"], item["vertical_position"],
         )
-        kwargs: dict[str, Any] = {"font_size_override": size}
+        ribbons = adapted.get("presentation", {}).get("visual_grammar") == "ribbons"
+        kwargs: dict[str, Any] = {} if ribbons else {"font_size_override": size}
         if supports_options:
             kwargs["render_options"] = {"vertical_position": item["vertical_position"], **manifest["presentation"]}
         svg = proof.render_svg(adapted, manifest_dir, manifest["direction"], **kwargs)
@@ -442,7 +463,46 @@ def render_preview(manifest: dict[str, Any], manifest_dir: Path) -> list[dict[st
             "maximum_font_size": maximum_size, "text_scale": min(float(item["text_scale"]), 1.0),
             "auto_fitted": auto_fitted, "fitting": fit_mode, "svg": svg,
         })
+        if ribbons:
+            layout = proof.ribbon_layout(adapted, manifest_dir)
+            rendered[-1].update(font_size=layout["font_size"], author_font_size=layout["author_font_size"],
+                                layout_bounds=layout["bounds"], layout_warnings=layout["warnings"],
+                                ribbon_layout=layout)
     return rendered
+
+
+def composition_previews(manifest: dict[str, Any], manifest_dir: Path) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    if manifest.get("presentation", {}).get("visual_grammar") != "ribbons":
+        return results
+    for composition in manifest.get("composition_candidates", []):
+        candidate = copy.deepcopy(manifest)
+        candidate["presentation"]["composition"] = copy.deepcopy(composition)
+        previews = render_preview(candidate, manifest_dir)
+        preview_format = manifest.get("presentation", {}).get("output_mode", "4x5")
+        preview = next((item for item in previews if item["format"] == preview_format), previews[0] if previews else None)
+        if preview:
+            results.append({"id": composition["id"], "name": composition.get("name", composition["id"]),
+                            "svg": preview["svg"], "valid": not any(issue["code"] != "accent_contrast" for issue in preview.get("layout_warnings", [])),
+                            "warnings": preview.get("layout_warnings", [])})
+    return results
+
+
+def preview_response(draft: dict[str, Any], manifest_dir: Path, revision: int,
+                     return_url: str | None = None) -> dict[str, Any]:
+    previews = render_preview(draft, manifest_dir)
+    qa = preview_quality(draft, previews, manifest_dir)
+    result = {"revision": revision, "previews": previews, "qa": qa, "warnings": qa["warnings"],
+              "score": preview_score(draft, previews, qa), "editorial_responsibility": "user",
+              "declaration": {"transformation": draft["content"]["transformation"],
+                              "evidence_status": draft["content"]["evidence_status"],
+                              "attribution": draft["content"]["attribution"],
+                              "alt_text_suggestion": proof.default_alt_text(draft["content"]["text"], draft["content"]["attribution"].get("label", ""), draft.get("source"))}}
+    if draft.get("presentation", {}).get("visual_grammar") == "ribbons":
+        result.update(model=session_model(draft, manifest_dir, return_url),
+                      composition_previews=composition_previews(draft, manifest_dir),
+                      proposal_source=draft.get("proposal_source", "model"))
+    return result
 
 
 def _measured_text_box(lines: list[str], font_size: float, manifest: dict[str, Any], manifest_dir: Path, line_ratio: float) -> tuple[float, float, str]:
@@ -462,20 +522,26 @@ def _measured_text_box(lines: list[str], font_size: float, manifest: dict[str, A
 
 
 def preview_quality(manifest: dict[str, Any], previews: list[dict[str, Any]], manifest_dir: Path) -> dict[str, Any]:
-    """Run renderer-aware checks used by the live quality gate."""
+    """Report visual guidance; the user decides whether to export the card."""
     warnings: list[dict[str, str]] = []
     checks = ["structure", "contrast", "fitting", "safe_area", "svg", "render", "assets"]
     seen: set[tuple[str, str, str]] = set()
 
     def add(code: str, message: str, format_id: str = "all") -> None:
+        if code == "accent_contrast" and any(item["code"] == code and item["format"] == format_id for item in warnings):
+            return
         key = (code, message, format_id)
         if key not in seen:
             seen.add(key)
-            warnings.append({"code": code, "format": format_id, "message": message})
+            warning = {"code": code, "format": format_id, "message": message, "severity": "advisory"}
+            warnings.append(warning)
 
     by_id = {item["id"]: item for item in manifest["formats"]}
+    checked_formats = {item["id"] for item in production_formats(manifest)[1]}
     for preview in previews:
         format_id = preview["format"]
+        if format_id not in checked_formats:
+            continue
         item = by_id[format_id]
         adapted = pack.proof_manifest_for_format(manifest, item)
         adapted["canvas"] = {"width": item["width"], "height": item["height"]}
@@ -484,6 +550,8 @@ def preview_quality(manifest: dict[str, Any], previews: list[dict[str, Any]], ma
         if manifest["presentation"]["logo_mode"] == "hidden":
             adapted["brand"] = copy.deepcopy(adapted["brand"])
             adapted["brand"].pop("logo", None)
+        for issue in preview.get("layout_warnings", []):
+            add(issue["code"], f"{format_id}: {issue['message']}", format_id)
         for issue in proof.validate_visual_manifest(adapted, manifest_dir):
             # The proof validator is intentionally 4:5-only; format ratios are
             # validated separately by the 0.4 contract before this QA pass.
@@ -497,7 +565,7 @@ def preview_quality(manifest: dict[str, Any], previews: list[dict[str, Any]], ma
         )
         preview["measurement"] = measurement["metric"]
         if not measurement["width_fits"]:
-            add("text_fit", f"{format_id}: il testo supera l'area tipografica disponibile; riduci la scala o rivedi gli a capo.", format_id)
+            add("text_fit", f"{format_id}: il testo supera l'area tipografica disponibile.", format_id)
         if not measurement["vertical_fits"]:
             add("safe_area", f"{format_id}: il blocco di testo invade l'area riservata a logo o attribuzione.", format_id)
 
@@ -516,10 +584,12 @@ def preview_quality(manifest: dict[str, Any], previews: list[dict[str, Any]], ma
         for finding in inspector.inspect_render(
             preview["svg"], manifest["direction"], item["width"], item["height"],
             vertical_position=item["vertical_position"],
+            **({"ribbon_layout": preview["ribbon_layout"]} if "ribbon_layout" in preview else {}),
         ):
             add(finding["code"], f"{format_id}: {finding['message']}", format_id)
 
-    return {"passed": not warnings, "checks": checks, "warnings": warnings}
+    return {"passed": not warnings, "generation_allowed": True, "quality_policy": "advisory",
+            "checks": checks, "warnings": warnings, "checked_formats": sorted(checked_formats)}
 
 
 # Ceiling for the contrast score: WCAG AAA (7:1) is already the codebase's
@@ -539,6 +609,12 @@ def preview_score(manifest: dict[str, Any], previews: list[dict[str, Any]], qa: 
         proof.contrast_ratio(colors["background"], colors["primary"]),
         proof.contrast_ratio(colors["accent"], colors["primary"]),
     ]
+    if manifest.get("presentation", {}).get("visual_grammar") == "ribbons":
+        composition = manifest["presentation"]["composition"]
+        ink = colors[composition["text_role"]]
+        ground = colors[composition["background_role"]]
+        marker = colors[composition["highlight_role"]]
+        ratios = [proof.contrast_ratio(ink, ground), max(proof.contrast_ratio(color, marker) for color in colors.values())]
     gradient_checks = [
         inspector.gradient_contrast_summary(preview.get("svg", ""))
         for preview in previews
@@ -558,7 +634,7 @@ def preview_score(manifest: dict[str, Any], previews: list[dict[str, Any]], qa: 
     capped_formats = sum(1 for item in previews if item.get("auto_fitted"))
     fit_score = max(0, 100 - 25 * capped_formats)
 
-    structure_penalty = 20 * len({(item["code"], item["format"]) for item in qa.get("warnings", [])})
+    structure_penalty = 20 * len({(item["code"], item["format"]) for item in qa.get("warnings", []) if item.get("code") != "accent_contrast"})
     structure_score = max(0, 100 - structure_penalty)
 
     overall = round((contrast_score + fit_score + structure_score) / 3)
@@ -569,11 +645,8 @@ def preview_score(manifest: dict[str, Any], previews: list[dict[str, Any]], qa: 
 
 
 def ensure_approvable(manifest: dict[str, Any], manifest_dir: Path) -> dict[str, Any]:
-    qa = preview_quality(manifest, render_preview(manifest, manifest_dir), manifest_dir)
-    if not qa["passed"]:
-        messages = "; ".join(warning["message"] for warning in qa["warnings"])
-        raise ValueError(f"La prova non supera il quality gate: {messages}")
-    return qa
+    """Compatibility entry point: collect notes without imposing visual choices."""
+    return preview_quality(manifest, render_preview(manifest, manifest_dir), manifest_dir)
 
 
 def asset_path(root: Path, url_path: str) -> Path | None:
@@ -627,6 +700,7 @@ def generate_production_pack(
     presentation["output_mode"] = mode
     production_manifest = {
         "schema_version": "0.3",
+        "quality_policy": "advisory",
         "state": "prova_visuale_approvata",
         "approval": {
             "direction": manifest["direction"],
@@ -931,9 +1005,54 @@ def create_server(
         def do_POST(self) -> None:  # noqa: N802
             parsed, query = urlparse(self.path), parse_qs(urlparse(self.path).query)
             if not self.local_host() or not self.authorized(query): self.send_json(HTTPStatus.FORBIDDEN, {"error": "Sessione non autorizzata"}); return
-            if parsed.path not in {"/api/preview", "/api/generate", "/api/profiles", "/api/styles", "/api/styles/apply"}: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Risorsa non trovata"}); return
+            if parsed.path not in {"/api/preview", "/api/generate", "/api/profiles", "/api/styles", "/api/styles/apply", "/api/compositions", "/api/project/load"}: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Risorsa non trovata"}); return
             try:
                 payload, current = self.request_json(), read_json(manifest_path)
+                if parsed.path == "/api/project/load":
+                    if not isinstance(payload, dict) or set(payload) != {"project"} or not isinstance(payload["project"], dict):
+                        raise ValueError("Indica il progetto JSON da riaprire.")
+                    with lock:
+                        latest = read_json(manifest_path)
+                        imported = copy.deepcopy(payload["project"])
+                        imported["revision"] = latest["revision"] + 1
+                        imported["state"] = "candidato_selezionato"
+                        imported["brand"] = brand_profiles.resolve_brand_assets(imported.get("brand", {}), manifest_path.parent)
+                        errors = validate_manifest(imported)
+                        if errors:
+                            raise ValueError("; ".join(errors))
+                        result = preview_response(imported, manifest_path.parent, imported["revision"], return_url)
+                        if "model" not in result:
+                            result["model"] = session_model(imported, manifest_path.parent, return_url)
+                        atomic_write_json(manifest_path, imported)
+                        current_state = read_json(state_path)
+                        current_state["manifest_revision"] = imported["revision"]
+                        atomic_write_json(state_path, current_state)
+                    self.send_json(HTTPStatus.OK, result); return
+                if parsed.path == "/api/compositions":
+                    if not isinstance(payload, dict) or set(payload) != {"draft"} or not isinstance(payload["draft"], dict):
+                        raise ValueError("Indica il draft per le proposte.")
+                    requested = copy.deepcopy(payload["draft"])
+                    presentation = copy.deepcopy(requested.get("presentation", current["presentation"]))
+                    authored = proposal_metadata(requested)
+                    proposals = authored.get("composition_candidates")
+                    if not proposals:
+                        proposals = demo_compositions(requested.get("text", current["content"]["text"]), presentation.get("graphic_seed", 0))
+                        requested["proposal_source"] = "demo"
+                    else:
+                        requested["proposal_source"] = authored.get("proposal_source", "model")
+                    requested["composition_candidates"] = proposals
+                    presentation.update(visual_grammar="ribbons")
+                    presentation.setdefault("output_mode", "4x5")
+                    if not presentation.get("composition"):
+                        presentation["composition"] = copy.deepcopy(proposals[0])
+                    requested["presentation"] = presentation
+                    formats = requested.get("formats", current["formats"])
+                    requested["formats"] = complete_ribbon_formats(formats, requested.get("text", current["content"]["text"]))
+                    if current["presentation"].get("visual_grammar") != "ribbons":
+                        for item in requested["formats"]:
+                            item["lines"] = [requested.get("text", current["content"]["text"])]
+                    draft = validate_draft(requested, current)
+                    self.send_json(HTTPStatus.OK, preview_response(draft, manifest_path.parent, current["revision"], return_url)); return
                 if parsed.path == "/api/profiles":
                     if not isinstance(payload, dict) or set(payload) != {"name", "draft"} or not isinstance(payload["draft"], dict):
                         raise ValueError("Indica name e draft del profilo")
@@ -954,13 +1073,15 @@ def create_server(
                     saved = saved_styles.save_style(payload["name"], draft, path=style_store, base_dir=manifest_path.parent)
                     self.send_json(HTTPStatus.CREATED, {"styles": saved_styles.list_styles(style_store), "saved_style_id": saved["id"]}); return
                 if parsed.path == "/api/styles/apply":
-                    if not isinstance(payload, dict) or set(payload) != {"id", "draft"} or not isinstance(payload["draft"], dict):
+                    if not isinstance(payload, dict) or not {"id", "draft"} <= set(payload) or set(payload) - {"id", "draft", "reuse_mode", "text", "attribution", "composition_candidates"} or not isinstance(payload["draft"], dict):
                         raise ValueError("Indica id e draft dello stile")
                     with lock:
                         latest = read_json(manifest_path)
                         latest = with_palette_initial(latest)
                         draft = validate_draft(payload["draft"], latest)
-                        applied = saved_styles.apply_style(payload["id"], draft, latest, style_store, manifest_path.parent)
+                        applied = saved_styles.apply_style(payload["id"], draft, latest, style_store, manifest_path.parent,
+                                                          reuse_mode=payload.get("reuse_mode"), text=payload.get("text"), attribution=payload.get("attribution"),
+                                                          composition_candidates=payload.get("composition_candidates"))
                         # Style application changes the active visual seed and
                         # must become the new editor base for subsequent
                         # preview/save requests. Persist the manifest while
@@ -975,10 +1096,7 @@ def create_server(
                     self.send_json(HTTPStatus.OK, session_model(applied, manifest_path.parent, return_url)); return
                 if parsed.path == "/api/preview":
                     draft = validate_draft(payload, current)
-                    previews = render_preview(draft, manifest_path.parent)
-                    qa = preview_quality(draft, previews, manifest_path.parent)
-                    alt_suggestion = proof.default_alt_text(draft["content"]["text"], draft["content"]["attribution"].get("label", ""), draft.get("source"))
-                    self.send_json(HTTPStatus.OK, {"revision": current["revision"], "previews": previews, "qa": qa, "warnings": qa["warnings"], "score": preview_score(draft, previews, qa), "editorial_responsibility": "user", "declaration": {"transformation": draft["content"]["transformation"], "evidence_status": draft["content"]["evidence_status"], "attribution": draft["content"]["attribution"], "alt_text_suggestion": alt_suggestion}}); return
+                    self.send_json(HTTPStatus.OK, preview_response(draft, manifest_path.parent, current["revision"], return_url)); return
                 with lock:
                     draft = validate_draft(payload, current)
                     ensure_approvable(draft, manifest_path.parent)

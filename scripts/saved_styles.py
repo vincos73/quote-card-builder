@@ -20,6 +20,8 @@ if str(SCRIPT_DIR) not in sys.path:
 import brand_profiles
 from apply_card_review import DIRECTIONS, LOGO_MODES, GRAPHIC_MODES, OUTPUT_MODES, VERTICAL_POSITIONS
 from render_quote_card import GRAPHIC_VARIANTS, graphic_seed_allowed
+from visual_grammars import GRAMMAR_PRESENTATION_KEYS, variation_compositions, normalize_grammar_presentation
+from grammar_sessions import complete_ribbon_formats, normalize_candidates, reset_content_for_reuse
 
 SCHEMA_VERSION = 1
 MAX_STYLES = 50
@@ -66,7 +68,7 @@ def _resolve_and_check_assets(brand: dict[str, Any], base_dir: Path | None = Non
 def _normalize_presentation(value: Any, direction: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("presentation dello stile non valida")
-    allowed = {"logo_mode", "graphic_mode", "graphic_variant", "graphic_seed", "output_mode"}
+    allowed = {"logo_mode", "graphic_mode", "graphic_variant", "graphic_seed", "output_mode"} | GRAMMAR_PRESENTATION_KEYS
     if set(value) - allowed:
         raise ValueError("presentation contiene campi non salvabili nello stile")
     presentation = {"logo_mode": value.get("logo_mode", "auto"), "graphic_mode": value.get("graphic_mode", "auto"),
@@ -80,6 +82,7 @@ def _normalize_presentation(value: Any, direction: str) -> dict[str, Any]:
         raise ValueError("presentation.graphic_variant non appartiene alla direzione selezionata")
     if not graphic_seed_allowed(presentation["graphic_seed"]):
         raise ValueError("presentation.graphic_seed deve essere un intero da 0 a 999999")
+    presentation.update(normalize_grammar_presentation(value))
     return presentation
 
 
@@ -196,7 +199,13 @@ def get_style(style_id: str, path: Path | None = None) -> dict[str, Any]:
 
 
 def apply_style(style_id: str, draft: dict[str, Any], current: dict[str, Any], path: Path | None = None,
-                base_dir: Path | None = None) -> dict[str, Any]:
+                base_dir: Path | None = None, *, reuse_mode: str | None = None,
+                text: str | None = None, attribution: str | None = None,
+                composition_candidates: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    if reuse_mode not in {None, "card", "style"}:
+        raise ValueError("reuse_mode deve essere card o style")
+    if composition_candidates is not None and reuse_mode != "style":
+        raise ValueError("Nuove proposte richiedono reuse_mode style")
     style = get_style(style_id, path)
     candidate = copy.deepcopy(draft)
     if "schema_version" not in candidate:
@@ -205,10 +214,33 @@ def apply_style(style_id: str, draft: dict[str, Any], current: dict[str, Any], p
     candidate["brand"] = copy.deepcopy(style["brand"])
     candidate["direction"] = style["direction"]
     candidate["presentation"] = copy.deepcopy(style["presentation"])
+    if reuse_mode and text is not None:
+        reset_content_for_reuse(candidate, text, attribution)
+    elif attribution is not None:
+        reset_content_for_reuse(candidate, candidate["content"]["text"], attribution)
     current_formats = {item["id"]: item for item in candidate.get("formats", [])}
     for settings in style["formats"]:
         if settings["id"] in current_formats:
             current_formats[settings["id"]].update({"text_scale": settings["text_scale"], "vertical_position": settings["vertical_position"]})
+    if candidate["presentation"].get("visual_grammar") == "ribbons":
+        candidate["formats"] = complete_ribbon_formats(candidate["formats"], candidate["content"]["text"])
+        candidate.pop("composition_candidates", None)
+        candidate.pop("proposal_source", None)
+        if reuse_mode == "style":
+            seed = (int(candidate["presentation"].get("graphic_seed", 0)) + 1) % 1000000
+            candidate["presentation"]["graphic_seed"] = seed
+            proposals = (normalize_candidates(composition_candidates) if composition_candidates is not None
+                         else variation_compositions(candidate["presentation"]["composition"], candidate["content"]["text"], seed))
+            candidate["composition_candidates"] = proposals
+            candidate["proposal_source"] = "model" if composition_candidates is not None else "demo"
+            candidate["presentation"]["composition"] = copy.deepcopy(proposals[0])
+        # Reusing the selected card retains its exact paths. A new quote's
+        # old manual word offsets have already been cleared above.
+    else:
+        candidate.pop("composition_candidates", None)
+        candidate.pop("proposal_source", None)
+        if composition_candidates is not None:
+            raise ValueError("Le proposte di composizione richiedono una base Nastri")
     # Applying a style is a preview/editor state transformation. The manifest
     # is deliberately not persisted here, so its revision must remain the
     # same and the returned session can be submitted against that manifest.

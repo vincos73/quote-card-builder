@@ -22,6 +22,7 @@ class McpUiReliabilityTests(unittest.TestCase):
         cls.html = mcp_app.quote_card_preview_html()
         cls.workspace_html = mcp_app.quote_card_preview_html(workspace=True)
         cls.tool_results = (ROOT / "assets/mcp-editor/tool-results.js").read_text()
+        cls.app_version = mcp_app.QUOTE_CARD_APP_VERSION
 
     def _run(self, source, *, module=False):
         command = ["node"]
@@ -41,7 +42,7 @@ class McpUiReliabilityTests(unittest.TestCase):
         self.assertIn('class="qcb-preview-caption" id="meta"', self.workspace_html)
         self.assertIn(".qcb-preview-caption {", self.workspace_html)
         self.assertNotIn(".meta {", self.workspace_html)
-        self.assertIn("v1.57", self.workspace_html)
+        self.assertIn(self.app_version, self.workspace_html)
 
     def test_request_timeout_rejects_and_removes_pending_entry(self):
         request_source = self.html.split(
@@ -419,7 +420,7 @@ if (submit.disabled || produce.disabled) throw new Error("current action control
         self.assertIn('id="newCard"', self.workspace_html)
         self.assertIn("env(safe-area-inset-top", self.workspace_html)
         self.assertIn('appCapabilities:{ availableDisplayModes:["fullscreen"] }', self.workspace_html)
-        self.assertIn('appInfo:{ name:"quote-card-builder-ui", version:"1.57" }', self.workspace_html)
+        self.assertIn(f'appInfo:{{ name:"quote-card-builder-ui", version:"{self.app_version.removeprefix("v")}" }}', self.workspace_html)
         self.assertIn('const demoQuoteLayout = "Le idee migliori\\nmeritano\\ndi essere\\ncondivise.";', self.workspace_html)
         self.assertIn('id="title"', self.workspace_html)
         self.assertIn('id="demoHelper"', self.workspace_html)
@@ -587,7 +588,7 @@ if (demoNeutralOption.textContent !== "Neutral palette") throw new Error("actual
             module=True,
         )
 
-    def test_workspace_readiness_announces_missing_choice_after_first_render(self):
+    def test_workspace_readiness_announces_technical_palette_error_after_first_render(self):
         readiness_source = "function syncWorkspaceReadiness(options = {})" + self.workspace_html.split(
             "function syncWorkspaceReadiness(options = {})", 1
         )[1].split("function currentSignature", 1)[0]
@@ -596,12 +597,12 @@ if (demoNeutralOption.textContent !== "Neutral palette") throw new Error("actual
 const workspaceMode = true, hasRendered = true;
 const submit = {disabled:false,dataset:{}}, produce = {disabled:false,dataset:{}};
 const status = {textContent:"Preview validated by the canonical renderer."};
-const workspaceReadiness = () => ({ready:false,message:"Add the attribution name or source."});
+const workspaceReadiness = () => ({ready:false,message:"Enter a valid six-digit hex value for every palette color."});
 '''
             + readiness_source
             + r'''
 const result = syncWorkspaceReadiness({announce:true});
-if (result.ready || !status.textContent.includes("Add the attribution name or source.")) throw new Error("pending readiness was hidden after the first rendered preview");
+if (result.ready || !status.textContent.includes("six-digit hex")) throw new Error("technical readiness was hidden after the first rendered preview");
 if (!submit.disabled || !produce.disabled) throw new Error("an incomplete workspace remained actionable");
 ''',
             module=True,
@@ -703,7 +704,7 @@ if (productionCalls!==2||preparationCalls!==2||openCalls!==3) throw new Error("e
             module=True,
         )
 
-    def test_workspace_incomplete_inputs_remain_blocked_until_decisions_are_explicit(self):
+    def test_workspace_requires_quote_and_valid_colors_but_author_is_optional(self):
         readiness_source = "function workspaceReadiness()" + self.workspace_html.split(
             "function workspaceReadiness()", 1
         )[1].split("function syncWorkspaceReadiness", 1)[0]
@@ -725,9 +726,9 @@ const customPaletteIsValid = () => Object.values(paletteFields).every((ids) => B
             + r'''
 if (workspaceReadiness().ready || !workspaceReadiness().message.includes("quote")) throw new Error("empty quote was accepted");
 quote = "A deliberate quote";
-if (workspaceReadiness().ready || !workspaceReadiness().message.includes("attribution")) throw new Error("missing attribution decision was accepted");
+if (!workspaceReadiness().ready) throw new Error("optional attribution decision blocked a supplied quote");
 attributionDecision.value = "named";
-if (workspaceReadiness().ready || !workspaceReadiness().message.includes("name or source")) throw new Error("empty named attribution was accepted");
+if (!workspaceReadiness().ready) throw new Error("blank optional author blocked a supplied quote");
 attribution.value = "Author";
 if (!workspaceReadiness().ready) throw new Error("neutral base palette remained blocked");
 paletteDecision.value = "custom";
@@ -739,6 +740,8 @@ attributionDecision.value = "none";
 attribution.value = "";
 paletteDecision.value = "neutral";
 if (!workspaceReadiness().ready) throw new Error("explicit no-attribution/neutral choice remained blocked");
+paletteDecision.value = "";
+if (!workspaceReadiness().ready) throw new Error("undecided palette blocked valid existing card colors");
 ''',
             module=True,
         )

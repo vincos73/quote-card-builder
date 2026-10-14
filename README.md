@@ -6,9 +6,9 @@ Quote Card Builder è una skill per ChatGPT e Claude che trasforma una frase, un
 
 È pensata per creator, marketer e professionisti che vogliono ottenere rapidamente una grafica coerente, senza aprire un editor professionale. Il testo, l’attribuzione e le scelte editoriali restano sempre sotto il controllo dell’utente.
 
-Nella release remota 1.8.8/UI v1.56 erano stati verificati apertura popolata da URL e due aggiornamenti consecutivi nell'editor nativo; la versione corrente è 1.8.10/UI v1.57. Per aprire la card da un link, il modello usa la navigazione dell'host, mentre il server non legge URL. Le modifiche successive dalla chat usano un aggiornamento del draft completo con controllo della revisione; per attivare il tool nel client ChatGPT, richiama il plugin in ogni follow-up. La promozione, gli smoke e le prove sono documentati in `RELEASE-STATUS.md`. L'installazione locale resta 1.8.3.
+Nella release remota 1.8.8/UI v1.56 erano stati verificati apertura popolata da URL e due aggiornamenti consecutivi nell'editor nativo; la versione corrente è 1.8.11/UI v1.58. Per aprire la card da un link, il modello usa la navigazione dell'host, mentre il server non legge URL. Le modifiche successive dalla chat usano un aggiornamento del draft completo con controllo della revisione; per attivare il tool nel client ChatGPT, richiama il plugin in ogni follow-up. La promozione, gli smoke e le prove sono documentati in `RELEASE-STATUS.md`. L'installazione locale resta 1.8.3.
 
-La versione remota **1.8.10/UI v1.57 è live al 100%**. Le istruzioni preparano righe più corte per dare maggiore impatto alla quote su smartphone, senza riscriverla. La firma è più discreta e il CSS dell’interfaccia non ne altera più la resa nell’anteprima. Sono passati due test mirati e i controlli di versione, risorsa UI e rendering sul servizio remoto; la prova visiva nativa e del download è lasciata all’utente. Evidenze e limiti in `RELEASE-STATUS.md`.
+La versione remota **1.8.11/UI v1.58 è live al 100%** e il plugin personale di test include la skill web Nastri. Il modello propone tre composizioni native; l’editor conserva palette, dimensioni granulari, basi riusabili e progetto JSON. Gli avvisi visuali non bloccano il download. Suite completa: 475 test senza skip; smoke remoto e PNG nei tre formati verificati. Il 14 ottobre 2026 l’utente ha confermato il funzionamento in ChatGPT: è una conferma d’uso, non una nuova verifica automatica dell’intero flusso nativo. Evidenze e limiti in `RELEASE-STATUS.md`.
 
 <img width="1956" height="1130" alt="quote-card-builder-screen" src="https://github.com/user-attachments/assets/550fbf0b-21b3-4b01-b8f1-48cbd04574d5" />
 
@@ -20,11 +20,11 @@ La skill accompagna l’utente dall’idea al file finale:
 2. propone fino a tre candidati quando serve trovare la formulazione più efficace;
 3. distingue il testo originale da una modifica, una parafrasi o una frase generata;
 4. mantiene separati fonte, attribuzione e identità del brand;
-5. apre un editor locale per controllare testo, a capo, stile e formato;
+5. apre il Visual Review Studio locale oppure l’editor MCP disponibile per controllare testo, a capo, stile e formato;
 6. verifica leggibilità, contrasto, margini e possibili sovrapposizioni;
-7. genera un PNG oppure un pacchetto ZIP con più formati.
+7. genera un PNG nel formato scelto; il Visual Review Studio locale può anche creare un pacchetto ZIP con più formati.
 
-L’editor del plugin offre quattro stili compositivi:
+L’editor MCP attuale offre quattro stili precedenti e la grammatica Nastri:
 
 | Stile | Aspetto | Motivo disponibile |
 | --- | --- | --- |
@@ -32,8 +32,13 @@ L’editor del plugin offre quattro stili compositivi:
 | **Cutouts** | ritagli geometrici piatti | composizione deterministica variabile |
 | **Constellations** | reti di nodi e connessioni | composizione deterministica variabile |
 | **Gradient** | campi cromatici sfumati | composizione deterministica variabile |
+| **Nastri** | percorsi geometrici intrecciati e spazio per la citazione | scene numeriche progettate dal modello; prove deterministiche dichiarate quando mancano scene |
 
-Lo stile si sceglie nell'editor, insieme alla variante riproducibile del motivo; può anche essere nascosto.
+Lo stile si sceglie nell’editor; i motivi precedenti possono essere variati o nascosti. Per Nastri il modello progetta tre composizioni diverse e l’utente sceglie quella da rifinire. L’editor permette di modificare grassetto, highlight e dimensione delle parole selezionate, oltre alle dimensioni indipendenti di citazione e autore. Le varianti dimostrative dell’editor sono etichettate e non chiamano un modello.
+
+Nel web MCP sono disponibili 4:5, 1:1 e 9:16, un formato per download. **Save Nastri base** salva sul dispositivo anche il contenuto e le formattazioni della card, insieme a palette e geometria; il progetto JSON permette il trasferimento esplicito. La base di stile del Visual Review Studio locale ha un formato diverso ed esclude invece citazione e selezioni. Le basi web non sono un archivio cloud e non includono un caricamento di font o logo. Contratto: [ribbons-web-mcp.md](references/ribbons-web-mcp.md).
+
+Gli editor locale e MCP mostrano soltanto avvisi descrittivi per contrasto, sforamenti e sovrapposizioni: questi non impediscono di generare l’output. Gli errori tecnici che rendono impossibile creare un file restano bloccanti. Il renderer standalone da riga di comando conserva separatamente la modalità predefinita `quality_policy: strict`; il Visual Review Studio esporta con `advisory`.
 
 ## Che cosa non fa
 
@@ -169,34 +174,31 @@ Esegui tutti i test dalla radice del progetto:
 python3 -m unittest discover -s tests -v
 ```
 
-### Vertical slice MCP locale
+### Server MCP e pacchetto web
 
 Il repository include ora un backend MCP stdio minimo ma reale, documentato in
 [references/mcp-pilot.md](references/mcp-pilot.md). Il flusso principale usa tre tool coordinati:
 `quote_card_builder_open_editor` apre una sola MCP App, `preview_quote_card` aggiorna i dati
 nella stessa interfaccia senza rimontarla e `produce_quote_card` genera l'SVG canonico
-solo dopo il clic dell'utente su **Genera**. Se l'host dichiara che la UI non può essere montata,
+solo dopo il clic dell'utente su **Download PNG** nell’editor MCP v1.58. Il flusso **Genera** seguito da **Download PNG** appartiene alla precedente installazione stdio locale 1.8.3. Se l'host dichiara che la UI non può essere montata,
 `quote_card_builder_headless` offre una preview accessibile al modello e una produzione esplicita,
 vincolata all'approvazione del chiamante e all'hash della preview corrente. Prima della chiamata la
 skill apre l'editor con il testo selezionato e usa attribuzione fornita/verificata oppure nessuna;
 la palette neutra è predefinita salvo scelta personalizzata esplicita. Per un link usa la lettura
 dell'host, perché il server non acquisisce URL. Le modifiche successive passano dal tool di update
-revisionato, che preserva i campi non modificati. Non chiede tono o stile e non usa file locali o generazione immagini. La UI lascia scegliere Blocks, Cutouts, Constellations o
-Gradient e consente di variare o nascondere il pattern. Uno stile già dichiarato dall'utente è solo
+revisionato, che preserva i campi non modificati. Non chiede tono o stile e non usa file locali o generazione immagini. La UI lascia scegliere Blocks, Cutouts, Constellations, Gradient o Nastri e consente di variare o nascondere i motivi precedenti. Per Nastri accetta le scene progettate dal modello e conserva quella scelta. Uno stile già dichiarato dall'utente è una
 una preselezione dell'editor. I tool riusano il renderer canonico e il profilo neutro soltanto quando
 l'utente lo sceglie. Lo structured output conserva stato e validazione compatti; l'SVG della UI è
 nei metadati MCP e quello headless è una risorsa esplicita. Non esegue pubblicazione, storage remoto
 o modifiche all'installazione personale.
 
 La MCP App riprende ora i controlli principali del vecchio editor: toolbar per grassetto,
-corsivo, sottolineato e riempimenti, riequilibrio degli a capo, quattro stili con seed
-riproducibile, scala dal massimo, posizione verticale e palette esplicita. L'iframe incorpora inoltre
+corsivo, sottolineato e riempimenti, riequilibrio degli a capo, quattro stili precedenti con seed
+riproducibile, Nastri con scene e dimensioni granulari, scala e posizione dei motivi precedenti e palette esplicita. L'iframe incorpora inoltre
 Barlow e Orbitron e usa la palette Plotter Bench dell'editor locale; la palette della card resta
-quella del profilo neutro o personalizzato scelto dall'utente. Il vertical slice supporta
-4:5 e 1:1; il formato 9:16 continua a essere gestito dal Visual Review Studio locale finché
-non verrà portato nello stesso contratto MCP.
+quella del profilo neutro o personalizzato scelto dall'utente. Il contratto web MCP supporta 4:5, 1:1 e 9:16. Nastri aggiunge scene native del modello, controlli granulari e basi personali sul dispositivo. L’export web sceglie un formato alla volta. Il pacchetto web si costruisce con `python3 scripts/build_web_plugin_package.py --output dist/quote-card-builder-web-1.8.11.zip`; usa streamable HTTP e non richiede un executor locale.
 
-Il percorso workspace resta un ingresso vuoto per chi apre il plugin senza una citazione. Quando l'utente fornisce un link e chiede di procedere, il modello legge la fonte con la navigazione dell'host, seleziona una citazione esatta e apre un solo editor popolato. Se non fornisce un nome e la fonte non ne verifica uno, l'attribuzione resta vuota; la palette neutra è predefinita. Per modifiche successive in chat, `quote_card_builder_update_editor` riceve la bozza corrente completa, la revisione e i soli campi modificati; il server restituisce una preview aggiornata e la UI respinge aggiornamenti basati su una bozza superata. Il risultato segnala l'accettazione effettiva. La versione 1.8.10/UI v1.57 è live sul servizio remoto; bozze e modifiche non si sincronizzano tra dispositivi o conversazioni.
+Il percorso workspace resta un ingresso vuoto per chi apre il plugin senza una citazione. Quando l'utente fornisce un link e chiede di procedere, il modello legge la fonte con la navigazione dell'host, seleziona una citazione esatta e apre un solo editor popolato. Se non fornisce un nome e la fonte non ne verifica uno, l'attribuzione resta vuota; la palette neutra è predefinita. Per modifiche successive in chat, `quote_card_builder_update_editor` riceve la bozza corrente completa, la revisione e i soli campi modificati; il server restituisce una preview aggiornata e la UI respinge aggiornamenti basati su una bozza superata. Il risultato segnala l'accettazione effettiva. La versione 1.8.11/UI v1.58 è live sul servizio remoto; bozze e modifiche non si sincronizzano tra dispositivi o conversazioni.
 
 Per provarlo in un ambiente isolato:
 
@@ -211,9 +213,9 @@ autenticazione e storage restano decisioni operative separate.
 
 La pipeline GitHub copre Python 3.12, 3.13 e 3.14, in linea con il requisito `>=3.12,<3.15`. Il workflow di release, quando attivato da un tag, verifica la versione della skill, esegue i test di coerenza del pacchetto e prepara gli ZIP e i checksum SHA-256 per la release. Questa descrizione della pipeline non prova che una specifica versione sia stata pubblicata.
 
-## Stili generativi nell’editor locale
+## Stili e basi nell’editor locale del checkout
 
-Il selettore offre Blocks, Cutouts, Constellations e Gradient, con variazioni riproducibili del motivo. **Save style** e **My styles** salvano e riapplicano identità visiva, famiglia e seed alla citazione corrente. I motivi precedenti restano compatibili. Contratto e archivio locale: [generative-styles.md](references/generative-styles.md).
+Il selettore del checkout 1.8.11 offre Blocks, Cutouts, Constellations e Gradient, con variazioni riproducibili del motivo, oltre a Nastri. **Save style** e **My styles** salvano e riapplicano identità visiva, famiglia e seed alla citazione corrente; con Nastri, **Salva base** conserva la geometria e le preferenze grafiche senza la vecchia citazione o le selezioni. Il progetto JSON locale conserva invece la card completa e riferisce gli asset sul computer. L’installazione standalone attiva 1.8.3 resta distinta e non è stata aggiornata. Contratti: [generative-styles.md](references/generative-styles.md) e [ribbons-pilot.md](references/ribbons-pilot.md).
 
 ## Licenze dei font
 

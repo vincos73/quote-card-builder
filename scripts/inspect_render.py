@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import sys
 import re
+import json
+import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -142,6 +144,7 @@ def text_boxes(root: ET.Element) -> list[dict[str, Any]]:
     only when it has no rows of its own.
     """
     boxes: list[dict[str, Any]] = []
+    ribbon_card = root.attrib.get("data-visual-grammar") == "ribbons"
     for text_el in root.iter(f"{SVG_NS}text"):
         base_x = _float(text_el, "x", 0.0) or 0.0
         base_y = _float(text_el, "y", 0.0) or 0.0
@@ -171,6 +174,21 @@ def text_boxes(root: ET.Element) -> list[dict[str, Any]]:
                 if row is not text_el
                 else [(content, row_fill, row_stroke)]
             )
+            # Ribbon fragments expose the advance used by the renderer's
+            # real font metrics. Each fragment is an independent <text>;
+            # measuring it again with visual_units would invent overflow
+            # when a word has a different size or weight from its row.
+            measured_width = _float(source, "data-measured-width") if ribbon_card else None
+            if measured_width is not None and math.isfinite(measured_width) and measured_width >= 0:
+                left = x - measured_width if anchor == "end" else x - measured_width / 2 if anchor == "middle" else x
+                boxes.append({
+                    "kind": "text", "classes": classes | _classes(source),
+                    "text": content, "font_size": size, "fill": row_fill,
+                    "stroke": row_stroke,
+                    "styles": set(source.attrib.get("data-text-styles", "").split()),
+                    "box": (left, y - size * ASCENT_RATIO, left + measured_width, y + size * DESCENT_RATIO),
+                })
+                continue
             # Tracking is a per-gap adjustment, not a per-character one:
             # summing each segment's own text_width() independently drops
             # the gap that sits between two segments, so splitting a row
@@ -291,10 +309,15 @@ def _overlap(first: tuple[float, ...], second: tuple[float, ...]) -> float:
     return dx * dy if dx > 0 and dy > 0 else 0.0
 
 
-def _grounds(root: ET.Element, width: int, height: int) -> list[tuple[tuple[float, ...], str]]:
+def _grounds(root: ET.Element, width: int, height: int, *, ignore_definitions: bool = False) -> list[tuple[tuple[float, ...], str]]:
     """Filled rectangles a foreground element may sit on, back to front."""
     grounds: list[tuple[tuple[float, ...], str]] = []
+    definition_elements = {
+        node for definitions in root.iter(f"{SVG_NS}defs") for node in definitions.iter()
+    } if ignore_definitions else set()
     for rect in root.iter(f"{SVG_NS}rect"):
+        if rect in definition_elements:
+            continue
         fill = rect.attrib.get("fill", "")
         if not proof.HEX_COLOR.match(fill):
             continue
@@ -412,9 +435,44 @@ def gradient_contrast_summary(svg: str) -> dict[str, Any]:
         }
 
 
+def _ribbon_box(value: Any) -> tuple[float, float, float, float] | None:
+    """Read a measured pixel box without trusting malformed SVG metadata."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        values = tuple(float(value[key]) for key in ("x", "y", "width", "height"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not all(math.isfinite(number) for number in values) or values[2] < 0 or values[3] < 0:
+        return None
+    return values[0], values[1], values[0] + values[2], values[1] + values[3]
+
+
+def _ribbon_frames(root: ET.Element, layout: dict[str, Any] | None) -> dict[str, tuple[float, ...] | None]:
+    frames: dict[str, tuple[float, ...] | None] = {}
+    for name in ("quote", "author", "logo"):
+        value = layout.get(f"{name}_box") if layout else None
+        if value is None:
+            try:
+                value = json.loads(root.attrib.get(f"data-{name}-box", "null"))
+            except (ValueError, TypeError):
+                value = None
+        frames[name] = _ribbon_box(value)
+    return frames
+
+
+def _outside(box: tuple[float, ...], frame: tuple[float, ...]) -> bool:
+    return (
+        box[0] < frame[0] - CONTAINMENT_TOLERANCE
+        or box[1] < frame[1] - CONTAINMENT_TOLERANCE
+        or box[2] > frame[2] + CONTAINMENT_TOLERANCE
+        or box[3] > frame[3] + CONTAINMENT_TOLERANCE
+    )
+
+
 def inspect_render(
     svg: str, direction: str, width: int, height: int,
-    *, vertical_position: str = "center",
+    *, vertical_position: str = "center", ribbon_layout: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     """Report every visual defect visible in an already-rendered card."""
     findings: list[dict[str, str]] = []
@@ -427,12 +485,34 @@ def inspect_render(
     except ET.ParseError as error:
         return [{"code": "svg_invalid", "message": f"SVG non analizzabile: {error}"}]
 
-    geometry = proof.direction_geometry(direction, width, height, vertical_position)
-    safe_left = geometry["text_x"]
-    safe_right = geometry["text_x"] + geometry["text_width"]
+    ribbon_card = root.attrib.get("data-visual-grammar") == "ribbons" or ribbon_layout is not None
+    ribbon_frames = _ribbon_frames(root, ribbon_layout) if ribbon_card else {}
+    if ribbon_card:
+        quote_frame = ribbon_frames.get("quote")
+        if quote_frame is None:
+            report("ribbon_geometry_missing", "Nastri: manca l'area misurata della citazione.")
+        layout_warnings = (ribbon_layout or {}).get("warnings")
+        if ribbon_layout is None and root.attrib.get("data-layout-warnings"):
+            try:
+                emitted_warnings = json.loads(root.attrib["data-layout-warnings"])
+                if isinstance(emitted_warnings, list) and all(isinstance(item, dict) for item in emitted_warnings):
+                    layout_warnings = emitted_warnings
+            except (TypeError, ValueError):
+                pass
+        if layout_warnings:
+            for warning in layout_warnings:
+                if isinstance(warning, dict):
+                    report(warning.get("code", "ribbon_layout_invalid"), warning.get("message", "Nastri: composizione fuori area."))
+        elif ((ribbon_layout is not None and not ribbon_layout.get("valid", False))
+              or root.attrib.get("data-layout-valid") == "false"):
+            report("ribbon_layout_invalid", "Nastri: il renderer segnala un problema nelle misure o nei colori della composizione.")
+    else:
+        geometry = proof.direction_geometry(direction, width, height, vertical_position)
+        safe_left = geometry["text_x"]
+        safe_right = geometry["text_x"] + geometry["text_width"]
     texts = text_boxes(root)
     decorations = decoration_boxes(root)
-    grounds = _grounds(root, width, height)
+    grounds = _grounds(root, width, height, ignore_definitions=ribbon_card)
 
     quotes = [item for item in texts if "quote" in item["classes"]]
     attributions = [item for item in texts if "attribution" in item["classes"]]
@@ -459,6 +539,13 @@ def inspect_render(
     for item in quotes:
         box = item["box"]
         excerpt = item["text"][:40]
+        if ribbon_card:
+            frame = ribbon_frames.get("quote")
+            if frame is not None and _outside(box, frame):
+                report("text_outside_safe_area", f"Nastri: «{excerpt}» supera l'area della citazione; mantenere la dimensione scelta richiede più spazio.")
+            if _outside(box, (0.0, 0.0, float(width), float(height))):
+                report("text_outside_canvas", f"Nastri: «{excerpt}» esce dalla tela.")
+            continue
         if box[0] < safe_left - CONTAINMENT_TOLERANCE:
             report(
                 "text_outside_safe_area",
@@ -476,6 +563,23 @@ def inspect_render(
                 "text_outside_canvas",
                 f"{direction}: «{excerpt}» esce dalla tela in verticale.",
             )
+
+    if ribbon_card:
+        for item in attributions:
+            frame = ribbon_frames.get("author")
+            if frame is None:
+                report("ribbon_geometry_missing", "Nastri: manca l'area misurata dell'autore.")
+                break
+            if _outside(item["box"], frame):
+                report("attribution_outside_safe_area", "Nastri: l'autore supera l'area riservata.")
+            if _outside(item["box"], (0.0, 0.0, float(width), float(height))):
+                report("attribution_outside_canvas", "Nastri: l'autore esce dalla tela.")
+        logo_bounds = _ribbon_box((ribbon_layout or {}).get("bounds", {}).get("logo")) or ribbon_frames.get("logo")
+        if logo_bounds is not None:
+            if _outside(logo_bounds, (0.0, 0.0, float(width), float(height))):
+                report("logo_outside_canvas", "Nastri: il logo esce dalla tela.")
+            if any(_overlap(logo_bounds, item["box"]) > 0 for item in quotes + attributions):
+                report("logo_overlaps_text", "Nastri: il logo si sovrappone a citazione o autore.")
 
     # 2. Nothing may sit on top of the quote or the attribution.
     for mark in decorations:
@@ -522,8 +626,10 @@ def inspect_render(
         minimum = OUTLINE_CONTRAST if outlined else TEXT_CONTRAST
         ratio = proof.contrast_ratio(ink, ground)
         if check_flat_contrast and ratio < minimum:
+            explicit_accent = (ribbon_card and "accent" in item.get("styles", set())
+                               and "highlight" not in item.get("styles", set()))
             report(
-                "outline_contrast" if outlined else "text_contrast",
+                "outline_contrast" if outlined else "accent_contrast" if explicit_accent else "text_contrast",
                 f"{direction}: «{item['text'][:40]}» rende {ratio:.2f}:1 su "
                 f"{ground} (minimo {minimum}:1).",
             )

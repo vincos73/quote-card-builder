@@ -5,7 +5,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, () => {
   'use strict';
 
-  const STYLE_TYPES = new Set(['bold', 'italic', 'underline', 'highlight', 'accent', 'outline']);
+  const STYLE_TYPES = new Set(['bold', 'italic', 'underline', 'highlight', 'accent', 'outline', 'size']);
   // Every one of these decides what a glyph is filled with, so at most one
   // can win per span -- the renderer says as much in styled_lines(). Keeping
   // them exclusive in the editor means the toolbar can expose a single fill
@@ -18,20 +18,36 @@
     return Number.isSafeInteger(value) && value >= 1 ? value : safeFallback;
   };
 
+  const completeRibbonFormats = (formats, text) => {
+    const result = JSON.parse(JSON.stringify(Array.isArray(formats) ? formats : []));
+    const reference = result.find((item) => item.id === '4x5') || result[0];
+    const width = Number.isSafeInteger(reference?.width) && reference.width > 0 ? reference.width : 1440;
+    [['4x5', 5 / 4], ['1x1', 1], ['9x16', 16 / 9]].forEach(([id, ratio]) => {
+      if (!result.some((item) => item.id === id)) result.push({
+        id, width, height: Math.round(width * ratio), lines: [String(text || '')],
+        text_scale: 1, vertical_position: 'center',
+      });
+    });
+    return result;
+  };
+
   const normalizeStyleRanges = (styles) => {
     const grouped = new Map();
     (Array.isArray(styles) ? styles : []).forEach((item) => {
       if (!item || !STYLE_TYPES.has(item.type) || !Number.isInteger(item.start)
         || !Number.isInteger(item.end) || item.start >= item.end) return;
-      if (!grouped.has(item.type)) grouped.set(item.type, []);
-      grouped.get(item.type).push({ start: item.start, end: item.end, type: item.type });
+      if (item.type === 'size' && (!Number.isFinite(item.scale) || item.scale < 0.5 || item.scale > 2.5)) return;
+      const key = item.type === 'size' ? `size:${item.scale}` : item.type;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push({ start: item.start, end: item.end, type: item.type,
+        ...(item.type === 'size' ? { scale: item.scale } : {}) });
     });
     const merged = [];
-    grouped.forEach((ranges, type) => {
+    grouped.forEach((ranges) => {
       ranges.sort((first, second) => first.start - second.start || first.end - second.end);
       ranges.forEach((range) => {
         const previous = merged.at(-1);
-        if (previous?.type === type && range.start <= previous.end) previous.end = Math.max(previous.end, range.end);
+        if (previous?.type === range.type && previous.scale === range.scale && range.start <= previous.end) previous.end = Math.max(previous.end, range.end);
         else merged.push({ ...range });
       });
     });
@@ -206,6 +222,38 @@
     return covering.length ? covering[0].type : null;
   };
 
+  // A new local size replaces only the selected characters, preserving the
+  // size and all other treatments on either side. 100% means inherit the
+  // quote size, so it removes the local override rather than storing one.
+  const setSizeRange = (styles, start, end, scale) => {
+    const normalized = normalizeStyleRanges(styles);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start >= end
+      || !Number.isFinite(scale) || scale < 0.5 || scale > 2.5) return normalized;
+    const next = [];
+    normalized.forEach((style) => {
+      if (style.type !== 'size' || style.end <= start || style.start >= end) next.push(style);
+      else {
+        if (style.start < start) next.push({ ...style, end: start });
+        if (style.end > end) next.push({ ...style, start: end });
+      }
+    });
+    if (scale !== 1) next.push({ start, end, type: 'size', scale });
+    return normalizeStyleRanges(next);
+  };
+
+  const sizeScaleAt = (styles, start, end) => {
+    const ranges = normalizeStyleRanges(styles).filter((style) => style.type === 'size'
+      && style.end > start && style.start < end);
+    if (!ranges.length) return 1;
+    const scale = ranges[0].scale;
+    let cursor = start;
+    for (const range of ranges) {
+      if (range.scale !== scale || range.start > cursor) return null;
+      cursor = Math.max(cursor, range.end);
+    }
+    return cursor >= end ? scale : null;
+  };
+
   // Order the single fill control steps through, ending back at "none".
   const FILL_CYCLE = ['accent', 'highlight', 'outline'];
 
@@ -226,10 +274,13 @@
     fillTypeAt,
     nextFillType,
     normalizeLineLimit,
+    completeRibbonFormats,
     normalizeStyleRanges,
     normalizeText,
     pointLength,
     remapStyleRanges,
+    setSizeRange,
+    sizeScaleAt,
     suggestBalancedLines,
   };
 });

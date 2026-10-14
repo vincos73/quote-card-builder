@@ -10,7 +10,10 @@
       visited.add(value);
       const structured = value.structuredContent || value.structured_content;
       if (structured && typeof structured === "object") {
-        return { ...structured, ...(typeof value._meta?.quoteCard?.svg === "string" ? { svg:value._meta.quoteCard.svg } : {}) };
+        return { ...structured,
+          ...(typeof value._meta?.quoteCard?.svg === "string" ? { svg:value._meta.quoteCard.svg } : {}),
+          ...(Array.isArray(value._meta?.quoteCard?.composition_previews) ? { composition_previews:value._meta.quoteCard.composition_previews } : {}),
+        };
       }
       for (const key of envelopeKeys) {
         const result = visit(value[key]);

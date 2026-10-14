@@ -17,11 +17,18 @@ how to apply an em-based ``letter-spacing``; Chrome drew the widest row
 backend that has always produced the shipped output is tried first, the
 one actually used is reported so an artifact stays traceable, and
 whatever comes back is measured before it is accepted.
+
+The editable ribbon grammar has a browser-approved proof and embeds brand
+fonts. For this grammar Chromium is the required baseline: librsvg ignores
+those fonts and collapses spaces at independently styled text boundaries.
+Ribbons therefore wait for fonts and images in Playwright and fail visibly
+when this matching renderer is unavailable; legacy fallback order stays intact.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -234,6 +241,26 @@ def _chrome(svg: Path, png: Path, width: int, height: int, options: dict[str, An
     ])
 
 
+def _chrome_ribbons(svg: Path, png: Path, width: int, height: int, options: dict[str, Any]) -> None:
+    """Use the same Blink engine as the editor, after embedded fonts load.
+
+    The CLI screenshot backend above cannot await document.fonts.ready.
+    Ribbons need Playwright's explicit font/image wait and element capture;
+    librsvg/sharp silently substitute the embedded brand font and collapse
+    spaces on independently formatted live SVG text fragments.
+    """
+    node, node_modules = options.get("node"), options.get("node_modules")
+    if not (node and node_modules and Path(node).is_file() and Path(node_modules).is_dir()):
+        raise FileNotFoundError("Nastri richiede Node e Playwright configurati per conservare l'anteprima")
+    binary = options.get("browser") or _chrome_binary()
+    if not binary or not Path(binary).is_file():
+        raise FileNotFoundError("nessun browser Chromium disponibile per la prova Nastri")
+    env = os.environ.copy()
+    env["NODE_PATH"] = str(node_modules)
+    _run([str(node), str(SCRIPT_DIR / "svg_to_png.cjs"), str(svg), str(png),
+          str(width), str(height), "chrome", str(binary)], env=env)
+
+
 def _rsvg(svg: Path, png: Path, width: int, height: int, options: dict[str, Any]) -> None:
     binary = shutil.which("rsvg-convert")
     if not binary:
@@ -271,6 +298,26 @@ def _cairosvg(svg: Path, png: Path, width: int, height: int, options: dict[str, 
 # docstring -- so callers are expected to surface when it was used.
 PRIMARY_BACKEND = "sharp"
 
+
+def primary_backend(visual_grammar: str | None = None) -> str:
+    """Compatibility baseline for this grammar's preview/export pairing."""
+    return "chrome" if visual_grammar == "ribbons" else PRIMARY_BACKEND
+
+
+def _svg_grammar(svg_path: Path) -> str | None:
+    # Only inspect the root tag, before the large embedded font payload.
+    # The renderer writes this marker itself; text content cannot select a
+    # converter by mentioning the same string inside the card.
+    try:
+        with svg_path.open("r", encoding="utf-8") as source:
+            head = source.read(4096)
+    except (OSError, UnicodeError):
+        return None
+    root = re.search(r"<svg\b[^>]*>", head)
+    if root and re.search(r"\bdata-visual-grammar\s*=\s*([\"'])ribbons\1", root.group()):
+        return "ribbons"
+    return None
+
 BACKENDS: tuple[tuple[str, Callable[..., None]], ...] = (
     ("sharp", _sharp),
     ("chrome", _chrome),
@@ -288,9 +335,16 @@ def rasterize(
     A backend counts as successful only when what it produced passes
     verify_png, so a converter that writes a blank or mis-sized canvas is
     treated as a failure and the next one is tried.
+
+    ``visual_grammar='ribbons'`` (or its renderer-owned SVG root marker)
+    requires Chromium through Playwright; no legacy-font fallback is accepted.
     """
     attempts: list[tuple[str, str]] = []
-    for name, backend in BACKENDS:
+    visual_grammar = options.get("visual_grammar") or _svg_grammar(svg_path)
+    # Ribbons have a verified browser proof. Reject unavailable Chromium
+    # rather than delivering an unapproved font/spacing substitution.
+    backends = (("chrome", _chrome_ribbons),) if visual_grammar == "ribbons" else BACKENDS
+    for name, backend in backends:
         try:
             backend(svg_path, png_path, width, height, options)
         except FileNotFoundError as error:
@@ -301,7 +355,13 @@ def rasterize(
             continue
         except subprocess.CalledProcessError as error:
             detail = (error.stderr or "").strip().splitlines()
-            attempts.append((name, detail[-1] if detail else f"uscita {error.returncode}"))
+            # The Node/Playwright stack ends with an unhelpful file location;
+            # retain its actual failure rather than losing the explanation.
+            if not detail:
+                reason = f"uscita {error.returncode}"
+            else:
+                reason = detail[0] if visual_grammar == "ribbons" else detail[-1]
+            attempts.append((name, reason))
             continue
         except (OSError, ValueError) as error:
             attempts.append((name, str(error)))

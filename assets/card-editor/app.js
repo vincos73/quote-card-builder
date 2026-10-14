@@ -12,7 +12,7 @@
     DIRECTION_EMPHASIS_TYPE, FILL_CYCLE, FILL_STYLE_TYPES, STYLE_TYPES, canonicalLineStart,
     clampStyleRanges, clearFillRanges, defaultEmphasisSpan, fillTypeAt, nextFillType,
     normalizeLineLimit, normalizeStyleRanges, normalizeText: normalize, pointLength, remapStyleRanges,
-    suggestBalancedLines,
+    suggestBalancedLines, setSizeRange, sizeScaleAt, completeRibbonFormats,
   } = formatting;
   const normalizeScale = (value) => {
     const numeric = Number(value);
@@ -60,6 +60,7 @@
     cutouts: { direction: 'editorial', variant: 'cutouts', icon: 'rhythm', label: 'Cutouts' },
     constellations: { direction: 'contextual', variant: 'constellations', icon: 'dots', label: 'Constellations' },
     gradient: { direction: 'editorial', variant: 'gradient', icon: 'gradient', label: 'Gradient' },
+    ribbons: { direction: 'editorial', variant: 'default', icon: 'ribbons', label: 'Nastri', grammar: 'ribbons' },
     plain: { direction: 'editorial', variant: 'default', hidden: true, label: 'Hide pattern' },
   };
   const STYLE_THUMBS = {
@@ -69,6 +70,7 @@
     contours: '<path d="M4 4c7 4 7 12 0 16M14 4c7 4 7 12 0 16M24 4c7 4 7 12 0 16"/>',
     rings: '<circle cx="27" cy="12" r="3"/><circle cx="27" cy="12" r="7"/><circle cx="27" cy="12" r="11"/>',
     gradient: '<path d="M4 19 32 5M4 14 27 3M9 21 32 10"/><path d="M4 5h28M4 9h28M4 13h28M4 17h28"/>',
+    ribbons: '<path d="M-3 8c15-18 26 24 41 2M-3 16C11 1 22 25 39 13" stroke-width="4"/>',
   };
   const normalizeGraphicVariant = (direction, value) => {
     const config = GRAPHIC_VARIANTS[direction] || GRAPHIC_VARIANTS.editorial;
@@ -84,6 +86,11 @@
     graphic_variant: normalizeGraphicVariant(direction, presentation.graphic_variant || 'default'),
     graphic_seed: Number.isInteger(presentation.graphic_seed) && presentation.graphic_seed >= 0 && presentation.graphic_seed <= 999999 ? presentation.graphic_seed : 0,
     output_mode: presentation.output_mode || fallbackMode,
+    ...(presentation.visual_grammar === 'ribbons' ? { visual_grammar: 'ribbons' } : {}),
+    ...(presentation.composition && typeof presentation.composition === 'object'
+      ? { composition: clone(presentation.composition) } : {}),
+    ...(Number.isFinite(presentation.quote_font_size) ? { quote_font_size: presentation.quote_font_size } : {}),
+    ...(Number.isFinite(presentation.author_font_size) ? { author_font_size: presentation.author_font_size } : {}),
   });
   const defaultOutputMode = (manifest) => manifest.formats?.[0]?.id || 'all';
   const baselineSignature = (manifest) => JSON.stringify({
@@ -94,6 +101,8 @@
     palette_initial: manifest.palette_initial || manifest.brand?.colors || {},
     presentation: normalizePresentation(manifest.presentation || {}, defaultOutputMode(manifest), manifest.direction),
     formats: manifest.formats || [],
+    composition_candidates: manifest.composition_candidates || [],
+    proposal_source: manifest.proposal_source || '',
   });
   const TRANSFORMATION_LABELS = {
     VERBATIM: 'Letterale', EDITED: 'Modificata', PARAPHRASE: 'Parafrasi', AI_GENERATED: 'Generata',
@@ -179,6 +188,12 @@
     styleRequestId: 0,
     applyingStyle: false,
     paletteInitial: null,
+    compositionPreviews: [],
+    compositionRequestId: 0,
+    loadingCompositions: false,
+    sizeSelection: null,
+    reuseStyleId: null,
+    reuseMode: 'card',
   };
 
   const els = {
@@ -196,6 +211,14 @@
     stylePicker: $('#style-picker'), savedStyles: $('#saved-styles'), styleName: $('#style-name'),
     styleSaveForm: $('#style-save-form'), styleSaveConfirm: $('#style-save-confirm'),
     styleSaveFeedback: $('#style-save-feedback'), styleSaveState: $('#style-save-state'),
+    compositionSection: $('#composition-section'), compositionProposals: $('#composition-proposals'),
+    compositionSource: $('#composition-source'), compositionRefresh: $('#composition-refresh'),
+    selectionSizeControl: $('#selection-size-control'), selectionSize: $('#selection-size'),
+    ribbonSizeControls: $('#ribbon-size-controls'), quoteFontSize: $('#quote-font-size'), authorFontSize: $('#author-font-size'),
+    undo: $('#text-undo'), redo: $('#text-redo'),
+    reuseForm: $('#style-reuse-form'), reuseTitle: $('#style-reuse-title'), reuseText: $('#style-reuse-text'),
+    reuseAuthor: $('#style-reuse-author'), reuseCancel: $('#style-reuse-cancel'), reuseConfirm: $('#style-reuse-confirm'),
+    projectDownload: $('#project-download'), projectUpload: $('#project-upload'), projectFile: $('#project-file'),
     fontSupport: $('#font-support-note'),
     scale: $('#scale'), scaleValue: $('#scale-value'), scaleFitNote: $('#scale-fit-note'),
     textIntegrityHint: $('#text-integrity-hint'),
@@ -208,7 +231,7 @@
     cvdMode: $('#cvd-mode'),
     backLink: $('#back-link'), generate: $('#generate'),
     generateLabel: $('#generate-label'), generatedOutput: $('#generated-output'),
-    qaDetails: $('#qa-details'), warningList: $('#warning-list'), warningState: $('#qa-mini-state'),
+    qaDetails: $('#qa-details'), qaDetailsTitle: $('#qa-details-title'), warningList: $('#warning-list'), warningState: $('#qa-mini-state'),
     reset: $('#reset'),
     paletteReset: $('#palette-reset'), palettePreset: $('#palette-preset'), paletteContrast: $('#palette-contrast'),
   };
@@ -258,6 +281,7 @@
   };
 
   const currentFormat = () => state.draft?.formats.find((item) => item.id === state.activeFormat);
+  const isRibbons = () => state.draft?.presentation?.visual_grammar === 'ribbons';
 
   const activate = (container, datasetKey, value) => {
     container.querySelectorAll('button').forEach((button) => {
@@ -281,7 +305,7 @@
     }
   };
 
-  const initialStyles = (content, direction) => {
+  const initialStyles = (content, direction, grammar) => {
     const existing = normalizeStyleRanges(content.styles || []);
     if (existing.length) return existing;
     if (content.emphasis) {
@@ -290,6 +314,9 @@
       const start = pointLength(content.text.slice(0, index));
       return [{ start, end: start + pointLength(content.emphasis), type: 'bold' }];
     }
+    // Empty personalized styles are intentional. Nastri also uses only the
+    // authored treatments, so opening it must not add a first-run cue.
+    if (content.styles_customized || grammar === 'ribbons') return [];
     // No explicit styles and no legacy emphasis: the renderer still applies
     // an automatic first-run cue (default_emphasis_span in
     // render_quote_card.py). Seed the same span here as an explicit,
@@ -332,11 +359,13 @@
         const localEnd = points[index + 1];
         const globalStart = lineStart + localStart;
         const globalEnd = lineStart + localEnd;
-        const active = styles
-          .filter((style) => style.start <= globalStart && style.end >= globalEnd)
+        const activeStyles = styles.filter((style) => style.start <= globalStart && style.end >= globalEnd);
+        const active = activeStyles
           .map((style) => `style-${style.type}`);
         const className = active.length ? ` class="${active.join(' ')}"` : '';
-        fragments.push(`<span data-start="${globalStart}" data-end="${globalEnd}"${className}>${escapeHtml(characters.slice(localStart, localEnd).join(''))}</span>`);
+        const size = activeStyles.find((style) => style.type === 'size');
+        const sizeAttribute = size ? ` style="font-size:${size.scale}em"` : '';
+        fragments.push(`<span data-start="${globalStart}" data-end="${globalEnd}"${className}${sizeAttribute}>${escapeHtml(characters.slice(localStart, localEnd).join(''))}</span>`);
       }
       cursor = lineEnd;
       hasText = true;
@@ -456,6 +485,9 @@
     lines: [...(currentFormat()?.lines || [])],
     styles: clone(state.draft.styles),
     styles_customized: Boolean(state.draft.styles_customized),
+    formats: clone(state.draft.formats),
+    presentation: clone(state.draft.presentation),
+    attribution: clone(state.draft.attribution),
     selection: selectionOffsets(),
   });
 
@@ -470,7 +502,9 @@
     if (current
       && current.text === entry.text
       && JSON.stringify(current.lines) === JSON.stringify(entry.lines)
-      && JSON.stringify(current.styles) === JSON.stringify(entry.styles)) return;
+      && JSON.stringify(current.styles) === JSON.stringify(entry.styles)
+      && JSON.stringify(current.presentation) === JSON.stringify(entry.presentation)
+      && JSON.stringify(current.attribution) === JSON.stringify(entry.attribution)) return;
     history.entries = [...history.entries.slice(0, history.index + 1), entry].slice(-HISTORY_LIMIT);
     history.index = history.entries.length - 1;
   };
@@ -502,8 +536,11 @@
     state.draft.text = entry.text;
     state.draft.styles = clone(entry.styles);
     state.draft.styles_customized = entry.styles_customized;
-    state.draft.formats.forEach((format) => { format.lines = [...entry.lines]; });
-    renderVisualEditor();
+    state.draft.formats = clone(entry.formats);
+    state.draft.presentation = clone(entry.presentation);
+    state.draft.attribution = clone(entry.attribution);
+    state.maxLines = isRibbons() ? 64 : normalizeLineLimit(state.manifest.limits?.max_lines);
+    renderDraftControls();
     if (entry.selection) restoreSelection(entry.selection.start, entry.selection.end);
     syncFillControl();
     els.formattingState.textContent = step < 0 ? 'Annullato' : 'Ripristinato';
@@ -580,6 +617,47 @@
     els.fillControl.setAttribute('aria-label', `Riempimento del testo: ${FILL_LABELS[fill]}`);
     els.fillControl.title = `Riempimento del testo — ${FILL_LABELS[fill]}. `
       + 'Clic per il trattamento successivo; ⌘⇧A accento, ⌘⇧H evidenziato, ⌘⇧O contorno.';
+    const offsets = selectionOffsets();
+    if (offsets) state.sizeSelection = { ...offsets, text: state.draft.text };
+    else if (document.activeElement === els.lines) state.sizeSelection = null;
+    const size = offsets ? sizeScaleAt(state.draft.styles, offsets.start, offsets.end) : 1;
+    if (document.activeElement !== els.selectionSize) {
+      els.selectionSize.value = size === null ? '' : String(Math.round(size * 100));
+      els.selectionSize.placeholder = size === null ? 'Mista' : '100';
+    }
+  };
+
+  const applySelectionSize = () => {
+    updateActiveFormat();
+    const offsets = selectionOffsets() || (state.sizeSelection?.text === state.draft.text ? state.sizeSelection : null);
+    const scale = Number(els.selectionSize.value) / 100;
+    if (!isRibbons() || !offsets) {
+      els.formattingState.textContent = 'Seleziona il testo da dimensionare';
+      return;
+    }
+    if (!els.selectionSize.value || !Number.isFinite(scale) || scale < 0.5 || scale > 2.5) {
+      els.formattingState.textContent = 'Usa una dimensione fra 50% e 250%';
+      return;
+    }
+    const currentPreview = state.previews.get(state.activeFormat);
+    const currentSize = currentPreview?.ribbon_layout?.font_size ?? currentPreview?.font_size;
+    if (!Number.isFinite(state.draft.presentation.quote_font_size) && !Number.isFinite(currentSize)) {
+      els.formattingState.textContent = 'Attendi la nuova anteprima prima di cambiare la dimensione';
+      return;
+    }
+    commitHistory();
+    if (!Number.isFinite(state.draft.presentation.quote_font_size)) {
+      state.draft.presentation.quote_font_size = Number(currentSize.toFixed(2));
+      els.quoteFontSize.value = state.draft.presentation.quote_font_size;
+    }
+    state.draft.styles = setSizeRange(state.draft.styles, offsets.start, offsets.end, scale);
+    state.draft.styles_customized = true;
+    renderVisualEditor();
+    restoreSelection(offsets.start, offsets.end);
+    syncFillControl();
+    commitHistory();
+    els.formattingState.textContent = scale === 1 ? 'Dimensione locale rimossa' : `Selezione al ${Math.round(scale * 100)}%`;
+    schedulePreview();
   };
 
   const cycleFill = () => {
@@ -642,6 +720,7 @@
     state.draft.formats.forEach((item) => { item.lines = [...nextLines]; });
     if (nextText && nextText !== previousText) {
       state.draft.text = nextText;
+      state.sizeSelection = null;
       if (state.draft.styles.length) {
         state.draft.styles = clampStyleRanges(
           remapStyleRanges(state.draft.styles, previousText, nextText),
@@ -666,6 +745,15 @@
     els.scaleValue.value = `${percent}%`;
     els.scaleValue.textContent = els.scaleValue.value;
     activate($('#position-control'), 'position', format.vertical_position);
+    els.quoteFontSize.value = state.draft.presentation.quote_font_size ?? '';
+    els.authorFontSize.value = state.draft.presentation.author_font_size ?? '';
+    els.ribbonSizeControls.hidden = !isRibbons();
+    els.selectionSizeControl.hidden = !isRibbons();
+    els.scale.hidden = isRibbons();
+    els.scaleValue.closest('.range-row').hidden = isRibbons();
+    $('.position-section').hidden = isRibbons();
+    $$('#output-control button').forEach((button) => { button.disabled = false; });
+    els.styleSaveConfirm.textContent = isRibbons() ? 'Salva base' : 'Save style';
   };
 
   const initialDraft = (manifest) => {
@@ -676,12 +764,15 @@
       attribution: clone(manifest.content.attribution || { label: '', role: 'none' }),
       alt_text: manifest.content.alt_text || '',
       direction: manifest.direction,
-      styles: initialStyles(manifest.content, manifest.direction),
+      styles: initialStyles(manifest.content, manifest.direction, manifest.presentation?.visual_grammar),
       styles_customized: Boolean(manifest.content.styles_customized),
       palette: currentPaletteFrom(manifest),
       presentation: normalizePresentation(manifest.presentation || {}, defaultOutputMode(manifest), manifest.direction),
       formats: normalizeFormats(manifest.formats),
+      composition_candidates: clone(manifest.composition_candidates || []),
+      proposal_source: manifest.proposal_source === 'model' ? 'model' : 'demo',
     };
+    if (draft.presentation.visual_grammar === 'ribbons') draft.formats = completeRibbonFormats(draft.formats, draft.text);
     sanitizeDirectionStyles(draft);
     return draft;
   };
@@ -692,7 +783,9 @@
       if (saved?.revision === manifest.revision
         && saved?.baseline_signature === baselineSignature(manifest)
         && typeof saved.draft?.text === 'string'
-        && saved.draft?.formats?.length === manifest.formats.length) {
+        && Array.isArray(saved.draft?.formats)
+        && (saved.draft?.presentation?.visual_grammar === 'ribbons'
+          || saved.draft.formats.length === manifest.formats.length)) {
         const initial = initialDraft(manifest);
         const restored = {
           ...initial,
@@ -706,6 +799,7 @@
           ),
         };
         restored.formats = normalizeFormats(saved.draft.formats);
+        if (restored.presentation.visual_grammar === 'ribbons') restored.formats = completeRibbonFormats(restored.formats, restored.text);
         sanitizeDirectionStyles(restored);
         return restored;
       }
@@ -764,7 +858,8 @@
   const renderPaletteContrast = () => {
     if (!els.paletteContrast) return;
     const palette = state.draft?.palette || {};
-    const ratio = contrastRatio(palette.text, palette.background);
+    const composition = isRibbons() ? state.draft.presentation.composition : null;
+    const ratio = contrastRatio(palette[composition?.text_role || 'text'], palette[composition?.background_role || 'background']);
     els.paletteContrast.textContent = ratio === null ? 'Contrasto in attesa di colori validi.' : `Contrasto testo/sfondo: ${ratio.toFixed(2)}:1 ${ratio >= 4.5 ? '✓' : '· verifica leggibilità'}`;
     els.paletteContrast.classList.toggle('is-warning', ratio !== null && ratio < 4.5);
   };
@@ -935,9 +1030,19 @@
       const item = document.createElement('div');
       item.className = 'saved-style'; item.setAttribute('role', 'listitem');
       const name = document.createElement('span'); name.textContent = style.name || 'Unnamed style';
-      const button = document.createElement('button'); button.type = 'button'; button.dataset.styleId = style.id;
-      button.textContent = 'Apply'; button.setAttribute('aria-label', `Apply ${style.name || 'saved style'}`);
-      item.append(name, button); els.savedStyles.append(item);
+      const actions = document.createElement('div'); actions.className = 'saved-style-actions';
+      if (style.presentation?.visual_grammar === 'ribbons' || style.visual_grammar === 'ribbons') {
+        [['card', 'Riusa questa card'], ['style', 'Crea nello stesso stile']].forEach(([mode, label]) => {
+          const reuse = document.createElement('button'); reuse.type = 'button'; reuse.dataset.styleId = style.id;
+          reuse.dataset.reuseMode = mode; reuse.textContent = label;
+          actions.append(reuse);
+        });
+      } else {
+        const button = document.createElement('button'); button.type = 'button'; button.dataset.styleId = style.id;
+        button.textContent = 'Applica'; button.setAttribute('aria-label', `Applica ${style.name || 'stile salvato'}`);
+        actions.append(button);
+      }
+      item.append(name, actions); els.savedStyles.append(item);
     });
   };
 
@@ -963,7 +1068,7 @@
       renderSavedStyles(); els.styleName.value = '';
       setStyleFeedback(`Style “${name}” saved.`);
     } catch (error) { setStyleFeedback(error.message, true); }
-    finally { els.styleSaveConfirm.disabled = false; els.styleSaveConfirm.textContent = 'Save style'; }
+    finally { els.styleSaveConfirm.disabled = false; els.styleSaveConfirm.textContent = isRibbons() ? 'Salva base' : 'Save style'; }
   };
 
   const applySavedStyle = async (id) => {
@@ -975,12 +1080,150 @@
       if (request !== state.styleRequestId) return;
       clearTimeout(state.timer); state.timer = null; state.requestId += 1;
       localStorage.removeItem(storageKey);
-      const model = result.session_model || result.session || result;
+      const model = result.model || result.session_model || result.session || result;
       initializeSession(model, true);
       await preview();
       setStyleFeedback('Style applied. Text and formatting preserved.');
     } catch (error) { if (request === state.styleRequestId) setStyleFeedback(error.message, true); }
     finally { if (request === state.styleRequestId) { state.applyingStyle = false; renderSavedStyles(); } }
+  };
+
+  const renderCompositions = () => {
+    els.compositionSection.hidden = !isRibbons();
+    if (!isRibbons()) return;
+    const source = state.draft.proposal_source === 'model' ? 'model' : 'demo';
+    const candidates = state.draft.composition_candidates || [];
+    const savedComposition = !candidates.length && state.draft.presentation.composition;
+    els.compositionSource.textContent = savedComposition
+      ? 'Composizione attiva conservata. Puoi preparare altre proposte di prova.'
+      : source === 'model'
+      ? 'Composizioni progettate dal modello. Scegli la stessa card che aprirai qui.'
+      : 'Proposte di prova: percorsi dimostrativi, senza chiamata a un modello da questo editor.';
+    els.compositionRefresh.textContent = state.loadingCompositions ? 'Preparo…'
+      : source === 'model' ? 'Rivedi proposte' : 'Proposte di prova';
+    els.compositionRefresh.disabled = state.loadingCompositions;
+    els.compositionProposals.replaceChildren();
+    candidates.forEach((composition) => {
+      const rendered = state.compositionPreviews.find((item) => item.id === composition.id);
+      const button = document.createElement('button'); button.type = 'button';
+      button.dataset.compositionId = composition.id;
+      button.className = 'composition-proposal';
+      const active = composition.id === state.draft.presentation.composition?.id;
+      button.classList.toggle('is-active', active); button.setAttribute('aria-pressed', String(active));
+      const thumb = document.createElement('span'); thumb.className = 'composition-thumb'; thumb.setAttribute('aria-hidden', 'true');
+      if (rendered?.svg) {
+        // An SVG image isolates its IDs and font CSS from the other proofs;
+        // identical mask/clip IDs in three inline SVGs would otherwise bind
+        // the later thumbnails to the first composition's clearance mask.
+        const image = document.createElement('img'); image.alt = '';
+        image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(rendered.svg)}`;
+        thumb.append(image);
+      }
+      else thumb.textContent = 'Anteprima…';
+      const name = document.createElement('span'); name.textContent = composition.name || composition.id;
+      button.append(thumb, name);
+      if (rendered?.valid === false) {
+        const note = document.createElement('small'); note.textContent = 'Con avvisi'; button.append(note);
+      }
+      els.compositionProposals.append(button);
+    });
+    if (!candidates.length) {
+      const empty = document.createElement('p'); empty.className = 'field-help';
+      empty.textContent = savedComposition
+        ? `Card attiva: ${savedComposition.name || savedComposition.id}.`
+        : 'Nessuna proposta disponibile. Prepara le proposte di prova oppure apri un progetto del modello.';
+      els.compositionProposals.append(empty);
+    }
+  };
+
+  const requestCompositions = async () => {
+    if (state.loadingCompositions || !state.draft) return;
+    const call = ++state.compositionRequestId;
+    state.loadingCompositions = true; renderCompositions();
+    try {
+      clearTimeout(state.timer); state.timer = null; state.requestId += 1;
+      const result = await api('/compositions', { method: 'POST', body: JSON.stringify({ draft: payload() }) });
+      if (call !== state.compositionRequestId) return;
+      const model = result.model || result.session_model;
+      if (model) {
+        localStorage.removeItem(storageKey);
+        initializeSession(model, true);
+      }
+      applyPreview(result);
+      setMessage(result.proposal_source === 'model' ? 'Proposte del modello pronte.' : 'Tre proposte di prova pronte.');
+    } catch (error) { if (call === state.compositionRequestId) setMessage(error.message, true); }
+    finally { if (call === state.compositionRequestId) { state.loadingCompositions = false; renderCompositions(); } }
+  };
+
+  const beginStyleReuse = (id, mode) => {
+    const style = state.styles.find((item) => item.id === id);
+    state.reuseStyleId = id; state.reuseMode = mode;
+    els.reuseTitle.textContent = `${mode === 'card' ? 'Riusa questa card' : 'Crea nello stesso stile'} · ${style?.name || 'Nastri'}`;
+    els.reuseText.value = state.draft.text;
+    els.reuseAuthor.value = state.draft.attribution?.label || '';
+    els.reuseForm.hidden = false; els.reuseText.focus();
+  };
+
+  const confirmStyleReuse = async () => {
+    const text = normalize(els.reuseText.value);
+    if (!text) { setStyleFeedback('Inserisci la nuova citazione.', true); els.reuseText.focus(); return; }
+    if (state.applyingStyle) return;
+    const changedText = text !== normalize(state.draft.text);
+    state.applyingStyle = true; els.reuseConfirm.disabled = true;
+    try {
+      const label = els.reuseAuthor.value.trim();
+      const result = await api('/styles/apply', { method: 'POST', body: JSON.stringify({
+        id: state.reuseStyleId, draft: payload(), reuse_mode: state.reuseMode,
+        text, attribution: label,
+      }) });
+      clearTimeout(state.timer); state.timer = null; state.requestId += 1;
+      localStorage.removeItem(storageKey);
+      initializeSession(result.model || result.session_model || result.session || result, true);
+      els.reuseForm.hidden = true;
+      await preview();
+      const compositionMessage = state.reuseMode === 'style'
+        ? 'Nuova composizione di prova nello stile salvato.' : 'Card dalla composizione salvata.';
+      setStyleFeedback(`${compositionMessage} ${changedText
+        ? 'Le enfasi del testo precedente non sono trasferite.' : 'Formattazioni manuali conservate sullo stesso testo.'}`);
+    } catch (error) { setStyleFeedback(error.message, true); }
+    finally { state.applyingStyle = false; els.reuseConfirm.disabled = false; renderSavedStyles(); }
+  };
+
+  const downloadProject = () => {
+    const draft = payload();
+    const manifest = clone(state.manifest);
+    // These belong to the current editor session, not the reusable card.
+    ['font_capabilities', 'limits', 'return_url'].forEach((key) => { delete manifest[key]; });
+    const project = { ...manifest,
+      content: { ...clone(state.manifest.content), text: draft.text, transformation: draft.transformation,
+        evidence_status: draft.evidence_status, attribution: draft.attribution, alt_text: draft.alt_text,
+        styles: draft.styles, styles_customized: draft.styles_customized, emphasis: '' },
+      brand: { ...clone(state.manifest.brand), colors: draft.palette },
+      direction: draft.direction, presentation: draft.presentation, formats: draft.formats,
+      composition_candidates: draft.composition_candidates, proposal_source: draft.proposal_source,
+    };
+    const blob = new Blob([JSON.stringify(project, null, 2) + '\n'], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a'); link.href = url; link.download = 'quote-card-project.json';
+    document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+    setStyleFeedback('Progetto scaricato con testo, formattazioni, brand e composizione.');
+  };
+
+  const loadProjectFile = async () => {
+    const file = els.projectFile.files?.[0];
+    if (!file) return;
+    els.projectUpload.disabled = true;
+    try {
+      if (file.size > 2 * 1024 * 1024) throw new Error('Il progetto supera 2 MB. Usa il JSON esportato dall’editor.');
+      const project = JSON.parse(await file.text());
+      const result = await api('/project/load', { method: 'POST', body: JSON.stringify({ project }) });
+      clearTimeout(state.timer); state.timer = null; state.requestId += 1;
+      localStorage.removeItem(storageKey);
+      initializeSession(result.model || result.session_model || result.session || result, true);
+      if (result.previews) applyPreview(result); else await preview();
+      setStyleFeedback('Progetto caricato. Le correzioni e la composizione sono conservate.');
+    } catch (error) { setStyleFeedback(`Progetto non caricato: ${error.message}`, true); }
+    finally { els.projectUpload.disabled = false; els.projectFile.value = ''; }
   };
 
   const renderAltTextState = () => {
@@ -1050,9 +1293,10 @@
   };
 
   const styleChoiceForDraft = (draft = state.draft) => {
+    if (draft.presentation.visual_grammar === 'ribbons') return 'ribbons';
     if (draft.presentation.graphic_mode === 'hidden') return 'plain';
     const match = Object.entries(STYLE_OPTIONS).find(([, option]) => (
-      !option.hidden && option.direction === draft.direction && option.variant === draft.presentation.graphic_variant
+      !option.hidden && !option.grammar && option.direction === draft.direction && option.variant === draft.presentation.graphic_variant
     ));
     return match?.[0] || 'legacy';
   };
@@ -1074,9 +1318,10 @@
     $('#graphic-help').textContent = choice === 'legacy'
       ? 'Legacy source style preserved.'
       : `${option?.label || 'Style'} selected.`;
-    $('#cover-variation').hidden = choice === 'plain' || choice === 'legacy';
+    $('#cover-variation').hidden = choice === 'plain' || choice === 'legacy' || choice === 'ribbons';
     $('#cover-seed').textContent = `Variant ${state.draft.presentation.graphic_seed + 1}`;
     $('#cover-previous').disabled = state.draft.presentation.graphic_seed === 0;
+    renderCompositions();
   };
 
   const renderDraftControls = () => {
@@ -1087,7 +1332,7 @@
     activate($('#logo-control'), 'logo', draft.presentation.logo_mode);
     renderGraphicControl();
     activate($('#output-control'), 'output', draft.presentation.output_mode || 'all');
-    syncPreviewToSelectedOutput(false);
+    syncPreviewToSelectedOutput(false, false);
     renderGraphicControl();
     syncFormatControls();
     renderDeclarationState();
@@ -1107,14 +1352,17 @@
     // reset uses paletteInitial, which survives applying saved styles.
     state.baseRevision = manifest.revision;
     state.draft = loadSavedDraft(manifest);
+    if (isRibbons()) state.maxLines = 64;
+    state.compositionPreviews = [];
+    state.sizeSelection = null;
     renderCardColors();
     syncPaletteInputs(true);
     state.graphicVariants[state.draft.direction] = state.draft.presentation.graphic_variant;
-    state.activeFormat = preserveFormat && manifest.formats.some((item) => item.id === previousFormat)
+    state.activeFormat = preserveFormat && state.draft.formats.some((item) => item.id === previousFormat)
       ? previousFormat
-      : manifest.formats[0].id;
+      : state.draft.formats[0].id;
     $$('.format-tab').forEach((button) => {
-      const available = manifest.formats.some((item) => item.id === button.dataset.format);
+      const available = state.draft.formats.some((item) => item.id === button.dataset.format);
       button.disabled = !available;
       button.setAttribute('aria-disabled', String(!available));
     });
@@ -1144,6 +1392,7 @@
     if (!Array.isArray(state.draft.styles) || state.draft.styles.length > 64 || state.draft.styles.some((style) => (
       !STYLE_TYPES.has(style.type) || !Number.isInteger(style.start) || !Number.isInteger(style.end)
       || style.start < 0 || style.start >= style.end || style.end > textLength
+      || (style.type === 'size' && (!Number.isFinite(style.scale) || style.scale < 0.5 || style.scale > 2.5))
     ))) errors.push('La formattazione contiene una selezione non valida.');
     if (!['VERBATIM', 'EDITED', 'PARAPHRASE', 'AI_GENERATED'].includes(state.draft.transformation)) errors.push('Scegli un trattamento valido.');
     if (!['VERIFIED', 'USER_SUPPLIED', 'UNVERIFIED', 'CONFLICT'].includes(state.draft.evidence_status)) errors.push('Scegli uno stato della prova valido.');
@@ -1173,6 +1422,8 @@
       emphasis: '',
       presentation: normalizePresentation(state.draft.presentation, defaultOutputMode(state.manifest), state.draft.direction),
       formats: clone(state.draft.formats),
+      ...(isRibbons() ? { composition_candidates: clone(state.draft.composition_candidates || []),
+        proposal_source: state.draft.proposal_source || 'demo' } : {}),
     };
   };
 
@@ -1260,52 +1511,32 @@
     els.generatedOutput.hidden = false;
   };
 
-  const renderWarnings = (warnings, qa = null) => {
+  const renderWarnings = (warnings) => {
     const items = Array.isArray(warnings) ? warnings : [];
-    const passedChecks = !items.length && qa?.checks?.length ? qa.checks.length : 0;
-    els.warningCount.textContent = items.length ? items.length : passedChecks;
-    els.qaLabel.textContent = items.length
-      ? `${items.length === 1 ? 'avviso da risolvere' : 'avvisi da risolvere'}`
-      : passedChecks
-        ? 'controlli superati'
-        : 'vincoli locali validi';
-    els.dot.classList.toggle('is-error', Boolean(items.length));
+    els.warningCount.textContent = items.length;
+    els.qaLabel.textContent = items.length === 1 ? 'avviso' : 'avvisi';
+    els.dot.classList.remove('is-error');
 
     els.warningList.replaceChildren();
     els.qaDetails.hidden = !items.length;
-    els.warningState.textContent = items.length ? `${items.length} ${items.length === 1 ? 'intervento' : 'interventi'}` : '';
-    items.forEach((warning, index) => {
+    els.qaDetailsTitle.textContent = 'Avvisi';
+    els.warningState.textContent = items.length;
+    items.forEach((warning) => {
       const source = typeof warning === 'string' ? { message: warning } : (warning || {});
       const formatMatch = String(source.message || '').match(/^(4x5|1x1|9x16):\s*/i);
       const format = source.format && source.format !== 'all' ? source.format : formatMatch?.[1] || '';
-      const message = String(source.message || 'Controllo non superato.').replace(/^(4x5|1x1|9x16):\s*/i, '');
-      const code = String(source.code || '').toLowerCase();
-      const searchable = `${code} ${message}`.toLowerCase();
-      let action = { target: '#visual-text-editor', label: 'Correggi testo', category: 'Testo' };
-      if (/output|formati del pacchetto/.test(searchable)) action = { target: '#output-control', label: 'Scegli formato', category: 'Output' };
-      else if (/decoration|motivo|graphic/.test(searchable)) action = { target: '#style-picker', label: 'Choose a style', category: 'Style' };
-      else if (/safe_area|attribuzione|attribution/.test(searchable)) action = { target: '#position-control', label: 'Cambia posizione', category: 'Spazi' };
-      else if (/text_fit|text_outside|outline_too_small|scala|massimo sicuro/.test(searchable)) action = { target: '#scale', label: 'Regola scala', category: 'Ingombro' };
-      else if (/contrast|contrasto/.test(searchable)) action = { target: '#style-picker', label: 'Choose a style', category: 'Style' };
-      else if (/svg_|geometria svg|anteprima svg/.test(searchable)) action = { target: 'preview', label: 'Riprova', category: 'Anteprima' };
+      const message = String(source.message || 'Avviso sulla card.').replace(/^(4x5|1x1|9x16):\s*/i, '');
 
       const item = document.createElement('li');
       const copy = document.createElement('div');
       copy.className = 'warning-copy';
       const meta = document.createElement('strong');
       const formatLabel = { '4x5': '4:5', '1x1': '1:1', '9x16': '9:16' }[format] || 'Tutti i formati';
-      meta.textContent = `${formatLabel} · ${action.category}`;
+      meta.textContent = formatLabel;
       const detail = document.createElement('span');
       detail.textContent = message;
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'warning-action';
-      button.textContent = action.label;
-      button.dataset.warningTarget = action.target;
-      button.dataset.warningFormat = format;
-      button.setAttribute('aria-label', `${action.label}: avviso ${index + 1}, ${formatLabel}`);
       copy.append(meta, detail);
-      item.append(copy, button);
+      item.append(copy);
       els.warningList.append(item);
     });
   };
@@ -1323,6 +1554,13 @@
     els.message.textContent = state.safeArea ? 'Area tratteggiata: margine di sicurezza' : 'Margine di sicurezza nascosto';
     const percent = Math.round(normalizeScale(preview.text_scale) * 100);
     els.scaleFitNote.hidden = false;
+    if (isRibbons()) {
+      const requested = state.draft.presentation.quote_font_size;
+      els.scaleFitNote.textContent = Number.isFinite(requested)
+        ? `Dimensione richiesta: ${requested}px. Gli ingombri vengono controllati senza ridurla.`
+        : `Dimensione automatica: ${Number(preview.font_size || 0).toFixed(1)}px.`;
+      return;
+    }
     els.scaleFitNote.textContent = preview.auto_fitted
       ? 'La scala precedente è stata limitata al massimo sicuro per questo formato.'
       : percent < 100
@@ -1333,8 +1571,11 @@
   const applyPreview = (result) => {
     state.previews = new Map((result.previews || []).map((item) => [item.format, item]));
     state.qa = result.qa || null;
+    if (Array.isArray(result.composition_previews)) state.compositionPreviews = result.composition_previews;
+    if (result.proposal_source) state.draft.proposal_source = result.proposal_source;
+    renderCompositions();
     showActivePreview();
-    renderWarnings(result.warnings || [], result.qa || null);
+    renderWarnings(result.warnings || []);
     renderDeclarationState(result.declaration || null);
     renderScore(result.score || null);
   };
@@ -1396,16 +1637,20 @@
       button.classList.toggle('is-active', active);
       button.setAttribute('aria-pressed', String(active));
     });
-    if (state.draft) syncFormatControls();
+    if (state.draft) {
+      syncFormatControls();
+      $('.dimension-x span').textContent = currentFormat()?.width || '';
+      $('.dimension-y span').textContent = currentFormat()?.height || '';
+    }
     showActivePreview();
     storeDraft();
   };
 
-  const syncPreviewToSelectedOutput = (announce = false) => {
+  const syncPreviewToSelectedOutput = (announce = false, collect = true) => {
     const output = state.draft?.presentation?.output_mode;
     if (!output || output === 'all' || !state.draft.formats.some((item) => item.id === output)) return false;
     const changed = state.activeFormat !== output;
-    if (changed) setFormat(output);
+    if (changed) setFormat(output, collect);
     if (changed && announce) {
       const label = { '4x5': '4:5', '1x1': '1:1', '9x16': '9:16' }[output] || output;
       setMessage(`Anteprima sincronizzata con l’output ${label}.`);
@@ -1480,7 +1725,7 @@
     const errors = validateDraft();
     if (errors.length) {
       renderWarnings(errors);
-      setMessage('Correggi gli avvisi prima di generare.', true);
+      setMessage(`Dati della card non validi: ${errors[0]}`, true);
       return;
     }
     storeDraft();
@@ -1492,11 +1737,6 @@
     try {
       const checked = await api('/preview', { method: 'POST', body: JSON.stringify(payload()) });
       applyPreview(checked);
-      if (checked.qa && !checked.qa.passed) {
-        setButtonsDisabled(false);
-        setMessage('Generazione bloccata: risolvi gli avvisi del quality gate.', true);
-        return;
-      }
       const submitted = await api('/generate', { method: 'POST', body: JSON.stringify(payload()) });
       if (submitted.applied) {
         state.awaitingApply = false;
@@ -1683,17 +1923,37 @@
     const label = { '4x5': '4:5', '1x1': '1:1', '9x16': '9:16' }[format] || format;
     setMessage(`Anteprima ${label}. Output: tutti i formati.`);
   }));
-  els.stylePicker.addEventListener('click', (event) => {
+  els.stylePicker.addEventListener('click', async (event) => {
     const button = event.target.closest('[data-style-choice]');
     if (!button || button.dataset.styleChoice === 'legacy') return;
     const option = STYLE_OPTIONS[button.dataset.styleChoice];
     if (!option) return;
+    updateActiveFormat();
+    commitHistory();
     state.draft.direction = option.direction;
     state.draft.presentation.graphic_variant = option.variant;
     state.draft.presentation.graphic_mode = option.hidden ? 'hidden' : 'auto';
+    if (option.grammar) {
+      state.draft.presentation.visual_grammar = option.grammar;
+      state.draft.presentation.output_mode = '4x5';
+      state.maxLines = 64;
+      state.draft.formats = completeRibbonFormats(state.draft.formats, state.draft.text);
+      $$('.format-tab').forEach((tab) => { tab.disabled = false; tab.setAttribute('aria-disabled', 'false'); });
+    } else {
+      delete state.draft.presentation.visual_grammar;
+      delete state.draft.presentation.composition;
+      delete state.draft.presentation.quote_font_size;
+      delete state.draft.presentation.author_font_size;
+      state.draft.styles = state.draft.styles.filter((style) => style.type !== 'size');
+      state.draft.composition_candidates = [];
+      state.maxLines = normalizeLineLimit(state.manifest.limits?.max_lines);
+    }
     state.graphicVariants[state.draft.direction] = option.variant;
     sanitizeDirectionStyles(state.draft);
-    renderGraphicControl(); schedulePreview();
+    renderGraphicControl(); syncFormatControls();
+    commitHistory();
+    if (option.grammar && !state.draft.composition_candidates?.length) await requestCompositions();
+    else schedulePreview();
   });
   // Keep the caret where it is: a toolbar press must not steal the selection
   // the treatment is about to be applied to.
@@ -1703,7 +1963,9 @@
   els.formatToolbar.addEventListener('click', (event) => {
     const button = event.target.closest('button');
     if (!button) return;
-    if (button === els.fillControl) cycleFill();
+    if (button === els.undo) restoreHistory(-1);
+    else if (button === els.redo) restoreHistory(1);
+    else if (button === els.fillControl) cycleFill();
     else if (button.dataset.style) applyTextStyle(button.dataset.style);
   });
   els.rebalance.addEventListener('pointerdown', (event) => event.preventDefault());
@@ -1714,6 +1976,44 @@
   });
   document.addEventListener('selectionchange', () => {
     if (document.activeElement === els.lines) syncFillControl();
+  });
+  els.selectionSize.addEventListener('pointerdown', () => {
+    const offsets = selectionOffsets();
+    if (offsets) state.sizeSelection = { ...offsets, text: state.draft.text };
+  });
+  els.selectionSize.addEventListener('change', applySelectionSize);
+  els.selectionSize.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); applySelectionSize(); }
+  });
+  [els.quoteFontSize, els.authorFontSize].forEach((input) => {
+    input.addEventListener('change', () => {
+      if (!isRibbons()) return;
+      const value = input.value === '' ? null : Number(input.value);
+      if (value !== null && (!Number.isFinite(value) || value < Number(input.min) || value > Number(input.max))) {
+        setMessage(`Usa una dimensione fra ${input.min}px e ${input.max}px oppure lascia vuoto per Auto.`, true);
+        return;
+      }
+      commitHistory();
+      const key = input === els.quoteFontSize ? 'quote_font_size' : 'author_font_size';
+      if (value === null) delete state.draft.presentation[key];
+      else state.draft.presentation[key] = value;
+      commitHistory(); schedulePreview();
+    });
+    input.addEventListener('keydown', (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault(); restoreHistory(event.shiftKey ? 1 : -1);
+      }
+      if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
+    });
+  });
+  els.compositionRefresh.addEventListener('click', requestCompositions);
+  els.compositionProposals.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-composition-id]');
+    const composition = state.draft?.composition_candidates?.find((item) => item.id === button?.dataset.compositionId);
+    if (!composition) return;
+    commitHistory();
+    state.draft.presentation.composition = clone(composition);
+    commitHistory(); renderCompositions(); renderPaletteContrast(); schedulePreview();
   });
   els.lines.addEventListener('keydown', (event) => {
     const modifier = event.metaKey || event.ctrlKey;
@@ -1759,6 +2059,12 @@
       els.scaleValue.textContent = els.scaleValue.value;
     }
     if (input === els.altTextLabel) renderAltTextState();
+    if (input === els.attributionLabel) {
+      commitHistory();
+      const label = input.value.trim();
+      state.draft.attribution = { label, role: label ? 'author' : 'none' };
+      commitHistory();
+    }
     schedulePreview();
   }));
   els.colors.addEventListener('input', (event) => {
@@ -1820,25 +2126,6 @@
     }
     schedulePreview();
   }));
-  els.warningList.addEventListener('click', (event) => {
-    const button = event.target.closest('.warning-action');
-    if (!button) return;
-    const format = button.dataset.warningFormat;
-    if (format && state.draft.formats.some((item) => item.id === format)) setFormat(format);
-    if (button.dataset.warningTarget === 'preview') {
-      preview();
-      setMessage('Nuovo controllo dell’anteprima in corso.');
-      return;
-    }
-    const target = $(button.dataset.warningTarget);
-    if (!target) return;
-    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const focusTarget = target.matches('button, input, textarea, select, [contenteditable="true"]')
-      ? target
-      : target.querySelector('.is-active, button, input, textarea, select, [contenteditable="true"]');
-    focusTarget?.focus({ preventScroll: true });
-    setMessage('Controllo aperto: applica la correzione indicata e ricontrolla l’anteprima.');
-  });
   els.generatedOutput.addEventListener('click', async (event) => {
     const dismiss = event.target.closest('.generated-dismiss');
     if (dismiss) {
@@ -1891,8 +2178,14 @@
   });
   els.savedStyles.addEventListener('click', (event) => {
     const button = event.target.closest('[data-style-id]');
-    if (button) applySavedStyle(button.dataset.styleId);
+    if (button?.dataset.reuseMode) beginStyleReuse(button.dataset.styleId, button.dataset.reuseMode);
+    else if (button) applySavedStyle(button.dataset.styleId);
   });
+  els.reuseCancel.addEventListener('click', () => { els.reuseForm.hidden = true; });
+  els.reuseConfirm.addEventListener('click', confirmStyleReuse);
+  els.projectDownload.addEventListener('click', downloadProject);
+  els.projectUpload.addEventListener('click', () => els.projectFile.click());
+  els.projectFile.addEventListener('change', loadProjectFile);
   $('#zoom-in').addEventListener('click', () => setZoom(state.zoom + 10));
   $('#zoom-out').addEventListener('click', () => setZoom(state.zoom - 10));
   els.cvdMode.addEventListener('change', () => {

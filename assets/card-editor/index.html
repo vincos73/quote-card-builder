@@ -127,6 +127,7 @@
             <button type="button" data-style-choice="cutouts" aria-pressed="false"><svg class="style-thumb" viewBox="0 0 36 24" aria-hidden="true"></svg><span>Cutouts</span></button>
             <button type="button" data-style-choice="constellations" aria-pressed="false"><svg class="style-thumb" viewBox="0 0 36 24" aria-hidden="true"></svg><span>Constellations</span></button>
             <button type="button" data-style-choice="gradient" aria-pressed="false"><svg class="style-thumb" viewBox="0 0 36 24" aria-hidden="true"></svg><span>Gradient</span></button>
+            <button type="button" data-style-choice="ribbons" aria-pressed="false"><svg class="style-thumb" viewBox="0 0 36 24" aria-hidden="true"></svg><span>Nastri</span></button>
             <button type="button" data-style-choice="plain" aria-pressed="false"><svg class="style-thumb" viewBox="0 0 36 24" aria-hidden="true"><path d="M5 12h26"/></svg><span>Hide pattern</span></button>
             <button type="button" data-style-choice="legacy" aria-pressed="false" hidden><svg class="style-thumb" viewBox="0 0 36 24" aria-hidden="true"><path d="M5 5l26 14M31 5L5 19"/></svg><span>Legacy</span></button>
           </div>
@@ -140,6 +141,12 @@
           </div>
         </fieldset>
 
+        <section id="composition-section" class="composition-section" aria-labelledby="composition-title" hidden>
+          <div class="composition-heading"><h2 id="composition-title">Composizioni</h2><button id="composition-refresh" type="button">Proposte di prova</button></div>
+          <p id="composition-source" class="field-help" role="status"></p>
+          <div id="composition-proposals" class="composition-proposals" role="group" aria-label="Scegli la composizione dei nastri"></div>
+        </section>
+
         <section class="my-styles" aria-labelledby="my-styles-title">
           <div class="my-styles-heading"><h2 id="my-styles-title">My styles</h2><span id="style-save-state">Available in this session</span></div>
           <div id="saved-styles" class="saved-styles" role="list" aria-live="polite"></div>
@@ -148,6 +155,13 @@
             <button id="style-save-confirm" type="button">Save style</button>
           </div>
           <p id="style-save-feedback" class="style-save-feedback" role="status" aria-live="polite" hidden></p>
+          <div id="style-reuse-form" class="style-reuse-form" hidden>
+            <h3 id="style-reuse-title">Nuova card</h3>
+            <label for="style-reuse-text">Nuova citazione<textarea id="style-reuse-text" rows="4"></textarea></label>
+            <label for="style-reuse-author">Autore opzionale<textarea id="style-reuse-author" rows="2"></textarea></label>
+            <div class="inline-actions"><button id="style-reuse-cancel" type="button">Annulla</button><button id="style-reuse-confirm" type="button">Crea card</button></div>
+          </div>
+          <div class="project-actions"><button id="project-download" type="button">Scarica progetto JSON</button><button id="project-upload" type="button">Carica progetto</button><input id="project-file" type="file" accept=".json,application/json" hidden></div>
         </section>
 
         <div id="editorial-fields" class="tool-section lines-section content-section">
@@ -170,14 +184,17 @@
               <button id="fill-control" type="button" data-fill="none" aria-label="Riempimento: nessuno" title="Riempimento del testo — nessuno">
                 <span class="format-letter format-fill" aria-hidden="true">A</span>
               </button>
+              <button id="text-undo" type="button" aria-label="Annulla modifica" title="Annulla (⌘Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5 4 10l5 5M4 10h10a6 6 0 0 1 0 12"/></svg></button>
+              <button id="text-redo" type="button" aria-label="Ripristina modifica" title="Ripristina (⌘⇧Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0 0 12"/></svg></button>
               <span id="formatting-state" class="formatting-state" aria-live="polite">Seleziona il testo da formattare</span>
             </div>
+            <div id="selection-size-control" class="selection-size-control" hidden><label for="selection-size">Dimensione selezione</label><input id="selection-size" type="number" min="50" max="250" step="5" value="100" aria-describedby="selection-size-help"><span>%</span><small id="selection-size-help">100% = dimensione della citazione</small></div>
             <div id="visual-text-editor" class="visual-text-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="visual-text-label" aria-describedby="font-support-note lines-help" spellcheck="true"></div>
           </div>
           <p id="font-support-note" class="field-help font-support-note" role="status" hidden></p>
           <p id="lines-help" class="sr-only">Invio crea una nuova riga. Comando Invio riequilibra gli a capo.</p>
           <div class="editorial-meta-grid editorial-meta-primary">
-            <label for="attribution-label"><span>Attribuzione</span><input id="attribution-label" type="text" autocomplete="off"></label>
+            <label for="attribution-label"><span>Attribuzione</span><textarea id="attribution-label" rows="2" autocomplete="off" aria-label="Attribuzione, anche su due righe"></textarea></label>
           </div>
           <details class="accessibility-panel">
             <summary><span>Accessibilità</span><strong id="alt-text-state">Alt text automatico ✓</strong></summary>
@@ -190,6 +207,10 @@
         </div>
 
         <div class="tool-section scale-section">
+          <div id="ribbon-size-controls" class="ribbon-size-controls" hidden>
+            <label for="quote-font-size"><span>Dimensione citazione</span><input id="quote-font-size" type="number" min="8" max="720" step="any" placeholder="Auto"><small>px · lascia vuoto per Auto</small></label>
+            <label for="author-font-size"><span>Dimensione autore</span><input id="author-font-size" type="number" min="8" max="720" step="any" placeholder="Auto"><small>px · lascia vuoto per Auto</small></label>
+          </div>
           <div class="range-row">
             <label class="field-label" for="scale">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9V5h4M15 5h4v4M19 15v4h-4M9 19H5v-4"/></svg>
@@ -235,9 +256,10 @@
             <button type="button" data-output="1x1">1:1</button>
             <button type="button" data-output="9x16">9:16</button>
           </div>
+          <p class="field-help">Scegli un formato o tutti e controlla le relative anteprime.</p>
           <section id="qa-details" class="qa-panel" aria-labelledby="qa-details-title" aria-live="polite" hidden>
             <div class="qa-heading">
-              <h2 id="qa-details-title">Da correggere</h2>
+              <h2 id="qa-details-title">Avvisi</h2>
               <span id="qa-mini-state" class="qa-mini-state"></span>
             </div>
             <ul id="warning-list" class="warnings"></ul>
@@ -253,7 +275,7 @@
     <div class="audit-summary">
       <span id="status-dot" class="status-dot" aria-hidden="true"></span>
       <strong id="qa-count">0</strong>
-      <span id="qa-label">controlli in corso</span>
+      <span id="qa-label">avvisi</span>
       <span id="action-message" class="action-message" role="status">Pronto.</span>
     </div>
 

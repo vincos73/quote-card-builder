@@ -26,6 +26,9 @@ LOGO_MODES = {"auto", "hidden"}
 GRAPHIC_MODES = {"auto", "hidden"}
 OUTPUT_MODES = {"all", "4x5", "1x1", "9x16"}
 SVG_MODES = {"auto", "keep", "discard"}
+QUALITY_POLICIES = {"strict", "advisory"}
+MANIFEST_VISUAL_CODES = {"contrast", "gradient_contrast"}
+TECHNICAL_RENDER_CODES = {"svg_invalid", "ribbon_geometry_missing"}
 
 
 def add_error(errors: list[dict[str, str]], path: str, code: str, message: str) -> None:
@@ -65,6 +68,9 @@ def validate_production_manifest(data: Any, manifest_dir: Path) -> list[dict[str
         add_error(errors, "schema_version", "unsupported", "La versione production supportata è 0.3.")
     if data.get("state") != "prova_visuale_approvata":
         add_error(errors, "state", "approval_required", "Il rendering richiede prova_visuale_approvata.")
+    quality_policy = data.get("quality_policy", "strict")
+    if not isinstance(quality_policy, str) or quality_policy not in QUALITY_POLICIES:
+        add_error(errors, "quality_policy", "enum", "Usare strict o advisory.")
 
     content = data.get("content")
     if not isinstance(content, dict):
@@ -136,6 +142,8 @@ def validate_production_manifest(data: Any, manifest_dir: Path) -> list[dict[str
 
         common_errors = proof.validate_visual_manifest(proof_manifest_for_format(data, item), manifest_dir)
         for error in common_errors:
+            if quality_policy == "advisory" and error.get("code") in MANIFEST_VISUAL_CODES:
+                continue
             mapped = dict(error)
             if mapped["path"] == "content.lines":
                 mapped["path"] = f"{path}.lines"
@@ -310,7 +318,34 @@ def measure_text_box(
 def layout_measurement(
     lines: list[str], font_size: float, data: dict[str, Any], manifest_dir: Path,
     direction: str, width: int, height: int, vertical_position: str,
-) -> dict[str, float | str | bool]:
+) -> dict[str, Any]:
+    if (data.get("presentation") or {}).get("visual_grammar") == "ribbons":
+        candidate = copy.deepcopy(data)
+        candidate["content"]["lines"] = list(lines)
+        layout = proof.ribbon_layout(
+            candidate, manifest_dir, width=width, height=height,
+            render_options={"vertical_position": vertical_position}, font_size_override=font_size,
+        )
+        pairs = [(layout["bounds"][name], layout[f"{name}_box"]) for name in ("quote", "author")]
+        width_fits = all(bounds["width"] <= box["width"] + 0.5 for bounds, box in pairs)
+        vertical_fits = all(
+            bounds["y"] >= box["y"] - 0.5
+            and bounds["y"] + bounds["height"] <= box["y"] + box["height"] + 0.5
+            for bounds, box in pairs
+        )
+        quote_bounds, quote_box = pairs[0]
+        return {
+            "measured_width": quote_bounds["width"], "measured_height": quote_bounds["height"],
+            "available_width": quote_box["width"], "upper_limit": quote_box["y"],
+            "lower_limit": quote_box["y"] + quote_box["height"],
+            "text_top": quote_bounds["y"], "text_bottom": quote_bounds["y"] + quote_bounds["height"],
+            "metric": layout["metric"], "width_fits": width_fits, "vertical_fits": vertical_fits,
+            # Contrast belongs to style QA. It must not turn correctly
+            # measured typography into a spurious overflow warning.
+            "fits": width_fits and vertical_fits and layout.get("geometry_valid", True),
+            "layout_valid": layout["valid"],
+            "bounds": layout["bounds"], "warnings": layout["warnings"],
+        }
     measured_width, measured_height, metric = measure_text_box(
         lines, font_size, data, manifest_dir, direction, width, height
     )
@@ -341,6 +376,17 @@ def resolve_font_size(
     width: int, height: int, text_scale: float, vertical_position: str = "center",
 ) -> tuple[float, str, float, bool, float]:
     """Resolve the true maximum safe size, then apply an optional reduction."""
+    if (data.get("presentation") or {}).get("visual_grammar") == "ribbons":
+        candidate = copy.deepcopy(data)
+        candidate["content"]["lines"] = list(lines)
+        layout = proof.ribbon_layout(
+            candidate, manifest_dir, width=width, height=height,
+            render_options={"vertical_position": vertical_position, "text_scale": text_scale},
+        )
+        size = float(layout["font_size"])
+        # Explicit user sizes are never replaced by the legacy fitter. A
+        # size that does not fit is retained, then refused by layout QA.
+        return size, f"{layout['metric']}_ribbon_layout", size, False, size
     maximum_size, fit_mode = fit_font_size(
         lines, data, manifest_dir, direction, width, height, vertical_position
     )
@@ -379,6 +425,14 @@ def render_pack(
     data: dict[str, Any], manifest_path: Path, output_dir: Path, png_mode: str,
     node: Path | None, node_modules: Path | None, svg_mode: str = "auto"
 ) -> dict[str, Any]:
+    quality_policy = data.get("quality_policy", "strict")
+    if not isinstance(quality_policy, str) or quality_policy not in QUALITY_POLICIES:
+        raise RuntimeError("quality_policy: usare strict o advisory.")
+    advisory = quality_policy == "advisory"
+    if advisory:
+        technical_errors = validate_production_manifest(data, manifest_path.parent)
+        if technical_errors:
+            raise RuntimeError("; ".join(error["message"] for error in technical_errors))
     output_dir.mkdir(parents=True, exist_ok=True)
     direction = data["approval"]["direction"]
     basename = (data.get("output") or {}).get("basename", "quote-card")
@@ -387,10 +441,20 @@ def render_pack(
     inspected: list[str] = []
     png_failures: list[str] = []
     png_backends: set[str] = set()
+    visual_advisories: list[dict[str, str]] = []
+    advisory_keys: set[tuple[str, str, str]] = set()
+
+    def remember_visual(warning: dict[str, str], format_id: str) -> None:
+        key = (format_id, warning.get("code", "visual_quality"), warning.get("message", ""))
+        if key not in advisory_keys:
+            advisory_keys.add(key)
+            visual_advisories.append({**warning, "format": format_id, "severity": "advisory"})
     presentation = data.get("presentation") or {}
+    ribbons = presentation.get("visual_grammar") == "ribbons"
     gradient_safety: dict[str, Any] | None = None
     if (
-        direction == "editorial"
+        not ribbons
+        and direction == "editorial"
         and presentation.get("graphic_variant") == "gradient"
         and presentation.get("graphic_mode", "auto") != "hidden"
     ):
@@ -400,18 +464,20 @@ def render_pack(
             logo_mode=presentation.get("logo_mode", "auto"),
         )
         if not gradient_safety["passed"]:
-            raise RuntimeError(
-                "Gradient: contrasto non verificabile su logo o insufficiente sull'intera superficie."
-            )
+            message = "Gradient: contrasto non verificabile su logo o insufficiente sull'intera superficie."
+            if not advisory:
+                raise RuntimeError(message)
+            for item in data["formats"]:
+                remember_visual({"code": "gradient_contrast", "message": message}, item["id"])
 
     for item in data["formats"]:
         adapted = proof_manifest_for_format(data, item)
         adapted["canvas"] = {"width": item["width"], "height": item["height"]}
+        if advisory:
+            for issue in proof.validate_visual_manifest(proof_manifest_for_format(data, item), manifest_path.parent):
+                if issue.get("code") in MANIFEST_VISUAL_CODES:
+                    remember_visual(issue, item["id"])
         text_scale = float(item.get("text_scale", 1.0))
-        size, fit_mode, requested_size, auto_fitted, maximum_size = resolve_font_size(
-            item["lines"], adapted, manifest_path.parent, direction,
-            item["width"], item["height"], text_scale, item.get("vertical_position", "center"),
-        )
         render_options = {
             "vertical_position": item.get("vertical_position", "center"),
             "logo_mode": presentation.get("logo_mode", "auto"),
@@ -419,6 +485,29 @@ def render_pack(
             "graphic_variant": presentation.get("graphic_variant", "default"),
             "graphic_seed": presentation.get("graphic_seed", 0),
         }
+        ribbon_measurement: dict[str, Any] | None = None
+        if ribbons:
+            render_options["text_scale"] = text_scale
+            ribbon_measurement = proof.ribbon_layout(
+                adapted, manifest_path.parent, width=item["width"], height=item["height"],
+                render_options=render_options,
+            )
+            blocking = [] if advisory else ribbon_measurement.get("warnings", [])
+            if blocking or (not ribbon_measurement["valid"] and not ribbon_measurement.get("warnings")):
+                messages = [warning["message"] for warning in blocking]
+                raise RuntimeError(f"{item['id']}: " + "; ".join(messages or ["Nastri: testo o autore fuori area."]))
+            for warning in ribbon_measurement.get("warnings", []):
+                if advisory:
+                    remember_visual(warning, item["id"])
+            size = float(ribbon_measurement["font_size"])
+            fit_mode = f"{ribbon_measurement['metric']}_ribbon_layout"
+            requested_size = maximum_size = size
+            auto_fitted = False
+        else:
+            size, fit_mode, requested_size, auto_fitted, maximum_size = resolve_font_size(
+                item["lines"], adapted, manifest_path.parent, direction,
+                item["width"], item["height"], text_scale, item.get("vertical_position", "center"),
+            )
         stem = f"{basename}-{direction}-{item['id']}"
         svg_path = output_dir / f"{stem}.svg"
         svg = proof.render_svg(
@@ -428,16 +517,21 @@ def render_pack(
             font_size_override=size,
             render_options=render_options,
         )
-        # Read the finished drawing, not the estimate that produced it: a
-        # production pack must never deliver a card whose text has left the
-        # safe area or whose marks sit on the words.
+        # Read the finished drawing. The editor keeps visual findings as
+        # advice; the standalone strict path still refuses those defects.
         defects = inspector.inspect_render(
             svg, direction, item["width"], item["height"],
             vertical_position=render_options["vertical_position"],
+            **({"ribbon_layout": ribbon_measurement} if ribbon_measurement is not None else {}),
         )
-        if defects:
+        blocking_defects = [defect for defect in defects
+                            if not advisory or defect.get("code") in TECHNICAL_RENDER_CODES]
+        for defect in defects:
+            if advisory and defect.get("code") not in TECHNICAL_RENDER_CODES:
+                remember_visual(defect, item["id"])
+        if blocking_defects:
             raise RuntimeError(
-                f"{item['id']}: " + "; ".join(defect["message"] for defect in defects)
+                f"{item['id']}: " + "; ".join(defect["message"] for defect in blocking_defects)
             )
         inspected.append(item["id"])
         svg_path.write_text(svg, encoding="utf-8")
@@ -452,6 +546,7 @@ def render_pack(
                 png_backend = raster.rasterize(
                     svg_path, candidate, item["width"], item["height"],
                     node=node, node_modules=node_modules,
+                    **({"visual_grammar": "ribbons"} if ribbons else {}),
                 )
                 png_path = candidate
                 png_backends.add(png_backend)
@@ -471,7 +566,7 @@ def render_pack(
                 "format": item["id"],
                 "width": item["width"],
                 "height": item["height"],
-                "lines": item["lines"],
+                "lines": ribbon_measurement["lines"] if ribbon_measurement is not None else item["lines"],
                 "font_size": size,
                 "fitting": fit_mode,
                 "text_scale": text_scale,
@@ -482,6 +577,12 @@ def render_pack(
                 "graphic_mode": render_options["graphic_mode"],
                 "graphic_variant": render_options["graphic_variant"],
                 "graphic_seed": render_options["graphic_seed"],
+                **({
+                    "visual_grammar": "ribbons",
+                    "author_font_size": ribbon_measurement["author_font_size"],
+                    "layout_bounds": ribbon_measurement["bounds"],
+                    "layout_metric": ribbon_measurement["metric"],
+                } if ribbon_measurement is not None else {}),
                 "png_backend": png_backend,
                 "svg": svg_record,
                 "png": {"path": png_path.name, "sha256": sha256_file(png_path)} if png_path else None,
@@ -497,34 +598,45 @@ def render_pack(
         contact_assets, contact_sheet, f"Production pack — {data['brand']['name']}", alt_text=alt_text,
     )
     colors = data["brand"]["colors"]
+    if ribbons:
+        composition = presentation["composition"]
+        ink, ground, marker = (colors[composition[key]] for key in
+                               ("text_role", "background_role", "highlight_role"))
+        contrast_checks = {"text_on_background": round(proof.contrast_ratio(ink, ground), 2)}
+        painted_fragments = [set(fragment["types"]) for row in ribbon_measurement["rows"]
+                             for fragment in row["fragments"]]
+        if any("highlight" in types for types in painted_fragments):
+            marker_ink = max(colors.values(), key=lambda color: proof.contrast_ratio(color, marker))
+            contrast_checks["text_on_highlight"] = round(proof.contrast_ratio(marker_ink, marker), 2)
+        if any("accent" in types and "highlight" not in types for types in painted_fragments):
+            contrast_checks["accent_on_background"] = round(proof.contrast_ratio(marker, ground), 2)
+    else:
+        contrast_checks = {
+            "primary_on_background": round(proof.contrast_ratio(colors["primary"], colors["background"]), 2),
+            "background_on_primary": round(proof.contrast_ratio(colors["background"], colors["primary"]), 2),
+            "accent_on_primary": round(proof.contrast_ratio(colors["accent"], colors["primary"]), 2),
+        }
     approved_proof = proof.resolve_asset(data["approval"]["proof_path"], manifest_path.parent)
     qa_path = output_dir / f"{basename}-{direction}-production-qa.json"
     qa_data = {
         "schema_version": "0.3",
         "status": "automatic_checks_passed",
         "state": "qa",
+        "quality_policy": quality_policy,
         "content_sha256": sha256_text(data["content"]["text"]),
         "approval": {
             **data["approval"],
             "proof_sha256": sha256_file(approved_proof),
         },
+        "warnings": visual_advisories,
         "checks": {
             "approved_direction": direction,
             "text_unchanged_in_every_format": True,
             "ratios_valid": True,
-            "contrast": {
-                "primary_on_background": round(proof.contrast_ratio(colors["primary"], colors["background"]), 2),
-                "background_on_primary": round(proof.contrast_ratio(colors["background"], colors["primary"]), 2),
-                "accent_on_primary": round(proof.contrast_ratio(colors["accent"], colors["primary"]), 2),
-            },
+            "contrast": contrast_checks,
             "gradient_contrast": gradient_safety,
-            # Geometry and contrast are verified on the rendered SVG of
-            # every format (see inspect_render), so nobody has to catch
-            # overflow or colliding marks by eye. The flag below stays True
-            # regardless: finalize_quote_card_pack clears it to record that
-            # a human signed off editorially, which is a different claim
-            # from "the drawing is geometrically sound".
-            "render_inspection": {"formats": inspected, "defects": []},
+            "visual_checks_passed": not visual_advisories,
+            "render_inspection": {"formats": inspected, "defects": [], "advisories": visual_advisories},
             # Rasterisers disagree slightly on text metrics, so which one
             # produced these files is part of the artifact's provenance.
             "png_backends": sorted(png_backends),
@@ -536,24 +648,27 @@ def render_pack(
         "contact_sheet": {"path": contact_sheet.name, "sha256": sha256_file(contact_sheet)},
     }
     qa_path.write_text(json.dumps(qa_data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    warnings: list[str] = list(png_failures)
+    warnings: list[str] = list(png_failures) + [f"{item['format']}: {item['message']}" for item in visual_advisories]
     # Rasterisers do not agree to the pixel: on the same card, headless
     # Chrome drew the widest row about 3% wider than sharp, close enough
     # to the safe-area edge to matter. A substitute backend is better than
     # no PNG, but the user is told which one drew their file.
-    substitutes = sorted(png_backends - {raster.PRIMARY_BACKEND})
+    primary_png_backend = raster.primary_backend("ribbons") if ribbons else raster.PRIMARY_BACKEND
+    substitutes = sorted(png_backends - {primary_png_backend})
     if substitutes:
         warnings.append(
-            f"PNG prodotti con {', '.join(substitutes)} invece di {raster.PRIMARY_BACKEND}: "
+            f"PNG prodotti con {', '.join(substitutes)} invece di {primary_png_backend}: "
             "le metriche del testo possono differire lievemente dall'SVG verificato."
         )
     return {
         "valid": True,
         "state": "qa",
+        "quality_policy": quality_policy,
         "formats": rendered,
         "contact_sheet": str(contact_sheet),
         "qa_report": str(qa_path),
         "warnings": warnings,
+        "visual_warnings": visual_advisories,
     }
 
 

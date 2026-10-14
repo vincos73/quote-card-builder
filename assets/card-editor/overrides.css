@@ -2,3 +2,44 @@
 .preview-shell[style*="--preview-zoom"] { will-change: transform; }
 .status-dot.is-error + #qa-count,
 .status-dot.is-error ~ #qa-label { color: var(--danger); }
+
+/* Nastri joins the existing instrument rail; the SVG renderer remains the
+   single source for the main proof and the proposal thumbnails. */
+.composition-section { padding: 14px 16px 16px; border-bottom: 1px solid var(--line-dark); }
+.composition-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.composition-heading h2, .style-reuse-form h3 { margin: 0; color: var(--lavender-light); font-family: var(--mono); font-size: 11px; font-weight: 500; }
+.composition-heading button, .project-actions button, .inline-actions button { min-height: 32px; padding: 5px 8px; border: 1px solid var(--line-strong); background: transparent; color: var(--lavender-light); font-family: var(--mono); font-size: 10px; }
+.composition-proposals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.composition-proposal { min-width: 0; padding: 4px; border: 1px solid var(--line-strong); background: transparent; color: var(--lavender-light); font-family: var(--mono); font-size: 10px; text-align: left; }
+.composition-proposal > span:not(.composition-thumb) { display: block; padding-top: 5px; overflow-wrap: anywhere; }
+.composition-proposal.is-active { border-color: var(--chartreuse); color: var(--chartreuse); }
+.composition-proposal small { display: block; margin-top: 4px; color: var(--lavender); }
+.composition-thumb { display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; }
+.composition-thumb svg, .composition-thumb img { display: block; width: 100%; height: 100%; }
+.saved-style { align-items: start; flex-direction: column; }
+.saved-style-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.style-reuse-form { display: grid; gap: 9px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-dark); }
+.style-reuse-form label { display: grid; gap: 5px; color: var(--lavender); font-family: var(--mono); font-size: 10px; }
+.inline-actions, .project-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.project-actions { margin-top: 12px; }
+.inline-actions button:last-child { border-color: var(--chartreuse); color: var(--chartreuse); }
+textarea, input[type="number"] { width: 100%; min-width: 0; border: 1px solid var(--line-dark); border-radius: 0; background: var(--chrome); color: var(--lavender-light); font-family: var(--mono); font-size: 11px; }
+textarea { resize: vertical; padding: 8px 10px; line-height: 1.4; }
+input[type="number"] { min-height: 34px; padding: 0 8px; font-variant-numeric: tabular-nums; }
+textarea:hover, input[type="number"]:hover { border-color: var(--line-strong); }
+textarea:focus-visible, input[type="number"]:focus-visible { outline: 2px solid var(--chartreuse); outline-offset: 3px; }
+.format-toolbar { grid-template-columns: repeat(6, 34px) minmax(0, 1fr); }
+.selection-size-control { display: grid; grid-template-columns: minmax(0, 1fr) 62px auto; align-items: center; gap: 7px; padding: 7px 10px; border-bottom: 1px solid var(--line-dark); color: var(--lavender-light); font-family: var(--mono); font-size: 10px; }
+.selection-size-control small { grid-column: 1 / -1; color: var(--lavender); }
+.ribbon-size-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ribbon-size-controls label { display: grid; gap: 5px; color: var(--lavender-light); font-family: var(--mono); font-size: 10px; }
+.ribbon-size-controls small { color: var(--lavender); font-size: 10px; }
+.composition-section[hidden], .style-reuse-form[hidden], .selection-size-control[hidden], .ribbon-size-controls[hidden], .position-section[hidden], .range-row[hidden] { display: none; }
+.warnings li { grid-template-columns: minmax(0, 1fr); border-color: var(--line-strong); color: var(--lavender-light); }
+.warnings .warning-copy strong { color: var(--lavender); }
+@media (max-width: 640px) {
+  .format-toolbar { grid-template-columns: repeat(6, 44px) minmax(0, 1fr); }
+  .composition-heading button, .project-actions button, .inline-actions button, .saved-style-actions button { min-height: 44px; }
+  .selection-size-control input, .ribbon-size-controls input { min-height: 44px; }
+  .formatting-state { white-space: normal; font-size: 10px; padding: 0 5px; }
+}
