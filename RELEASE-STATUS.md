@@ -1,4 +1,14 @@
-# Plugin personale 1.10.1 / UI v1.60 — compatibilità di installazione
+# Export manuale 1.10.2 / UI v1.60 — aggiornamento tramite ZIP
+
+15 ottobre 2026. **Archivio da scaricare e caricare manualmente; non registrato prima della consegna. L’importazione nei client resta da confermare.**
+
+- L’utente ha riferito che lo ZIP 1.10.1 continua a essere rifiutato sia da ChatGPT sia da Codex, con «Impossibile aggiungere il plugin. Riprova.», usando **Aggiungi/Carica plugin dall’elenco generale**. L’aggiornamento tramite Plugin Creator del turno precedente non aveva riprodotto questo flusso.
+- L’account contiene già la 1.10.1, release `pluginrel_6ad07b33077081918fa9ef024d1b26af`, verificata di nuovo in lettura. La [procedura documentata](https://help.openai.com/en/articles/20001256-plugins-in-chatgpt) distingue l’aggiunta da **Carica nuova versione** nei dettagli del plugin esistente. L’export 1.10.2 fornisce una versione successiva senza registrarla preventivamente sull’account. Questo elimina la coincidenza di versione nel prossimo tentativo; non dimostra la causa del messaggio generico precedente.
+- Il controllo dell’archivio 1.10.1 non ha riprodotto un difetto di integrità o struttura: CRC, percorsi unici e relativi, singola cartella contenitore, file regolari, compressione supportata e manifest coerenti. Le dimensioni rispettano i [limiti generali documentati](https://developers.openai.com/plugins/deploy/submission-errors); un limite specifico del bundle della skill o un errore del client richiedono la diagnostica dell’importazione. Report in `work/installation-fix/manual-import-audit.json`.
+- Il cambiamento 1.10.2 riguarda versione e documentazione del caricamento. Urban · Xerox, Urban · geometrico, Nastri, artwork, font ed editor restano gli stessi della 1.10.1. Nessun aggiornamento account, installazione locale, deploy Cloud Run, tag o release pubblica eseguito per questo export.
+- Export locale: `dist/quote-card-builder-plugin-1.10.2.zip`, **4,144,679 byte**, SHA-256 `5dc05051f111ba4345f9a06cdc084a0ac5c0fdbeae4363b77b432b23e8ec6cad`. Tutti gli 82 percorsi sono conservati; script e asset sono identici alla 1.10.1. **17 test mirati superati**. Avvio MCP stdio dal nuovo archivio estratto riuscito: 9 tool e rendering Xerox con raster originale, usando la copia isolata delle dipendenze già installate come nel controllo 1.10.1. Report `manual-export-1.10.2.json` e `stdio-report-1.10.2.json` in `work/installation-fix/`. Anche gli archivi web e server sono ricostruiti alla stessa versione; checksum in `dist/SHA256SUMS-1.10.2.txt`.
+
+# Storico plugin personale 1.10.1 / UI v1.60 — compatibilità di installazione
 
 15 ottobre 2026. **La piattaforma ha accettato e salvato l’aggiornamento del plugin privato esistente. L’installazione nei client ChatGPT/Codex dell’utente resta da verificare.**
 

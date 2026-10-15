@@ -6,6 +6,12 @@ The installable archive provides Agent Plugins 1.0 `plugin.json` and `mcp.json` 
 
 The hosted web package is separate: `web-plugin/` connects through streamable HTTP and includes an English skill for the remote editor. Build it with `python3 scripts/build_web_plugin_package.py`. It requires no local Python executor. Installing the stdio package does not publish or install the web package; neither operation proves public Plugin Directory availability.
 
+## Manual ZIP updates
+
+Version 1.10.2 is an archive export for manual upload. It includes Urban · Xerox and Urban · geometrico with the same artwork and renderer as 1.10.1. The export is not saved to the account before handoff: the account release remains 1.10.1 until an update is performed.
+
+For a plugin already uploaded manually, open its details in Plugins and choose **Upload new version** when available. The general **Add / Upload plugin** action starts a new addition. Keep the existing name and use a version newer than the account release. This is the [documented ChatGPT upload workflow](https://help.openai.com/en/articles/20001256-plugins-in-chatgpt); available controls depend on the host and account. Successful account ingestion or a local stdio test does not verify the manual UI upload.
+
 ## Current web MCP — 1.8.11 / UI v1.58
 
 The remote server is live at 100% of production traffic. Nastri joins Blocks, Cutouts, Constellations and Gradient. The model can supply three different native numeric scenes; the user chooses and refines the selected scene in the same editor. Deterministic editor variations are labeled as demos and do not invoke a model.

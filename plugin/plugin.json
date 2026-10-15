@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "quote-card-builder",
-  "version": "1.10.1",
+  "version": "1.10.2",
   "description": "Turn quotes, text, URLs, documents, and ideas into editable quote cards with guided editorial and visual review.",
   "author": {
     "name": "Vincenzo Cosenza",
