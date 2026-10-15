@@ -11,6 +11,8 @@ import math
 from typing import Any
 
 COLOR_ROLES = frozenset({"primary", "accent", "background", "text"})
+from urban_grammar import normalize_urban_composition, demo_urban_compositions
+from urban_artwork import is_xerox
 GRAMMAR_PRESENTATION_KEYS = frozenset({
     "visual_grammar", "composition", "quote_font_size", "author_font_size",
 })
@@ -53,6 +55,8 @@ def normalize_composition(value: Any) -> dict[str, Any]:
     A cubic path has 1+3*n points. Each triple after the initial point is
     its two controls and endpoint; arbitrary lengths/shapes are supported.
     """
+    if isinstance(value, dict) and value.get("grammar") == "urban":
+        return normalize_urban_composition(value)
     required = {"version", "id", "quote_box", "author_box", "logo_box",
                 "background_role", "text_role", "highlight_role", "ribbons", "crossings"}
     if not isinstance(value, dict) or not required <= set(value) or set(value) - required - {"name"}:
@@ -126,15 +130,20 @@ def normalize_grammar_presentation(value: Any) -> dict[str, Any]:
     extras = set(value) & GRAMMAR_PRESENTATION_KEYS
     if not extras:
         return {}
-    if value.get("visual_grammar") != "ribbons":
-        raise ValueError("presentation.visual_grammar: questi campi richiedono ribbons.")
-    result: dict[str, Any] = {"visual_grammar": "ribbons"}
+    if value.get("visual_grammar") not in {"ribbons", "urban"}:
+        raise ValueError("presentation.visual_grammar: grammatica non supportata.")
+    grammar = value["visual_grammar"]
+    result: dict[str, Any] = {"visual_grammar": grammar}
     if "composition" not in value:
-        raise ValueError("presentation.composition: scegliere una composizione dei Nastri.")
+        raise ValueError("presentation.composition: scegliere una composizione.")
     result["composition"] = normalize_composition(value["composition"])
     for key in ("quote_font_size", "author_font_size"):
         if key in value:
             result[key] = _number(value[key], f"presentation.{key}", 8, 720)
+    if grammar == "urban" and result["composition"].get("grammar") != "urban":
+        raise ValueError("presentation.composition: scena urban richiesta.")
+    if grammar == "ribbons" and result["composition"].get("grammar") == "urban":
+        raise ValueError("presentation.composition: scena ribbons richiesta.")
     return result
 
 
@@ -146,12 +155,13 @@ def cubic_point(points: list[list[float]], segment: int, t: float) -> tuple[floa
                  for axis in (0, 1))  # type: ignore[return-value]
 
 
-def demo_compositions(text: str = "", seed: int = 0) -> list[dict[str, Any]]:
+def demo_compositions(text: str = "", seed: int = 0, grammar: str = "ribbons") -> list[dict[str, Any]]:
     """Explicit demo choices, never advertised as model-created proposals.
 
     Consumers may instead submit arbitrary validated compositions. These
     three drawings simply make the first editor usable without a model call.
     """
+    if grammar == "urban": return demo_urban_compositions(text, seed)
     length = len(text)
     density = min(1.0, max(0.0, (length - 65) / 280))
     shift = ((int(seed) % 17) - 8) * 0.003
@@ -206,7 +216,7 @@ def demo_compositions(text: str = "", seed: int = 0) -> list[dict[str, Any]]:
 def variation_compositions(
     base_composition: Any, text: str = "", seed: int = 0,
 ) -> list[dict[str, Any]]:
-    """Three declared demo recompositions inheriting a saved ribbon recipe.
+    """Declared demo recompositions inheriting the saved visual recipe.
 
     These are local scaffold-based suggestions, never model-generated
     directions. In addition to palette roles and stroke widths, inherit
@@ -214,6 +224,19 @@ def variation_compositions(
     so a taut drawing does not silently become a much looser one.
     """
     base = normalize_composition(base_composition)
+    if base.get("grammar") == "urban":
+        if is_xerox(base):
+            # A fresh quote keeps the selected artwork and its typography.
+            # Replacing it with vector posters would lose the user's base.
+            return [copy.deepcopy(base)]
+        proposals = demo_compositions(text, seed, grammar="urban")
+        for index, proposal in enumerate(proposals):
+            for key in ("background_role", "text_role", "highlight_role"):
+                proposal[key] = base[key]
+            proposal["id"] = f"demo-variation-{base['id'][:52]}-{index+1}"
+            proposal["name"] = f"{base.get('name', 'Urban')[:80]} — variazione dimostrativa {index+1}"
+            proposal["texture"] = copy.deepcopy(base["texture"])
+        return [normalize_composition(item) for item in proposals]
     proposals = demo_compositions(text, seed)
 
     def curvature(points: list[list[float]]) -> float:

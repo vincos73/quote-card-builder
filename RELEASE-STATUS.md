@@ -1,4 +1,51 @@
-# Quote Card Builder — web MCP 1.8.11 / UI v1.58
+# Export manuale 1.10.2 / UI v1.60 — aggiornamento tramite ZIP
+
+15 ottobre 2026. **Archivio da scaricare e caricare manualmente; non registrato prima della consegna. L’importazione nei client resta da confermare.**
+
+- L’utente ha riferito che lo ZIP 1.10.1 continua a essere rifiutato sia da ChatGPT sia da Codex, con «Impossibile aggiungere il plugin. Riprova.», usando **Aggiungi/Carica plugin dall’elenco generale**. L’aggiornamento tramite Plugin Creator del turno precedente non aveva riprodotto questo flusso.
+- L’account contiene già la 1.10.1, release `pluginrel_6ad07b33077081918fa9ef024d1b26af`, verificata di nuovo in lettura. La [procedura documentata](https://help.openai.com/en/articles/20001256-plugins-in-chatgpt) distingue l’aggiunta da **Carica nuova versione** nei dettagli del plugin esistente. L’export 1.10.2 fornisce una versione successiva senza registrarla preventivamente sull’account. Questo elimina la coincidenza di versione nel prossimo tentativo; non dimostra la causa del messaggio generico precedente.
+- Il controllo dell’archivio 1.10.1 non ha riprodotto un difetto di integrità o struttura: CRC, percorsi unici e relativi, singola cartella contenitore, file regolari, compressione supportata e manifest coerenti. Le dimensioni rispettano i [limiti generali documentati](https://developers.openai.com/plugins/deploy/submission-errors); un limite specifico del bundle della skill o un errore del client richiedono la diagnostica dell’importazione. Report in `work/installation-fix/manual-import-audit.json`.
+- Il cambiamento 1.10.2 riguarda versione e documentazione del caricamento. Urban · Xerox, Urban · geometrico, Nastri, artwork, font ed editor restano gli stessi della 1.10.1. Nessun aggiornamento account, installazione locale, deploy Cloud Run, tag o release pubblica eseguito per questo export.
+- Export locale: `dist/quote-card-builder-plugin-1.10.2.zip`, **4,144,679 byte**, SHA-256 `5dc05051f111ba4345f9a06cdc084a0ac5c0fdbeae4363b77b432b23e8ec6cad`. Tutti gli 82 percorsi sono conservati; script e asset sono identici alla 1.10.1. **17 test mirati superati**. Avvio MCP stdio dal nuovo archivio estratto riuscito: 9 tool e rendering Xerox con raster originale, usando la copia isolata delle dipendenze già installate come nel controllo 1.10.1. Report `manual-export-1.10.2.json` e `stdio-report-1.10.2.json` in `work/installation-fix/`. Anche gli archivi web e server sono ricostruiti alla stessa versione; checksum in `dist/SHA256SUMS-1.10.2.txt`.
+
+# Storico plugin personale 1.10.1 / UI v1.60 — compatibilità di installazione
+
+15 ottobre 2026. **La piattaforma ha accettato e salvato l’aggiornamento del plugin privato esistente. L’installazione nei client ChatGPT/Codex dell’utente resta da verificare.**
+
+- Il pacchetto locale ora include `plugin.json` e `mcp.json` Agent Plugins 1.0, oltre agli overlay legacy sincronizzati. Identità e presentazione sono conservate; i prompt iniziali passano da quattro a tre eliminando soltanto quello generico duplicato. Il launcher moderno usa percorsi `${PLUGIN_ROOT}`.
+- Lo ZIP 1.10.0 rifiutato dall’utente conteneva solo il formato legacy e pesava circa 5.71 MiB. Non è stata identificata una causa univoca del messaggio generico dei client: anche il precedente 1.9.0 installato conteneva solo il formato legacy. La 1.10.1 corregge il formato e riduce il riferimento illustrativo a 432×540; il raster artistico usato nelle card resta identico. Il nuovo archivio pesa **4,144,344 byte**, SHA-256 `d27e03c55071244cf73ff6af90679ba42aa26a5c32880c2ac3557a565263b277`.
+- **17 test mirati superati** per pacchetti, launcher e coerenza delle versioni. Avvio MCP stdio reale dal nuovo ZIP estratto: 9 tool disponibili, rendering Urban riuscito e byte dell’immagine originale preservati nella risposta di circa 8.8 MB. Per il test è stata copiata in modo isolato la venv già installata: il download di dipendenze in una venv vuota è stato bloccato dalla risoluzione DNS di `files.pythonhosted.org` in questo ambiente. Registro e report in `work/installation-fix/`.
+- Aggiornato [Quote Card Builder](https://chatgpt.com/plugins/Plugin_a89e7ff110fc8191862bd712eeaaf65c), stesso ID `Plugin_a89e7ff110fc8191862bd712eeaaf65c`, scope USER e visibilità PRIVATE. Release restituita e riletta: `pluginrel_6ad07b33077081918fa9ef024d1b26af`. Tutti gli 82 percorsi del pacchetto sono presenti; manifest moderni e sorgenti selezionati corrispondono ai byte caricati. La piattaforma ha normalizzato gli overlay legacy con un launcher equivalente.
+- Archivi 1.10.1 locale, web e server in `dist/`, con `SHA256SUMS-1.10.1.txt`. La UI resta v1.60. Il servizio Cloud Run non è stato distribuito e resta all’ultimo stato confermato 1.8.11/UI v1.58; il plugin web di test è distinto dal plugin privato appena aggiornato. Nessun tag o rilascio pubblico.
+
+# Storico candidato 1.10.0 / UI v1.60 — Urban · Xerox
+
+15 ottobre 2026. **Prima integrazione della prova Xerox/lime scelta dall’utente; pacchetti di prova locali, nessun deploy remoto.**
+
+- Urban · Xerox usa lo stesso collage ImageGen della prova approvata, incorporato nello SVG insieme al font Barlow Condensed Black. Citazione e autore restano testo nativo; dimensioni manuali, formattazione, font e logo personali restano modificabili. Il trattamento iniziale dipinge il testo in maiuscolo senza alterare gli offset del contenuto originale.
+- Lo sfondo mantiene i propri colori. I progetti e le basi salvano il riferimento versionato `urban-xerox-lime-v1`; il file è incluso nel runtime locale/server. Non duplicano il raster nel localStorage e non richiedono ImageGen per ogni nuova frase. I JSON con font/logo caricati continuano a trasferire quegli asset. Nastri e le tre composizioni Urban geometriche restano disponibili.
+- Il riferimento visivo è ora incluso nelle skill locale e web. È la prova creata in questa chat, non uno degli esempi originali non disponibili. Il formato 4:5 conserva l’impostazione scelta; quadrato e storia adattano il testo e ritagliano lo stesso sfondo. Citazioni molto più lunghe richiedono una valutazione della composizione.
+- Suite completa: **519 test superati senza skip**, `uv run --frozen --with cairosvg python -m unittest discover -s tests -q`; registro `work/tests-xerox-final.log`. I test coprono anche registrazione dell’asset, testo e intervalli Unicode, dimensioni manuali, font, import/export e approvazione locale del font.
+- Chromium reale, host MCP simulato e tool reali: **8 verifiche superate**, `work/xerox-browser-verification/report.json`, con PNG effettivi 1440×1800, 1440×1440 e 1440×2560, riapertura progetto/base/bozza e viewport 375px. Non equivale a una verifica nativa nell’app installata dall’utente.
+- Pacchetti candidati: `dist/quote-card-builder-plugin-1.10.0.zip`, `dist/quote-card-builder-web-1.10.0.zip`, `dist/quote-card-builder-web-server-1.10.0.zip`. Runtime e UI concordano su 1.10.0/v1.60. Endpoint, autenticazione e identità del plugin sono invariati.
+
+Il servizio live rimane all’ultimo stato confermato 1.8.11/UI v1.58; questa sessione non dispone di un’identità Cloud Run configurata. Non sono stati creati tag o release pubbliche. L’utente può installare il pacchetto locale per provare l’integrazione.
+
+# Storico candidato 1.9.0 / UI v1.59 — Urban e riuso portabile
+
+14 ottobre 2026. **Sorgenti e pacchetti preparati e verificati; nuovo servizio non distribuito in questa sessione.** Ultimo stato live confermato: web 1.8.11/UI v1.58 e installazione standalone personale 1.8.3.
+
+- Nastri e Urban condividono scene native, editor tipografico e formati 4:5/1:1/9:16. Urban usa pannelli, fasce e segni di stampa parametrici; i percorsi Nastri precedenti sono preservati.
+- Le basi personali escludono il contenuto editoriale; i progetti conservano la card completa. Web e locale condividono i JSON trasferibili, inclusi font/logo. La migrazione delle vecchie basi web conserva le card originali come progetti recuperabili e non cancella l’archivio se la scrittura fallisce.
+- Upload e validazione di font/logo nel web; trasferimento degli asset nei JSON e mantenimento delle varianti logo locali. Il contesto del modello riceve una descrizione compatta. Gli aggiornamenti con asset privati sono applicati e renderizzati dalla bozza completa dell’editor, senza font sostitutivi. La richiesta di nuove composizioni del modello è separata dalle varianti demo.
+- Suite completa: **510 test superati senza skip**, `uv run --with cairosvg python -m unittest discover -s tests -q`; registro `work/tests-1.9.0.log`. CairoSVG è un backend opzionale usato per la prova del renderer legacy in questo ambiente, non una dipendenza aggiunta al servizio web. Controllo finale di schema/compatibilità e pacchetti: **17 test superati**, inclusa accessibilità del tool di validazione dall’app.
+- Browser Chromium reale con host MCP simulato e tool server reali: **9 verifiche superate**, `work/grammars-verification/report.json`. Coperti upload di font e SVG, revisione dalla chat con asset preservati, base priva di contenuto, progetto completo, riuso con frase nuova/autore vuoto, richiesta al modello, import e PNG reale 1440×1800. Screenshot desktop/mobile e PNG in quella directory. La prova non equivale a un test nativo ChatGPT/Codex.
+- UI v1.59 autosufficiente: **242214 byte**, entro 256 KiB. I font `*-ui.woff2` sono sottoinsiemi del chrome, separati dai font completi incorporati nelle card. Le risorse v1.58 restano disponibili come alias di compatibilità.
+- Pacchetti allineati in `dist/`: `quote-card-builder-plugin-1.9.0.zip`, `quote-card-builder-web-1.9.0.zip`, `quote-card-builder-web-server-1.9.0.zip`, con `SHA256SUMS-1.9.0.txt`. Builder e runtime usano la medesima versione; il server contiene 35 file canonici più BUILD-INFO, senza sessioni o dati utente.
+
+Il deployment Cloud Run e l’aggiornamento del plugin personale/standalone restano da eseguire nel loro ambiente: questa sessione non dispone di un’identità Cloud Run configurata. Endpoint, autenticazione, audience e ID del plugin esistente sono preservati. Non sono stati creati tag o release pubbliche. La sincronizzazione account è una successiva evoluzione di prodotto; il trasferimento corrente è esplicito tramite JSON.
+
+# Storico — web MCP 1.8.11 / UI v1.58
 
 14 ottobre 2026. **Servizio remoto aggiornato al 100% e plugin personale di test aggiornato**. Installazione locale Codex ancora 1.8.3, verificata in lettura e non modificata. Nessuna release GitHub, submission pubblica o installazione stdio eseguita.
 

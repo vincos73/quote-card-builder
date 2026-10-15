@@ -115,12 +115,16 @@ class StyleRange(BaseModel):
 class GrammarFields(BaseModel):
     """Canonical, portable scene state shared by tools and the editor."""
 
-    visual_grammar: Literal["ribbons"] | None = Field(default=None, description="Use ribbons for native editable ribbon compositions; omit for legacy styles.")
+    brand_kit: dict[str, object] | None = Field(default=None, description="Portable qcb-brand-kit v1, with embedded user-provided font and logo assets. Preserve through edits; no server brand archive.")
+    logo_mode: Literal["auto", "hidden"] = "auto"
+    visual_grammar: Literal["ribbons", "urban"] | None = Field(default=None, description="Native editable visual grammar: ribbons (Nastri) or urban (print poster); omit for legacy styles.")
     composition: dict[str, object] | None = Field(default=None, description=(
         "Native ribbon scene: version=1, id, optional name; quote_box, author_box, logo_box each {x,y,width,height} within 0..1; "
         "background_role,text_role,highlight_role from primary/accent/background/text; ribbons [{id,color_role,width_ratio:0.015..0.3,points:[[x,y],...]}] "
         "with 1+3*n points (4..37), coordinates -0.5..1.5, interpreted as start then cubic controls/end; crossings [{over,under,segment,t:0..1}]. "
-        "Compose distinctive curves around quote, optional author and logo. Preserve user-authored scenes exactly."
+        "For urban, scene grammar='urban', blocks (rect/polygon), strips and texture contain bounded numeric print-poster geometry. "
+        "Optional artwork_id='urban-xerox-lime-v1' selects the bundled Xerox/lime image with editable native text; no image URLs, paths or base64 in a scene. "
+        "Compose around quote, optional author and logo. Preserve user-authored scenes exactly."
     ))
     composition_candidates: list[dict[str, object]] = Field(default_factory=list, max_length=3, description="Up to three distinct native scenes for selection; empty means no gallery. Model scenes require proposal_source=model.")
     proposal_source: Literal["model", "demo"] | None = None
@@ -183,6 +187,8 @@ class EditorState(GrammarFields):
     lines: list[str] | None = None
     styles: list[StyleRange] = Field(default_factory=list)
     alt_text: str = ""
+    brand_kit_attached: bool = False
+    brand_summary: dict[str, object] | None = None
 
 
 class ValidationIssue(BaseModel):
@@ -371,6 +377,7 @@ def _add_preview_resource(uri: str, *, legacy: bool = False, workspace: bool = F
 _add_preview_resource(QUOTE_CARD_PREVIEW_RESOURCE)
 for _legacy_preview_uri in QUOTE_CARD_LEGACY_PREVIEW_RESOURCES:
     _add_preview_resource(_legacy_preview_uri, legacy=True)
+_add_preview_resource("ui://quote-card-builder/workspace/v1.58.html", legacy=True, workspace=True)
 _add_preview_resource(QUOTE_CARD_WORKSPACE_RESOURCE, workspace=True)
 
 
@@ -424,7 +431,10 @@ def quote_card_builder_open_workspace() -> WorkspaceOpenOutput:
         "Use 1–3 short emphasis ranges, usually only two style types from bold, italic, and highlight. Emphasize the central claim, not every word or a whole long line. Respect an explicit plain layout or user-supplied lines/styles, including an empty styles list; never rewrite an existing quote's user-authored layout unless asked. Style offsets are zero-based Unicode code-point indexes with an exclusive end, measured against text exactly as lines joined by newline. If text already contains newlines and lines is omitted, those rows are used. Keep short quotes visually strong without forcing extra lines or styles. Example layout for the supplied sentence: ‘L’IA aiuta / a chiarire i problemi / e a valutare / le opzioni; / il giudizio / e la responsabilità / restano alle persone.’ "
         "Default missing attribution to none and palette to neutral without asking. Preserve a named attribution only when supplied by the user or verified in the source. "
         "Ask only when the source cannot be read or the user's intent/content remains materially ambiguous. "
-        "For a requested Nastri/ribbons card, use visual_grammar='ribbons' and supply three genuinely different native composition_candidates with proposal_source='model', or preserve the user's chosen composition. The model chooses path geometry, crossings, text area and color roles; all text remains editable. A missing scene produces explicitly labelled demo proposals. Inline size uses type='size' and scale 0.5–2.5. Visual warnings are advisory and preserve user choices. "
+        "For a requested Nastri/ribbons or geometric Urban card, supply three genuinely different native composition_candidates with proposal_source='model', or preserve the chosen composition. "
+        "For Urban Xerox/lime, reuse the registered artwork composition with proposal_source='demo'; do not replace it with geometric posters or invent three generated artworks. "
+        "style='urban' without a scene opens the bundled Xerox/lime composition. Its image colors are fixed; quote, author, font and logo remain editable. "
+        "The model chooses geometry and reading space for authored scenes. Inline size uses type='size' and scale 0.5–2.5. Visual warnings are advisory and preserve user choices. "
         "The user chooses style in the editor; use Blocks, Cutouts, Constellations, or Gradient only as an "
         "optional preselection volunteered by the user. Do not use image generation or a local "
         "filesystem. Do not ask for quote, attribution, or palette confirmation when the user said to proceed. Call this tool exactly once and do not "
@@ -476,18 +486,18 @@ def quote_card_builder_open_editor(
         title="Palette profile",
         description="Defaults to the neutral palette. Use custom only when the user supplied or explicitly chose custom colors.",
     ),
-    style: Annotated[Literal["blocks", "cutouts", "constellations", "gradient", "ribbons"], Field(
+    style: Annotated[Literal["blocks", "cutouts", "constellations", "gradient", "ribbons", "urban"], Field(
         title="Style preselection (optional)",
         description=(
             "Optional preselection volunteered by the user. The user can choose Blocks, Cutouts, "
-            "Constellations, Gradient, or Nastri (ribbons) in the editor; defaults to Blocks. Do not accept a generic style label."
+            "Constellations, Gradient, Nastri (ribbons), or Urban (urban) in the editor; Urban defaults to Xerox/lime unless an explicit geometric composition is provided. Defaults to Blocks."
         ),
     )] = "blocks",
     format: Annotated[Literal["4x5", "1x1", "9x16"], Field(title="Initial format", description="Optional initial format: 4x5, 1x1, or 9x16.")] = "4x5",
     palette: Annotated[PaletteInput | None, Field(title="Custom palette colors", description="Required only when a custom palette was supplied or explicitly chosen.")] = None,
     transformation: Literal["VERBATIM", "EDITED", "PARAPHRASE", "AI_GENERATED"] = Field(default="VERBATIM", description="How the card text relates to its source."),
     evidence_status: Literal["VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"] = Field(default="USER_SUPPLIED", description="Use VERIFIED only when exact wording is checked against an accessible source."),
-    visual_grammar: Literal["ribbons"] | None = None,
+    visual_grammar: Literal["ribbons", "urban"] | None = None,
     composition: Annotated[dict[str, object] | None, Field(description=GrammarFields.model_fields["composition"].description)] = None,
     composition_candidates: Annotated[list[dict[str, object]] | None, Field(max_length=3, description=GrammarFields.model_fields["composition_candidates"].description)] = None,
     proposal_source: Literal["model", "demo"] | None = None,
@@ -495,8 +505,15 @@ def quote_card_builder_open_editor(
     author_font_size: Annotated[float | None, Field(ge=8, le=720)] = None,
     presentation: dict[str, object] | None = None,
     reuse_composition: dict[str, object] | None = None,
+    brand_kit: dict[str, object] | None = None,
+    logo_mode: Literal["auto", "hidden"] = "auto",
 ) -> PreviewQuoteCardOutput:
     """Render the initial snapshot once; the widget handles later data calls."""
+    if brand_kit is not None and palette is None:
+        from portable_brand import normalize_brand_kit
+        kit = normalize_brand_kit(brand_kit)
+        palette = PaletteInput(name=kit["name"], colors=kit["colors"])
+        profile_mode = "custom"
     if profile_mode == "custom" and palette is None:
         raise ValueError(
             "A custom palette requires a name and primary, accent, background, and text colors."
@@ -514,6 +531,7 @@ def quote_card_builder_open_editor(
         "constellations": ("contextual", "constellations"),
         "gradient": ("editorial", "gradient"),
         "ribbons": ("editorial", "default"),
+        "urban": ("editorial", "default"),
     }
     direction, graphic_variant = style_map[style]
     request = PreviewQuoteCardInput(
@@ -532,7 +550,7 @@ def quote_card_builder_open_editor(
         styles=styles,
         alt_text="",
         output_image=False,
-        visual_grammar="ribbons" if style == "ribbons" else visual_grammar,
+        visual_grammar=style if style in {"ribbons", "urban"} else visual_grammar,
         composition=composition,
         composition_candidates=composition_candidates or [],
         proposal_source=proposal_source,
@@ -540,11 +558,13 @@ def quote_card_builder_open_editor(
         author_font_size=author_font_size,
         presentation=presentation,
         reuse_composition=reuse_composition,
+        brand_kit=brand_kit,
+        logo_mode=logo_mode,
     )
     result = _render_request(request, profile_mode)
     # Keep legacy styles readable by cached clients. Native Nastri SVGs embed
     # fonts and belong only in UI metadata, alongside their gallery proofs.
-    structured = _wire_payload(_compact_output(result), legacy_svg=result.visual_grammar != "ribbons")
+    structured = _wire_payload(_compact_output(result), legacy_svg=result.visual_grammar not in {"ribbons", "urban"})
     return CallToolResult(
         content=[TextContent(type="text", text=json.dumps(_summary(result), ensure_ascii=False, indent=2))],
         structuredContent=structured,
@@ -582,7 +602,7 @@ class EditorPatch(GrammarFields):
     description=(
         "Use only when the user clearly asks in chat to change the already-open card. "
         "Include the complete current editor snapshot from model context as base_snapshot, echo editor_revision as base_revision, and include only explicitly requested changed fields in patch. "
-        "The server merges and renders the complete resulting draft. The widget applies the patch only when its current revision and base snapshot match; stale updates are rejected. A newly mounted widget can initialize from the returned merged editor state. "
+        "The server validates the merged draft; when the current brand assets stay in the editor, the editor renders it after applying the patch. The widget applies the patch only when its current revision and base snapshot match; stale updates are rejected. A newly mounted widget can initialize from the returned merged editor state. "
         "Never reopen or reset the editor for a follow-up change. Unspecified attribution, evidence status, palette, style, format, and other choices remain untouched. Include palette/style/format fields only when explicitly requested. When text changes, default transformation to EDITED and evidence status to UNVERIFIED unless the new wording has been checked and those fields are explicitly supplied."
     ),
     annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False),
@@ -648,6 +668,22 @@ def quote_card_builder_update_editor(
     if merged.get("profile_mode") == "custom" and merged.get("palette") is None:
         raise ValueError("A custom profile requires its palette colors.")
     state = EditorState.model_validate(merged)
+    if base_snapshot.brand_kit_attached and state.brand_kit is None and "brand_kit" not in changes:
+        # Uploaded binaries belong to the live editor, not the model context.
+        # The UI checks the revision, applies this patch to its full draft and
+        # renders it with its local assets. Do not render a substitute font.
+        checked = PreviewQuoteCardInput.model_validate(state.model_dump())
+        if checked.composition is not None:
+            from visual_grammars import normalize_grammar_presentation
+            normalize_grammar_presentation({key: getattr(checked, key) for key in ("visual_grammar", "composition", "quote_font_size", "author_font_size") if getattr(checked, key) is not None})
+        return CallToolResult(
+            content=[TextContent(type="text", text="Changes validated. The open editor applies them to its current brand assets and renders the preview.")],
+            structuredContent={"valid": True, "rendered": False, "deferred_render": True, "update": True,
+                               "base_revision": base_revision, "base_snapshot": base_snapshot.model_dump(mode="json", exclude={"brand_kit"}),
+                               "patch": changes, "editor_state": state.model_dump(mode="json", exclude={"brand_kit"}),
+                               "editor_revision": base_revision + 1},
+            isError=False,
+        )
     request = PreviewQuoteCardInput(
         text=state.text,
         format=state.format,
@@ -814,7 +850,7 @@ def _editor_state(
         text=request.text,
         format=request.format,
         attribution=request.attribution,
-        profile_mode=profile_mode or ("custom" if request.palette else "neutral"),
+        profile_mode=profile_mode or ("custom" if request.palette or request.brand_kit else "neutral"),
         transformation=request.transformation,
         evidence_status=request.evidence_status,
         direction=request.direction,
@@ -823,13 +859,26 @@ def _editor_state(
         graphic_seed=request.graphic_seed,
         text_scale=request.text_scale,
         vertical_position=request.vertical_position,
-        palette=request.palette,
+        palette=request.palette or (PaletteInput(name=request.brand_kit["name"], colors=request.brand_kit["colors"]) if request.brand_kit else None),
         lines=request.lines,
         styles=request.styles or [],
         alt_text=request.alt_text,
+        brand_kit_attached=request.brand_kit is not None,
         **{key: getattr(rendered, key) if rendered is not None and rendered.rendered else getattr(request, key)
            for key in GrammarFields.model_fields},
     )
+
+
+@mcp.tool(
+    name="validate_brand_kit",
+    title="Check brand assets",
+    description="Validate a portable brand kit without storing it on the server.",
+    annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False),
+    meta={"ui": {"visibility": ["app"]}, "openai/widgetAccessible": True},
+)
+def validate_brand_kit(brand_kit: dict[str, object]) -> dict[str, object]:
+    from portable_brand import normalize_brand_kit
+    return {"brand_kit": normalize_brand_kit(brand_kit)}
 
 
 def _render_request(
@@ -853,6 +902,12 @@ def _compact_output(
 def _wire_payload(result: BaseModel, *, legacy_svg: bool = False) -> dict[str, object]:
     """Serialize output, retaining SVG only for the legacy wire mode."""
     payload = result.model_dump(mode="json")
+    payload.pop("brand_kit", None)
+    snapshot = payload.get("editor_state")
+    if isinstance(snapshot, dict) and snapshot.get("brand_kit") is not None:
+        kit = snapshot.pop("brand_kit")
+        snapshot["brand_kit_attached"] = True
+        snapshot["brand_summary"] = {"name": kit.get("name"), "font_family": (kit.get("font") or {}).get("family"), "logo_present": bool(kit.get("logo"))}
     if not legacy_svg:
         payload.pop("svg", None)
         payload.pop("svg_data_uri", None)
@@ -863,7 +918,8 @@ def _wire_payload(result: BaseModel, *, legacy_svg: bool = False) -> dict[str, o
 
 def _svg_meta(result: RenderedQuoteCard) -> dict[str, object]:
     """Keep the UI-only SVG in the MCP result metadata envelope."""
-    return {"quoteCard": {"svg": result.svg, "composition_previews": result.composition_previews}} if result.svg else {"quoteCard": {}}
+    return {"quoteCard": {"svg": result.svg, "composition_previews": result.composition_previews,
+                          "brand_kit": result.editor_state.brand_kit if result.editor_state else None}} if result.svg else {"quoteCard": {}}
 
 
 def _summary(result: RenderedQuoteCard | BaseModel) -> dict[str, object]:
@@ -917,7 +973,7 @@ def preview_quote_card(
     alt_text: Annotated[str, Field(max_length=400, description="Optional replacement for the automatic alt text.")] = "",
     output_image: Annotated[bool, Field(description="Compatibility option: when true, also include ImageContent in the MCP response.")] = False,
     compact_output: Annotated[bool, Field(description="Use the compact _meta SVG envelope used by the current UI; omit for legacy UI compatibility.")] = False,
-    visual_grammar: Literal["ribbons"] | None = None,
+    visual_grammar: Literal["ribbons", "urban"] | None = None,
     composition: dict[str, object] | None = None,
     composition_candidates: Annotated[list[dict[str, object]] | None, Field(max_length=3)] = None,
     proposal_source: Literal["model", "demo"] | None = None,
@@ -925,6 +981,8 @@ def preview_quote_card(
     author_font_size: Annotated[float | None, Field(ge=8, le=720)] = None,
     presentation: dict[str, object] | None = None,
     reuse_composition: dict[str, object] | None = None,
+    brand_kit: dict[str, object] | None = None,
+    logo_mode: Literal["auto", "hidden"] = "auto",
 ) -> PreviewQuoteCardOutput:
     request = PreviewQuoteCardInput(
         text=text,
@@ -950,6 +1008,8 @@ def preview_quote_card(
         author_font_size=author_font_size,
         presentation=presentation,
         reuse_composition=reuse_composition,
+        brand_kit=brand_kit,
+        logo_mode=logo_mode,
     )
     result = _render_request(request)
     compact_output_flag = compact_output if isinstance(compact_output, bool) else False
@@ -1019,7 +1079,7 @@ def produce_quote_card(
     styles: Annotated[list[StyleRange] | None, Field(max_length=64)] = None,
     alt_text: Annotated[str, Field(max_length=400)] = "",
     compact_output: Annotated[bool, Field(description="Use the compact _meta SVG envelope used by the current UI; omit for legacy UI compatibility.")] = False,
-    visual_grammar: Literal["ribbons"] | None = None,
+    visual_grammar: Literal["ribbons", "urban"] | None = None,
     composition: dict[str, object] | None = None,
     composition_candidates: Annotated[list[dict[str, object]] | None, Field(max_length=3)] = None,
     proposal_source: Literal["model", "demo"] | None = None,
@@ -1027,6 +1087,8 @@ def produce_quote_card(
     author_font_size: Annotated[float | None, Field(ge=8, le=720)] = None,
     presentation: dict[str, object] | None = None,
     reuse_composition: dict[str, object] | None = None,
+    brand_kit: dict[str, object] | None = None,
+    logo_mode: Literal["auto", "hidden"] = "auto",
 ) -> ProduceQuoteCardOutput:
     request = PreviewQuoteCardInput(
         text=text,
@@ -1053,6 +1115,8 @@ def produce_quote_card(
         author_font_size=author_font_size,
         presentation=presentation,
         reuse_composition=reuse_composition,
+        brand_kit=brand_kit,
+        logo_mode=logo_mode,
     )
     preview = _render_request(request)
     produced = bool(preview.valid and preview.rendered and preview.svg and preview.svg_sha256)

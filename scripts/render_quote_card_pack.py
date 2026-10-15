@@ -319,10 +319,12 @@ def layout_measurement(
     lines: list[str], font_size: float, data: dict[str, Any], manifest_dir: Path,
     direction: str, width: int, height: int, vertical_position: str,
 ) -> dict[str, Any]:
-    if (data.get("presentation") or {}).get("visual_grammar") == "ribbons":
+    grammar = (data.get("presentation") or {}).get("visual_grammar")
+    if grammar in {"ribbons", "urban"}:
         candidate = copy.deepcopy(data)
         candidate["content"]["lines"] = list(lines)
-        layout = proof.ribbon_layout(
+        layout_fn = proof.urban_layout if grammar == "urban" else proof.ribbon_layout
+        layout = layout_fn(
             candidate, manifest_dir, width=width, height=height,
             render_options={"vertical_position": vertical_position}, font_size_override=font_size,
         )
@@ -376,17 +378,19 @@ def resolve_font_size(
     width: int, height: int, text_scale: float, vertical_position: str = "center",
 ) -> tuple[float, str, float, bool, float]:
     """Resolve the true maximum safe size, then apply an optional reduction."""
-    if (data.get("presentation") or {}).get("visual_grammar") == "ribbons":
+    grammar = (data.get("presentation") or {}).get("visual_grammar")
+    if grammar in {"ribbons", "urban"}:
         candidate = copy.deepcopy(data)
         candidate["content"]["lines"] = list(lines)
-        layout = proof.ribbon_layout(
+        layout_fn = proof.urban_layout if grammar == "urban" else proof.ribbon_layout
+        layout = layout_fn(
             candidate, manifest_dir, width=width, height=height,
             render_options={"vertical_position": vertical_position, "text_scale": text_scale},
         )
         size = float(layout["font_size"])
         # Explicit user sizes are never replaced by the legacy fitter. A
         # size that does not fit is retained, then refused by layout QA.
-        return size, f"{layout['metric']}_ribbon_layout", size, False, size
+        return size, f"{layout['metric']}_{grammar}_layout", size, False, size
     maximum_size, fit_mode = fit_font_size(
         lines, data, manifest_dir, direction, width, height, vertical_position
     )
@@ -450,7 +454,9 @@ def render_pack(
             advisory_keys.add(key)
             visual_advisories.append({**warning, "format": format_id, "severity": "advisory"})
     presentation = data.get("presentation") or {}
-    ribbons = presentation.get("visual_grammar") == "ribbons"
+    grammar = presentation.get("visual_grammar")
+    ribbons = grammar == "ribbons"
+    parametric_grammar = grammar in {"ribbons", "urban"}
     gradient_safety: dict[str, Any] | None = None
     if (
         not ribbons
@@ -486,9 +492,10 @@ def render_pack(
             "graphic_seed": presentation.get("graphic_seed", 0),
         }
         ribbon_measurement: dict[str, Any] | None = None
-        if ribbons:
+        if parametric_grammar:
             render_options["text_scale"] = text_scale
-            ribbon_measurement = proof.ribbon_layout(
+            layout_fn = proof.urban_layout if grammar == "urban" else proof.ribbon_layout
+            ribbon_measurement = layout_fn(
                 adapted, manifest_path.parent, width=item["width"], height=item["height"],
                 render_options=render_options,
             )
@@ -500,7 +507,7 @@ def render_pack(
                 if advisory:
                     remember_visual(warning, item["id"])
             size = float(ribbon_measurement["font_size"])
-            fit_mode = f"{ribbon_measurement['metric']}_ribbon_layout"
+            fit_mode = f"{ribbon_measurement['metric']}_{grammar}_layout"
             requested_size = maximum_size = size
             auto_fitted = False
         else:
@@ -546,7 +553,7 @@ def render_pack(
                 png_backend = raster.rasterize(
                     svg_path, candidate, item["width"], item["height"],
                     node=node, node_modules=node_modules,
-                    **({"visual_grammar": "ribbons"} if ribbons else {}),
+                    **({"visual_grammar": grammar} if parametric_grammar else {}),
                 )
                 png_path = candidate
                 png_backends.add(png_backend)
@@ -578,7 +585,7 @@ def render_pack(
                 "graphic_variant": render_options["graphic_variant"],
                 "graphic_seed": render_options["graphic_seed"],
                 **({
-                    "visual_grammar": "ribbons",
+                    "visual_grammar": grammar,
                     "author_font_size": ribbon_measurement["author_font_size"],
                     "layout_bounds": ribbon_measurement["bounds"],
                     "layout_metric": ribbon_measurement["metric"],

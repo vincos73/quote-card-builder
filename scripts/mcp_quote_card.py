@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 import re
+import tempfile
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -16,6 +17,9 @@ import render_quote_card as renderer
 import inspect_render as inspector
 from grammar_sessions import proposal_metadata
 from visual_grammars import demo_compositions, normalize_composition, normalize_grammar_presentation, variation_compositions
+from urban_grammar import xerox_composition
+from urban_artwork import XEROX_COLORS, is_xerox, xerox_font
+from portable_brand import brand_from_kit, normalize_brand_kit
 
 
 NEUTRAL_PROFILE = {
@@ -42,6 +46,7 @@ VALID_EVIDENCE_STATUSES = {"VERIFIED", "USER_SUPPLIED", "UNVERIFIED", "CONFLICT"
 VALID_DIRECTIONS = {"editorial", "statement", "contextual"}
 VALID_STYLE_TYPES = {"bold", "italic", "underline", "highlight", "accent", "outline", "size"}
 GRAMMAR_FIELDS = ("visual_grammar", "composition", "quote_font_size", "author_font_size")
+NATIVE_GRAMMARS = {"ribbons", "urban"}
 MANIFEST_VISUAL_CODES = {"contrast", "gradient_contrast"}
 TECHNICAL_RENDER_CODES = {"svg_invalid", "ribbon_geometry_missing"}
 VALID_GRAPHIC_MODES = {"auto", "hidden"}
@@ -225,23 +230,29 @@ def _grammar(payload: Mapping[str, Any], text: str, seed: int) -> tuple[dict[str
         reuse = payload.get("reuse_composition")
         if reuse is not None:
             reuse = normalize_composition(reuse)
-        if presentation.get("visual_grammar") == "ribbons":
+        if presentation.get("visual_grammar") in NATIVE_GRAMMARS:
+            grammar = presentation["visual_grammar"]
+            if any(item.get("grammar", "ribbons") != grammar for item in candidates):
+                raise ValueError("Every composition must belong to the selected visual grammar.")
+            if reuse is not None and reuse.get("grammar", "ribbons") != grammar:
+                raise ValueError("The reusable composition must belong to the selected visual grammar.")
             if "composition" not in presentation:
                 if not candidates:
                     candidates = (variation_compositions(reuse, text, seed) if reuse is not None
-                                  else demo_compositions(text, seed))
+                                  else [xerox_composition()] if grammar == "urban"
+                                  else demo_compositions(text, seed, grammar=grammar))
                     proposals = {"composition_candidates": candidates, "proposal_source": "demo"}
                 presentation["composition"] = copy.deepcopy(candidates[0])
             if proposals.get("proposal_source") is None:
                 proposals["proposal_source"] = "model"
         elif candidates or reuse is not None:
-            raise ValueError("Compositions require visual_grammar='ribbons'.")
+            raise ValueError("Compositions require visual_grammar='ribbons' or 'urban'.")
         return normalize_grammar_presentation(presentation), proposals, []
     except (TypeError, ValueError) as error:
         return {}, {}, [_issue("presentation", "grammar", str(error))]
 
 
-def build_manifest(payload: Mapping[str, Any], manifest_dir: Path | None = None) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
+def build_manifest(payload: Mapping[str, Any], manifest_dir: Path | None = None, *, brand_asset_dir: Path | None = None) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
     """Turn the small MCP input into the renderer's visual manifest contract."""
     if not isinstance(payload, Mapping):
         return None, [_issue("$", "type", "Input must be a JSON object.")]
@@ -288,17 +299,34 @@ def build_manifest(payload: Mapping[str, Any], manifest_dir: Path | None = None)
 
     grammar, proposals, grammar_errors = _grammar(payload, text, graphic_seed if renderer.graphic_seed_allowed(graphic_seed) else 0)
     errors.extend(grammar_errors)
-    if any(style.get("type") == "size" for style in styles or []) and grammar.get("visual_grammar") != "ribbons":
-        errors.append(_issue("styles", "grammar", "Local size ranges require the ribbons visual grammar."))
+    if any(style.get("type") == "size" for style in styles or []) and grammar.get("visual_grammar") not in NATIVE_GRAMMARS:
+        errors.append(_issue("styles", "grammar", "Local size ranges require a native visual grammar."))
 
     brand, palette_errors = _palette(payload.get("palette"))
+    if is_xerox(grammar.get("composition")) and payload.get("palette") is None and payload.get("brand_kit") is None:
+        brand["name"] = "Xerox / lime"
+        brand["colors"] = copy.deepcopy(XEROX_COLORS)
     errors.extend(palette_errors)
-    if grammar.get("visual_grammar") == "ribbons":
+    if payload.get("logo_mode", "auto") not in {"auto", "hidden"}:
+        errors.append(_issue("logo_mode", "enum", "Use auto or hidden."))
+    if payload.get("brand_kit") is not None:
+        try:
+            kit = normalize_brand_kit(payload["brand_kit"])
+            font = kit.get("font", {})
+            if font and not font.get("regular") and font.get("family", "").casefold() not in {"barlow", "arial"}:
+                raise ValueError("Upload the regular font file to use this custom font family.")
+            if payload.get("palette") is not None and not palette_errors:
+                kit["colors"] = copy.deepcopy(brand["colors"])
+            brand = brand_from_kit(kit, brand_asset_dir or (manifest_dir or Path(tempfile.gettempdir())) / "qcb-brand-assets")
+        except (ValueError, OSError) as error:
+            errors.append(_issue("brand_kit", "brand", str(error)))
+    if grammar.get("visual_grammar") in NATIVE_GRAMMARS and not brand.get("font", {}).get("regular_path"):
         # Native geometry measures the same portable font that the SVG draws.
         # Legacy styles retain their existing Arial default.
         font_dir = Path(__file__).resolve().parent.parent / "assets" / "card-editor" / "fonts"
-        brand["font"] = {"family": "Barlow", "regular_path": str(font_dir / "Barlow-Regular.ttf"),
-                         "bold_path": str(font_dir / "Barlow-Bold.ttf")}
+        brand["font"] = (xerox_font() if is_xerox(grammar.get("composition")) else
+                         {"family": "Barlow", "regular_path": str(font_dir / "Barlow-Regular.ttf"),
+                          "bold_path": str(font_dir / "Barlow-Bold.ttf")})
 
     if errors:
         return None, errors
@@ -329,7 +357,7 @@ def build_manifest(payload: Mapping[str, Any], manifest_dir: Path | None = None)
         "canvas": {"width": FORMATS[format_id]["width"], "height": FORMATS[format_id]["height"]},
         "direction": direction,
         "presentation": {
-            "logo_mode": "hidden",
+            "logo_mode": payload.get("logo_mode", "auto") if brand.get("logo") else "hidden",
             "graphic_mode": graphic_mode,
             "graphic_variant": graphic_variant,
             "graphic_seed": graphic_seed,
@@ -345,8 +373,9 @@ def build_manifest(payload: Mapping[str, Any], manifest_dir: Path | None = None)
 
 def _scene_preview(manifest: dict[str, Any], base_dir: Path, options: dict[str, Any]) -> dict[str, Any]:
     """Render exact proof bytes; visual assessment is always advisory."""
-    layout = (renderer.ribbon_layout(manifest, base_dir, render_options=options)
-              if manifest["presentation"].get("visual_grammar") == "ribbons" else None)
+    native = manifest["presentation"].get("visual_grammar")
+    layout = (getattr(renderer, "urban_layout" if native == "urban" else "ribbon_layout")(manifest, base_dir, render_options=options)
+              if native in NATIVE_GRAMMARS else None)
     svg = renderer.render_svg(manifest, base_dir, manifest["direction"], render_options=options)
     findings = inspector.inspect_render(svg, manifest["direction"], manifest["canvas"]["width"],
                                         manifest["canvas"]["height"], vertical_position=options["vertical_position"],
@@ -371,11 +400,17 @@ def _advisories(items: list[dict[str, Any]]) -> list[dict[str, str]]:
 
 
 def preview_quote_card(payload: Mapping[str, Any], manifest_dir: Path | None = None) -> dict[str, Any]:
+    """Render with request-scoped uploaded assets; no server brand archive."""
+    with tempfile.TemporaryDirectory(prefix="qcb-brand-") as directory:
+        return _preview_quote_card(payload, manifest_dir, Path(directory))
+
+
+def _preview_quote_card(payload: Mapping[str, Any], manifest_dir: Path | None, brand_asset_dir: Path) -> dict[str, Any]:
     """Validate and render one explicit-profile quote card with the real engine."""
     base_dir = (manifest_dir or Path(__file__).resolve().parent).resolve()
     format_id = payload.get("format", DEFAULT_FORMAT) if isinstance(payload, Mapping) else DEFAULT_FORMAT
     selected_format = FORMATS.get(format_id, FORMATS[DEFAULT_FORMAT])
-    manifest, input_errors = build_manifest(payload, base_dir)
+    manifest, input_errors = build_manifest(payload, base_dir, brand_asset_dir=brand_asset_dir)
     vertical_position = payload.get("vertical_position", "center") if isinstance(payload, Mapping) else "center"
     text_scale = payload.get("text_scale", 1.0) if isinstance(payload, Mapping) else 1.0
     if input_errors:
@@ -469,6 +504,9 @@ def preview_quote_card(payload: Mapping[str, Any], manifest_dir: Path | None = N
         "warnings": _advisories(quality_warnings + scene["warnings"]),
         "errors": scene["errors"],
         **{key: copy.deepcopy(manifest["presentation"].get(key)) for key in GRAMMAR_FIELDS},
+        "brand_kit": ({**normalize_brand_kit(payload["brand_kit"]), "colors": copy.deepcopy(manifest["brand"]["colors"])}
+                      if payload.get("brand_kit") is not None else None),
+        "logo_mode": payload.get("logo_mode", "auto"),
         "composition_candidates": copy.deepcopy(manifest.get("composition_candidates", [])),
         "proposal_source": manifest.get("proposal_source"),
         "ribbon_layout": scene["ribbon_layout"],

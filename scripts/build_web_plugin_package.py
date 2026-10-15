@@ -41,7 +41,11 @@ def build_zip(output: Path) -> Path:
             files[path.relative_to(TEMPLATE).as_posix()] = path.read_bytes()
     files["skills/quote-card-builder/references/ribbons-web-mcp.md"] = REFERENCE.read_bytes()
     hashes = {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
-    info = {"version": version, "ui_version": "v1.58", "transport": "streamable-http",
+    ui_version = re.search(r'QUOTE_CARD_APP_VERSION = "(v[^"\n]+)"', (ROOT / "scripts/mcp_app.py").read_text()).group(1)
+    for reference in ("urban-web-mcp.md", "personal-bases.md", "brand-kits.md"):
+        files[f"skills/quote-card-builder/references/{reference}"] = (ROOT / "references" / reference).read_bytes()
+    hashes = {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
+    info = {"version": version, "ui_version": ui_version, "transport": "streamable-http",
             "requires_local_executor": False, "files": hashes,
             "content_sha256": hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()}
     files["BUILD-INFO.json"] = (json.dumps(info, indent=2) + "\n").encode()

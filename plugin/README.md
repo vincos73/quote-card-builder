@@ -2,7 +2,15 @@
 
 This folder describes the local stdio plugin package for ChatGPT and Codex. Its bundled skill remains in Italian. The generated `skills/quote-card-builder/` copy comes from the canonical repository root; use `scripts/build_plugin_package.py` rather than editing that copy separately.
 
+The installable archive provides Agent Plugins 1.0 `plugin.json` and `mcp.json` at its root. Skills are discovered in the fixed `skills/` directory. The synchronized `.codex-plugin/plugin.json` and `.mcp.json` files support older clients. Local execution is required for the stdio runtime; the hosted web integration remains a separate package and deployment. Version 1.10.1 fixes archive compatibility and limits the starter prompts to three while keeping the same renderer and artwork.
+
 The hosted web package is separate: `web-plugin/` connects through streamable HTTP and includes an English skill for the remote editor. Build it with `python3 scripts/build_web_plugin_package.py`. It requires no local Python executor. Installing the stdio package does not publish or install the web package; neither operation proves public Plugin Directory availability.
+
+## Manual ZIP updates
+
+Version 1.10.2 is an archive export for manual upload. It includes Urban · Xerox and Urban · geometrico with the same artwork and renderer as 1.10.1. The export is not saved to the account before handoff: the account release remains 1.10.1 until an update is performed.
+
+For a plugin already uploaded manually, open its details in Plugins and choose **Upload new version** when available. The general **Add / Upload plugin** action starts a new addition. Keep the existing name and use a version newer than the account release. This is the [documented ChatGPT upload workflow](https://help.openai.com/en/articles/20001256-plugins-in-chatgpt); available controls depend on the host and account. Successful account ingestion or a local stdio test does not verify the manual UI upload.
 
 ## Current web MCP — 1.8.11 / UI v1.58
 
@@ -20,7 +28,7 @@ On 14 October 2026, the user confirmed that the ChatGPT test worked. This is use
 
 ## Local transport and historical installation
 
-The local package starts through `.mcp.json` using `uv run --frozen` from its bundled skill directory, with the included `pyproject.toml` and `uv.lock`. Only the stdio launcher enables `--local-file-delivery`; HTTP rejects that option. The UI-private `quote_card_builder_save_png` saves the exact canvas PNG to `~/Downloads/Quote Card Builder` and can open the confirmed file through `openai/files/open` when supported. Remote delivery uses host download capabilities and a verified temporary HTTPS link when required.
+The Agent Plugins package entrypoint is the root `plugin.json` plus portable `mcp.json`. The legacy `.codex-plugin/` and `.mcp.json` overlay remains synchronized for compatible older hosts. Both start the same `uv run --frozen` stdio runtime from the bundled skill directory, with the included `pyproject.toml` and `uv.lock`. Only the stdio launcher enables `--local-file-delivery`; HTTP rejects that option. The UI-private `quote_card_builder_save_png` saves the exact canvas PNG to `~/Downloads/Quote Card Builder` and can open the confirmed file through `openai/files/open` when supported. Remote delivery uses host download capabilities and a verified temporary HTTPS link when required.
 
 The user's installed local version remains **1.8.3**, with its older UI and **Generate PNG** followed by **Download PNG**. Its two-format interface and Send PNG to chat action are historical capabilities of that installation, not the current web UI. The Visual Review Studio is a separate local editor, with multi-format ZIP export and explicit local brand profiles.
 

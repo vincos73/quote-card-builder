@@ -360,8 +360,12 @@ class McpAdapterTests(unittest.TestCase):
         self.assertIn("ChatGPT did not respond to the open request.", html)
         self.assertIn("uploadFile", html)
         self.assertIn("setWidgetState", html)
-        self.assertNotIn("sendFollowUpMessage", html)
-        self.assertNotIn('request("ui/message"', html)
+        chat_request = html.split("async function requestModelCompositions(base)", 1)[1].split("async function adoptBrand", 1)[0]
+        self.assertIn("sendFollowUpMessage", chat_request)
+        self.assertIn('request("ui/message"', chat_request)
+        png_handler = html.split("async function downloadLatestPng()", 1)[1].split('produce.addEventListener("click", downloadLatestPng)', 1)[0]
+        self.assertNotIn("sendFollowUpMessage", png_handler)
+        self.assertNotIn('request("ui/message"', png_handler)
         self.assertIn('protocolVersion:"2026-01-26"', html)
         self.assertIn("hostCapabilities = result?.hostCapabilities || {}", html)
         self.assertIn('method:"ui/notifications/initialized"', html)
@@ -685,6 +689,7 @@ class McpProtocolTests(unittest.TestCase):
                 "quote_card_builder_headless",
                 "quote_card_builder_publish_png",
                 "quote_card_builder_save_png",
+                "validate_brand_kit",
             },
             set(tools),
         )
@@ -733,7 +738,7 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(
             {"text", "lines", "styles", "attribution", "profile_mode", "style", "format", "palette", "transformation", "evidence_status",
              "visual_grammar", "composition", "composition_candidates", "proposal_source", "quote_font_size", "author_font_size",
-             "presentation", "reuse_composition"},
+             "presentation", "reuse_composition", "brand_kit", "logo_mode"},
             set(ui_tool.input_schema["properties"]),
         )
         self.assertEqual("Open Quote Card Builder", ui_tool.title)
@@ -748,6 +753,9 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual("Palette profile", ui_tool.input_schema["properties"]["profile_mode"]["title"])
         self.assertEqual("Style preselection (optional)", ui_tool.input_schema["properties"]["style"]["title"])
         self.assertEqual("blocks", ui_tool.input_schema["properties"]["style"]["default"])
+        self.assertIn("urban", ui_tool.input_schema["properties"]["style"]["enum"])
+        self.assertIn("brand_kit", ui_tool.input_schema["properties"])
+        self.assertIn("logo_mode", ui_tool.input_schema["properties"])
         self.assertIn(
             "defaults to the neutral palette",
             ui_tool.input_schema["properties"]["profile_mode"]["description"].lower(),
@@ -771,6 +779,10 @@ class McpProtocolTests(unittest.TestCase):
         self.assertNotIn("svg_data_uri", headless_tool.output_schema["properties"])
         self.assertIn("approval_received", headless_tool.output_schema["properties"])
         self.assertNotIn("ui", headless_tool.meta or {})
+
+        brand_tool = tools["validate_brand_kit"]
+        self.assertEqual(["app"], brand_tool.meta["ui"]["visibility"])
+        self.assertTrue(brand_tool.meta["openai/widgetAccessible"])
 
     def test_mcp_apps_extension_advertises_and_resolves_the_editor_resource(self):
         """Catch the Codex failure where a valid tool pointed to an unknown UI URI."""
@@ -802,6 +814,7 @@ class McpProtocolTests(unittest.TestCase):
             data_meta = tools_by_name[name].meta or {}
             self.assertEqual(["app"], data_meta.get("ui", {}).get("visibility"))
             self.assertNotIn("resourceUri", data_meta.get("ui", {}))
+        self.assertEqual(["app"], (tools_by_name["validate_brand_kit"].meta or {}).get("ui", {}).get("visibility"))
 
     def test_apps_contract_does_not_advertise_unresolvable_or_legacy_ui_uris(self):
         """A stale outputTemplate must not be able to send Codex to a missing resource."""
@@ -1154,6 +1167,7 @@ class McpProtocolTests(unittest.TestCase):
                             "quote_card_builder_publish_png",
                             "quote_card_builder_save_png",
                             "quote_card_builder_update_editor",
+                            "validate_brand_kit",
                         ],
                         sorted(tool.name for tool in tools.tools),
                     )
@@ -1288,7 +1302,7 @@ class McpProtocolTests(unittest.TestCase):
                     cwd=str(plugin_root / server["cwd"]),
                     env={
                         **os.environ,
-                        "UV_CACHE_DIR": os.environ.get("UV_CACHE_DIR", "/private/tmp/qcb-test-uv-cache"),
+                        "UV_CACHE_DIR": os.environ.get("UV_CACHE_DIR", str(Path(temporary) / "uv-cache")),
                     },
                 )
                 async with stdio_client(params) as (read_stream, write_stream):
@@ -1373,6 +1387,7 @@ class McpProtocolTests(unittest.TestCase):
                                 "quote_card_builder_publish_png",
                                 "quote_card_builder_save_png",
                                 "quote_card_builder_update_editor",
+                                "validate_brand_kit",
                             ],
                             sorted(tool.name for tool in tools.tools),
                         )

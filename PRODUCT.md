@@ -2,7 +2,7 @@
 
 <!-- impeccable:product-schema 1 -->
 
-Stato del documento: requisiti originari v1.0.1 e storico locale; addendum web MCP 1.8.11 / UI v1.58
+Stato del documento: requisiti originari e storico; addendum sorgenti candidati 1.9.0 / UI v1.59
 Data: 15 agosto 2026; aggiornamento 14 ottobre 2026
 Ambito: skill Codex, Visual Review Studio locale e pacchetto web MCP, con contratti distinti
 
@@ -568,3 +568,12 @@ Estrazione formale di Content/Evidence Core e Brand Identity Core per il riuso f
 La grammatica Nastri è portata nel contratto del server web e nel frontend MCP v1.58, distinti dal Visual Review Studio locale. Il modello può fornire tre scene numeriche native; il client conserva palette e geometria, permette scelta e formattazioni granulari e rende esplicita l’origine model/demo delle proposte. Supporta 4:5, 1:1 e 9:16, citazione e autore con dimensioni indipendenti, size multiplier per selezione, basi locali e JSON per trasferimento esplicito. Non promette sincronizzazione fra dispositivi o un brand kit con caricamento di font/logo.
 
 Gli avvisi visivi degli editor locale e MCP sono descrittivi e non bloccano produzione o download. I dati e l’hash della preview devono restare validi. Il renderer CLI standalone mantiene `quality_policy: strict` come default; il Visual Review Studio usa `advisory`. Il pacchetto web usa streamable HTTP; non richiede uv, Python o l’esecuzione locale della skill. Una base web conserva anche citazione, attribuzione e formattazioni; la base di stile locale conserva soltanto design e preferenze. Il JSON web trasferisce esplicitamente la card completa. Le scene native viaggiano nello snapshot degli aggiornamenti dalla chat. Stato di distribuzione e verifiche in RELEASE-STATUS.md.
+
+
+## Addendum 1.9.0 — biblioteca e riuso portabile
+
+La diversità delle proposte Nastri è confermata dall’utente. Urban/brutalista materico è la seconda grammatica scelta, con composizioni SVG native, tipografia dominante e texture fuori dalle zone di lettura. Entrambe condividono editor tipografico, dimensioni manuali e avvisi grafici non bloccanti.
+
+Basi personali e progetti hanno formati trasferibili comuni fra web e locale: la base esclude il contenuto editoriale, il progetto conserva la card completa. Le vecchie basi web preservano la card originaria come progetto recuperabile. Il riuso distingue composizione conservata, nuove proposte del modello richieste in chat e variazioni demo.
+
+Il brand kit incorpora font/logo e può essere trasferito nei JSON. Gli asset restano nell’editor; la chat riceve una descrizione compatta e aggiorna la card senza rimuoverli. Gli export serializzano lo stato corrente, comprese le modifiche ancora non generate. La sincronizzazione account resta un’evoluzione futura; l’export conserva le varianti chiara/scura dei profili locali. Lo stato di distribuzione verificato è in RELEASE-STATUS.md.

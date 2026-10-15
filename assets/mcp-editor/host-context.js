@@ -18,7 +18,10 @@
   const WORKSPACE_STORAGE_KEY = "quote-card-builder.workspace.v1";
   const BASES_STORAGE_KEY = "quote-card-builder.bases.v1";
   const PROJECT_SCHEMA = "qcb-card-project";
-  const EDITOR_FIELDS = ["text", "format", "attribution", "profile_mode", "transformation", "evidence_status", "direction", "graphic_mode", "graphic_variant", "graphic_seed", "text_scale", "vertical_position", "palette", "lines", "styles", "alt_text", "visual_grammar", "composition", "composition_candidates", "proposal_source", "quote_font_size", "author_font_size"];
+  const BASE_SCHEMA = "qcb-personal-base";
+  const BASE_FIELDS = ["format", "profile_mode", "direction", "graphic_mode", "graphic_variant", "logo_mode", "graphic_seed", "text_scale", "vertical_position", "palette", "visual_grammar", "composition", "quote_font_size", "author_font_size", "brand_kit"];
+  const EDITOR_FIELDS = ["text", "format", "attribution", "profile_mode", "transformation", "evidence_status", "direction", "graphic_mode", "graphic_variant", "logo_mode", "graphic_seed", "text_scale", "vertical_position", "palette", "lines", "styles", "alt_text", "visual_grammar", "composition", "composition_candidates", "proposal_source", "quote_font_size", "author_font_size", "brand_kit"];
+  const MODEL_FIELDS = EDITOR_FIELDS.filter((key) => key !== "brand_kit");
   const DEFAULT_DEBOUNCE_MS = 160;
 
   function isObject(value) {
@@ -42,8 +45,61 @@
     return clone(Object.fromEntries(EDITOR_FIELDS.filter((key) => Object.prototype.hasOwnProperty.call(source, key)).map((key) => [key, source[key]])));
   }
 
+  function modelSnapshot(value) {
+    const source = ownObject(value);
+    const snapshot = clone(Object.fromEntries(MODEL_FIELDS.filter((key) => Object.prototype.hasOwnProperty.call(source, key)).map((key) => [key, source[key]])));
+    for (const key of ["_editor_revision", "_editor_update_status", "_workspace"]) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) snapshot[key] = clone(source[key]);
+    }
+    if (typeof source.brand_kit_attached === "boolean") snapshot.brand_kit_attached = source.brand_kit_attached;
+    if (isObject(source.brand_summary)) snapshot.brand_summary = clone(source.brand_summary);
+    if (isObject(source.brand_kit)) {
+      snapshot.brand_kit_attached = true;
+      const summary = {};
+      if (typeof source.brand_kit.name === "string") summary.name = source.brand_kit.name;
+      if (typeof source.brand_kit.font?.family === "string") summary.font_family = source.brand_kit.font.family;
+      summary.logo_present = isObject(source.brand_kit.logo) && typeof source.brand_kit.logo.data_base64 === "string";
+      snapshot.brand_summary = summary;
+    }
+    return snapshot;
+  }
+
   function projectFromDraft(value, name = "Quote card") {
     return { schema:PROJECT_SCHEMA, schemaVersion:1, name:String(name || "Quote card").slice(0, 80), draft:cardSnapshot(value) };
+  }
+
+  function baseFromDraft(value, name = "Personal base") {
+    const source = ownObject(value);
+    const design = clone(Object.fromEntries(BASE_FIELDS.filter((key) => Object.prototype.hasOwnProperty.call(source, key)).map((key) => [key, source[key]])));
+    return {schema:BASE_SCHEMA, schemaVersion:2, name:String(name || "Personal base").slice(0, 80), design};
+  }
+
+  function normalizeBase(value) {
+    if (!isObject(value)) throw new Error("Use a Quote Card Builder personal base JSON.");
+    if (value.schema !== undefined) {
+      if (value.schema !== BASE_SCHEMA || value.schemaVersion !== 2 || !isObject(value.design)) throw new Error("Use a supported Quote Card Builder personal base JSON.");
+      const design = Object.fromEntries(BASE_FIELDS.filter((key) => Object.prototype.hasOwnProperty.call(value.design, key)).map((key) => [key, value.design[key]]));
+      return {schema:BASE_SCHEMA, schemaVersion:2, name:String(value.name || "Personal base").slice(0, 80), design:clone(design)};
+    }
+    // Stored v1 bases contained the full draft. Keep their identity/name while
+    // dropping quote content as they are read.
+    if (isObject(value.draft)) return {schema:BASE_SCHEMA, schemaVersion:2, name:String(value.name || "Personal base").slice(0, 80), design:baseFromDraft(value.draft).design};
+    // Older editor callers passed the saved draft directly to reuseBase.
+    if (typeof value.text === "string") return baseFromDraft(value);
+    throw new Error("Use a Quote Card Builder personal base JSON.");
+  }
+
+  function draftFromBase(value, text = "", attribution = "") {
+    const base = normalizeBase(value);
+    return {...clone(base.design), text:String(text || ""), attribution:String(attribution || ""), lines:String(text || "").includes("\n") ? String(text).split("\n") : null, styles:[], alt_text:"", transformation:"VERBATIM", evidence_status:"USER_SUPPLIED", quote_font_size:null};
+  }
+
+  function exportBase(value) { return JSON.stringify(normalizeBase(value), null, 2); }
+  function importBase(value) {
+    let parsed = value;
+    if (typeof value === "string") { try { parsed = JSON.parse(value); } catch (_) { throw new Error("Use a valid personal base JSON file."); } }
+    if (!isObject(parsed) || parsed.schema !== BASE_SCHEMA || parsed.schemaVersion !== 2 || !isObject(parsed.design)) throw new Error("Use a supported Quote Card Builder personal base JSON.");
+    return normalizeBase(parsed);
   }
 
   function draftFromProject(value) {
@@ -51,14 +107,21 @@
     return cardSnapshot(value.draft);
   }
 
-  function reuseBase(value, text, attribution, mode = "card") {
-    const draft = cardSnapshot(value);
-    const previous = String(draft.text || "");
+  function reuseBase(value, text, attribution, mode = "card", currentDraft) {
+    const base = normalizeBase(value);
+    const sourceDraft = isObject(currentDraft) ? currentDraft : (isObject(value) && isObject(value.draft) ? value.draft : (isObject(value) && typeof value.text === "string" ? value : null));
+    const source = sourceDraft || {};
+    const previous = String(source.text || "");
     const next = String(text || "");
     const sameWords = previous.replace(/\s+/gu, " ").trim() === next.replace(/\s+/gu, " ").trim();
+    const draft = {...clone(base.design), text:previous, lines:source.lines, styles:clone(source.styles || []), alt_text:source.alt_text || "", transformation:source.transformation || "VERBATIM", evidence_status:source.evidence_status || "USER_SUPPLIED"};
+    if (sameWords && JSON.stringify(source.composition) === JSON.stringify(base.design.composition)) {
+      if (Object.prototype.hasOwnProperty.call(source, "proposal_source")) draft.proposal_source = source.proposal_source;
+      if (Object.prototype.hasOwnProperty.call(source, "composition_candidates")) draft.composition_candidates = clone(source.composition_candidates);
+    }
     draft.text = next;
     draft.lines = next.includes("\n") ? next.split("\n") : null;
-    draft.attribution = String(attribution || "");
+    draft.attribution = attribution !== undefined && attribution !== null ? String(attribution) : (sameWords ? String(source.attribution || "") : "");
     if (!sameWords) {
       draft.styles = [];
       draft.quote_font_size = null;
@@ -197,26 +260,57 @@
       catch (_) { return null; }
     }
 
+    _readBaseStore() {
+      const value = JSON.parse(this._baseStorage()?.getItem(BASES_STORAGE_KEY) || "null");
+      if (!isObject(value) || value.schema !== "qcb-card-bases" || value.schemaVersion !== 1 || !Array.isArray(value.bases)) return null;
+      const sourceBases = value.bases.filter((item) => isObject(item) && typeof item.id === "string" && typeof item.name === "string" && (isObject(item.design) || isObject(item.draft)));
+      const bases = sourceBases.map((item) => ({id:item.id, ...normalizeBase(item)}));
+      const archivedProjects = Array.isArray(value.archivedProjects) ? clone(value.archivedProjects) : [];
+      const archivedIds = new Set(archivedProjects.filter(isObject).map((item) => item.id).filter((id) => typeof id === "string"));
+      for (const item of sourceBases) {
+        if (isObject(item.draft) && !archivedIds.has(item.id)) {
+          archivedProjects.push({...projectFromDraft(item.draft, item.name), id:item.id});
+          archivedIds.add(item.id);
+        }
+      }
+      return {bases, archivedProjects, needsMigration:sourceBases.some((item) => isObject(item.draft))};
+    }
+
+    _persistBaseStore(store) {
+      this._baseStorage()?.setItem(BASES_STORAGE_KEY, JSON.stringify({schema:"qcb-card-bases", schemaVersion:1, bases:store.bases, archivedProjects:store.archivedProjects}));
+    }
+
     listBases() {
       try {
-        const value = JSON.parse(this._baseStorage()?.getItem(BASES_STORAGE_KEY) || "null");
-        if (!isObject(value) || value.schema !== "qcb-card-bases" || value.schemaVersion !== 1 || !Array.isArray(value.bases)) return [];
-        return value.bases.filter((item) => isObject(item) && typeof item.id === "string" && typeof item.name === "string" && isObject(item.draft)).map((item) => ({id:item.id, name:item.name, draft:cardSnapshot(item.draft)}));
+        const store = this._readBaseStore();
+        if (!store) return [];
+        if (store.needsMigration) { try { this._persistBaseStore(store); } catch (_) { /* old storage remains intact; return the migrated view */ } }
+        return store.bases;
+      } catch (_) { return []; }
+    }
+
+    listArchivedProjects() {
+      try {
+        const store = this._readBaseStore();
+        if (!store) return [];
+        if (store.needsMigration) { try { this._persistBaseStore(store); } catch (_) { /* archive remains available in this read */ } }
+        return clone(store.archivedProjects);
       } catch (_) { return []; }
     }
 
     saveBase(name, value) {
       const label = String(name || "").trim();
       if (!label || label.length > 80) throw new Error("Name the base using 1–80 characters.");
-      const draft = cardSnapshot(value);
-      if (!draft.text?.trim() || !draft.composition || draft.visual_grammar !== "ribbons") throw new Error("Choose a Nastri composition before saving a base.");
+      const base = normalizeBase(isObject(value) && value.schema === BASE_SCHEMA ? {...value, name:label} : baseFromDraft(value, label));
+      if (base.design.visual_grammar && (!["ribbons", "urban"].includes(base.design.visual_grammar) || !base.design.composition)) throw new Error("Choose a composition before saving a personal base.");
       const storage = this._baseStorage();
       if (!storage || typeof storage.setItem !== "function") throw new Error("This host cannot save bases on the device. The project JSON remains available.");
-      const bases = this.listBases();
+      const store = this._readBaseStore() || {bases:[], archivedProjects:[], needsMigration:false};
+      const bases = store.bases;
       const previous = bases.find((item) => item.name === label);
-      const item = {id:previous?.id || `base-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name:label, draft};
+      const item = {id:previous?.id || `base-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, ...base};
       const next = previous ? bases.map((base) => base.id === previous.id ? item : base) : [...bases, item];
-      storage.setItem(BASES_STORAGE_KEY, JSON.stringify({schema:"qcb-card-bases", schemaVersion:1, bases:next.slice(-50)}));
+      this._persistBaseStore({...store, bases:next.slice(-50)});
       return clone(item);
     }
 
@@ -325,7 +419,7 @@
     }
 
     _sendModelContext() {
-      const modelContent = clone(this._draft);
+      const modelContent = modelSnapshot(this._draft);
       const payload = {
         schema: STATE_SCHEMA,
         schemaVersion: SCHEMA_VERSION,
@@ -358,8 +452,10 @@
       const palette = workspace.paletteDecision === "neutral" ? "neutral palette selected" :
         (workspace.paletteDecision === "custom" ? "custom palette selected" : "palette undecided");
       const format = typeof modelContent.format === "string" ? `format ${modelContent.format}` : "format undecided";
-      const editorFields = EDITOR_FIELDS;
+      const editorFields = MODEL_FIELDS;
       const snapshot = Object.fromEntries(editorFields.filter((key) => Object.prototype.hasOwnProperty.call(modelContent, key)).map((key) => [key, modelContent[key]]));
+      if (modelContent.brand_kit_attached === true) snapshot.brand_kit_attached = true;
+      if (isObject(modelContent.brand_summary)) snapshot.brand_summary = clone(modelContent.brand_summary);
       const revision = Number.isSafeInteger(modelContent._editor_revision) ? modelContent._editor_revision : 0;
       const updateStatus = typeof modelContent._editor_update_status === "string" && modelContent._editor_update_status ? ` Update status: ${modelContent._editor_update_status}.` : "";
       return `Quote Card Builder draft: ${textStatus}; ${attribution}; ${palette}; ${format}. Current editor_revision=${revision}. Current editor snapshot: ${JSON.stringify(snapshot)}.${updateStatus} For an explicit follow-up edit, copy this snapshot unchanged as base_snapshot, use this revision as base_revision, and include only requested changes in patch.`;
@@ -587,10 +683,17 @@
   QcbHostContext.WORKSPACE_SCHEMA = WORKSPACE_SCHEMA;
   QcbHostContext.WORKSPACE_STORAGE_KEY = WORKSPACE_STORAGE_KEY;
   QcbHostContext.BASES_STORAGE_KEY = BASES_STORAGE_KEY;
+  QcbHostContext.BASE_SCHEMA = BASE_SCHEMA;
   QcbHostContext.EDITOR_FIELDS = EDITOR_FIELDS;
+  QcbHostContext.MODEL_FIELDS = MODEL_FIELDS;
   QcbHostContext.cardSnapshot = cardSnapshot;
+  QcbHostContext.modelSnapshot = modelSnapshot;
   QcbHostContext.projectFromDraft = projectFromDraft;
   QcbHostContext.draftFromProject = draftFromProject;
+  QcbHostContext.baseFromDraft = baseFromDraft;
+  QcbHostContext.draftFromBase = draftFromBase;
+  QcbHostContext.importBase = importBase;
+  QcbHostContext.exportBase = exportBase;
   QcbHostContext.reuseBase = reuseBase;
   QcbHostContext.create = (options) => new QcbHostContext(options);
   return QcbHostContext;

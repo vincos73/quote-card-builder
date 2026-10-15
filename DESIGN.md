@@ -233,3 +233,8 @@ Tutti i controlli interattivi usano elementi nativi, label o nomi accessibili. L
 - **Don't** nascondere dichiarazioni e QA nell’header o in un drawer: appartengono al ledger persistente.
 - **Don't** affidare selezione, validità, errore o blocco al solo colore.
 - **Don't** lasciare spiegazioni permanenti sotto controlli standard quando un’etichetta, un tooltip o un pannello avanzato sono sufficienti.
+
+
+## Estensione 1.9.0 — grammatiche e biblioteca
+
+La shell Plotter Bench conserva la propria identità. Urban è un nuovo linguaggio della card, con pannelli, fasce e segni di stampa, indipendente dalla palette dell’interfaccia. Basi personali, progetti e brand kit occupano sezioni richiudibili; il percorso verso preview e PNG resta diretto. Le varianti demo e la richiesta al modello hanno controlli distinti. I font Barlow `*-ui.woff2` sono sottoinsiemi per il chrome dell’editor; i font completi della card e le metriche native restano separati e incorporati nello SVG.

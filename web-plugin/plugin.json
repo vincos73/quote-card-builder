@@ -1,18 +1,24 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "quote-card-builder-web",
-  "version": "1.8.11",
-  "description": "Create editable quote cards with model-designed ribbon compositions, reusable bases, and a hosted MCP editor.",
-  "author": {"name": "Vincenzo Cosenza", "url": "https://github.com/vincos73"},
+  "version": "1.10.2",
+  "description": "Create editable quote cards with native Nastri and Urban compositions, portable personal bases and brand assets.",
+  "author": {
+    "name": "Vincenzo Cosenza",
+    "url": "https://github.com/vincos73"
+  },
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Quote Card Builder Web",
-        "shortDescription": "Quote cards con Nastri",
-        "longDescription": "Design three ribbon compositions with the model, choose and refine them in the hosted editor, save a personal base, and download PNG. Supports 4:5, 1:1 and 9:16. Visual warnings are descriptive and do not block export. Saved bases are local to the client; JSON export supports explicit reuse elsewhere.",
+        "shortDescription": "Quote cards con Nastri e Urban",
+        "longDescription": "Choose native Nastri or Urban compositions, refine typography in the hosted editor, reuse personal bases and transfer full projects with embedded fonts and logos. Supports 4:5, 1:1 and 9:16; visual notices do not block export.",
         "developerName": "Vincenzo Cosenza",
         "category": "Productivity",
-        "capabilities": ["Interactive", "Read"],
+        "capabilities": [
+          "Interactive",
+          "Read"
+        ],
         "defaultPrompt": "Crea tre composizioni Nastri per questa citazione e apri l’editor."
       }
     }

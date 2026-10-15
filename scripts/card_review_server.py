@@ -32,11 +32,14 @@ import inspect_render as inspector
 import apply_card_review as review_applier
 import brand_profiles
 import saved_styles
+import portable_projects
 from visual_grammars import demo_compositions, normalize_grammar_presentation
+from urban_grammar import xerox_composition
+from urban_artwork import is_xerox, xerox_font
 from grammar_sessions import complete_ribbon_formats, proposal_metadata
 from quote_card_contract import MAX_LINES
 
-MAX_BODY_BYTES = 250_000
+MAX_BODY_BYTES = 10_000_000
 MAX_TEXT_LENGTH = 600
 ALT_TEXT_MAX_LENGTH = proof.ALT_TEXT_MAX_LENGTH
 MAX_FORMATS = 3
@@ -49,6 +52,10 @@ OUTPUT_MODES = {"all", "4x5", "1x1", "9x16"}
 SESSION_STATES = {"candidato_selezionato", "contenuto_approvato"}
 PALETTE_KEYS = ("primary", "accent", "background", "text")
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def is_native_grammar(presentation: Any) -> bool:
+    return isinstance(presentation, dict) and presentation.get("visual_grammar") in {"ribbons", "urban"}
 CHATBOT_TIMEOUT_SECONDS = 300
 CODEX_CLI_DEFAULT = Path("/Applications/ChatGPT.app/Contents/Resources/codex")
 MIME_TYPES = {
@@ -135,6 +142,10 @@ def approval_feedback(draft: dict[str, Any], base_revision: int, overall_note: s
     as an approved batch, built in one place so the feedback shape and
     apply_card_review's CONTENT_KEYS whitelist cannot silently drift apart.
     """
+    brand_patch: dict[str, Any] = {"colors": normalize_palette(draft["brand"]["colors"])}
+    composition = draft.get("presentation", {}).get("composition", {})
+    if is_xerox(composition) and draft.get("brand", {}).get("font") == xerox_font():
+        brand_patch["font"] = xerox_font()
     feedback = {
         "feedback_id": f"feedback-{secrets.token_hex(8)}", "submitted_at": now_iso(), "action": "approve",
         "base_revision": base_revision, "editorial_responsibility": "user",
@@ -145,7 +156,7 @@ def approval_feedback(draft: dict[str, Any], base_revision: int, overall_note: s
             "styles_customized": draft["content"].get("styles_customized", False), "declared_by": "user",
         },
         "direction": draft["direction"], "emphasis": draft["content"]["emphasis"], "presentation": draft["presentation"],
-        "brand": {"colors": normalize_palette(draft["brand"]["colors"])},
+        "brand": brand_patch,
         "formats": [{"id": item["id"], "lines": item["lines"], "text_scale": item["text_scale"], "vertical_position": item["vertical_position"]} for item in draft["formats"]],
         "overall_note": overall_note,
     }
@@ -282,7 +293,7 @@ def validate_manifest(data: Any) -> list[str]:
         proposal_metadata(data)
     except ValueError as exc:
         error(errors, str(exc))
-    ribbons = isinstance(presentation, dict) and presentation.get("visual_grammar") == "ribbons"
+    ribbons = is_native_grammar(presentation)
     if not ribbons and any(item.get("type") == "size" for item in content.get("styles", []) if isinstance(item, dict)):
         error(errors, "La dimensione delle parole selezionate richiede lo stile Nastri.")
     formats = data.get("formats")
@@ -370,7 +381,7 @@ def session_model(
     model["palette_initial"] = copy.deepcopy(
         manifest.get("palette_initial", manifest["brand"]["colors"])
     )
-    model["limits"] = {"max_lines": 64 if manifest["presentation"].get("visual_grammar") == "ribbons" else MAX_LINES}
+    model["limits"] = {"max_lines": 64 if is_native_grammar(manifest["presentation"]) else MAX_LINES}
     # Keep the persisted baseline identical: adding UI formats here would
     # invalidate the browser draft's signature on a prototype upgrade.
     # The editor completes missing Nastri canvases after restoring its draft.
@@ -428,10 +439,16 @@ def validate_draft(payload: Any, manifest: dict[str, Any]) -> dict[str, Any]:
             elif key == "presentation":
                 candidate[key] = copy.deepcopy(payload[key])
             else: candidate[key] = payload[key]
+    composition = candidate.get("presentation", {}).get("composition", {})
+    if is_xerox(composition):
+        font = candidate.get("brand", {}).get("font", {})
+        if (str(font.get("family", "Arial")).strip().casefold() == "arial"
+                and not any(font.get(key) for key in ("regular_path", "bold_path", "italic_path"))):
+            candidate["brand"]["font"] = xerox_font()
     if "palette" in payload:
         candidate["brand"]["colors"] = normalize_palette(payload["palette"])
     candidate.update(proposal_metadata(payload))
-    if candidate["presentation"].get("visual_grammar") != "ribbons":
+    if not is_native_grammar(candidate["presentation"]):
         candidate.pop("composition_candidates", None)
         candidate.pop("proposal_source", None)
     errors = validate_manifest(candidate)
@@ -452,7 +469,7 @@ def render_preview(manifest: dict[str, Any], manifest_dir: Path) -> list[dict[st
             item["lines"], adapted, manifest_dir, manifest["direction"],
             item["width"], item["height"], item["text_scale"], item["vertical_position"],
         )
-        ribbons = adapted.get("presentation", {}).get("visual_grammar") == "ribbons"
+        ribbons = is_native_grammar(adapted.get("presentation", {}))
         kwargs: dict[str, Any] = {} if ribbons else {"font_size_override": size}
         if supports_options:
             kwargs["render_options"] = {"vertical_position": item["vertical_position"], **manifest["presentation"]}
@@ -463,17 +480,22 @@ def render_preview(manifest: dict[str, Any], manifest_dir: Path) -> list[dict[st
             "maximum_font_size": maximum_size, "text_scale": min(float(item["text_scale"]), 1.0),
             "auto_fitted": auto_fitted, "fitting": fit_mode, "svg": svg,
         })
-        if ribbons:
+        if ribbons and adapted.get("presentation", {}).get("visual_grammar") == "ribbons":
             layout = proof.ribbon_layout(adapted, manifest_dir)
             rendered[-1].update(font_size=layout["font_size"], author_font_size=layout["author_font_size"],
                                 layout_bounds=layout["bounds"], layout_warnings=layout["warnings"],
                                 ribbon_layout=layout)
+        elif adapted.get("presentation", {}).get("visual_grammar") == "urban":
+            layout = proof.urban_layout(adapted, manifest_dir)
+            rendered[-1].update(font_size=layout["font_size"], author_font_size=layout["author_font_size"],
+                                layout_bounds=layout["bounds"], layout_warnings=layout["warnings"],
+                                urban_layout=layout)
     return rendered
 
 
 def composition_previews(manifest: dict[str, Any], manifest_dir: Path) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
-    if manifest.get("presentation", {}).get("visual_grammar") != "ribbons":
+    if not is_native_grammar(manifest.get("presentation", {})):
         return results
     for composition in manifest.get("composition_candidates", []):
         candidate = copy.deepcopy(manifest)
@@ -498,7 +520,7 @@ def preview_response(draft: dict[str, Any], manifest_dir: Path, revision: int,
                               "evidence_status": draft["content"]["evidence_status"],
                               "attribution": draft["content"]["attribution"],
                               "alt_text_suggestion": proof.default_alt_text(draft["content"]["text"], draft["content"]["attribution"].get("label", ""), draft.get("source"))}}
-    if draft.get("presentation", {}).get("visual_grammar") == "ribbons":
+    if is_native_grammar(draft.get("presentation", {})):
         result.update(model=session_model(draft, manifest_dir, return_url),
                       composition_previews=composition_previews(draft, manifest_dir),
                       proposal_source=draft.get("proposal_source", "model"))
@@ -609,7 +631,7 @@ def preview_score(manifest: dict[str, Any], previews: list[dict[str, Any]], qa: 
         proof.contrast_ratio(colors["background"], colors["primary"]),
         proof.contrast_ratio(colors["accent"], colors["primary"]),
     ]
-    if manifest.get("presentation", {}).get("visual_grammar") == "ribbons":
+    if is_native_grammar(manifest.get("presentation", {})):
         composition = manifest["presentation"]["composition"]
         ink = colors[composition["text_role"]]
         ground = colors[composition["background_role"]]
@@ -1005,15 +1027,28 @@ def create_server(
         def do_POST(self) -> None:  # noqa: N802
             parsed, query = urlparse(self.path), parse_qs(urlparse(self.path).query)
             if not self.local_host() or not self.authorized(query): self.send_json(HTTPStatus.FORBIDDEN, {"error": "Sessione non autorizzata"}); return
-            if parsed.path not in {"/api/preview", "/api/generate", "/api/profiles", "/api/styles", "/api/styles/apply", "/api/compositions", "/api/project/load"}: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Risorsa non trovata"}); return
+            if parsed.path not in {"/api/preview", "/api/generate", "/api/profiles", "/api/styles", "/api/styles/apply", "/api/compositions", "/api/project/load", "/api/styles/import-base", "/api/portable/export"}: self.send_json(HTTPStatus.NOT_FOUND, {"error": "Risorsa non trovata"}); return
             try:
                 payload, current = self.request_json(), read_json(manifest_path)
+                if parsed.path == "/api/portable/export":
+                    if not isinstance(payload, dict) or set(payload) != {"kind", "format", "draft"} or payload["kind"] not in {"base", "project"} or not isinstance(payload["draft"], dict):
+                        raise ValueError("Indica tipo, formato attivo e draft corrente per l'esportazione.")
+                    edited = validate_draft(payload["draft"], current)
+                    if payload["kind"] == "base":
+                        value = portable_projects.export_base("Personal base", edited, manifest_path.parent, payload["format"])
+                        filename = "quote-card-personal-base.json"
+                    else:
+                        value = portable_projects.export_project("Card project", edited, manifest_path.parent, payload["format"])
+                        filename = "quote-card-project.json"
+                    self.send_json_download(value, filename); return
                 if parsed.path == "/api/project/load":
                     if not isinstance(payload, dict) or set(payload) != {"project"} or not isinstance(payload["project"], dict):
                         raise ValueError("Indica il progetto JSON da riaprire.")
                     with lock:
                         latest = read_json(manifest_path)
                         imported = copy.deepcopy(payload["project"])
+                        if imported.get("schema") == portable_projects.PROJECT_SCHEMA:
+                            imported = portable_projects.import_design(imported, session_dir / "portable-assets", latest, project=True)
                         imported["revision"] = latest["revision"] + 1
                         imported["state"] = "candidato_selezionato"
                         imported["brand"] = brand_profiles.resolve_brand_assets(imported.get("brand", {}), manifest_path.parent)
@@ -1028,27 +1063,46 @@ def create_server(
                         current_state["manifest_revision"] = imported["revision"]
                         atomic_write_json(state_path, current_state)
                     self.send_json(HTTPStatus.OK, result); return
+                if parsed.path == "/api/styles/import-base":
+                    if not isinstance(payload, dict) or set(payload) != {"base"}:
+                        raise ValueError("Indica la base personale da importare.")
+                    imported = portable_projects.import_design(payload["base"], session_dir / "portable-assets", current, project=False)
+                    imported["brand"] = brand_profiles.resolve_brand_assets(imported["brand"], manifest_path.parent)
+                    name = saved_styles.normalize_name(payload["base"].get("name", "Base importata"))
+                    saved = saved_styles.save_style(name, imported, path=style_store, base_dir=manifest_path.parent)
+                    self.send_json(HTTPStatus.CREATED, {"styles": saved_styles.list_styles(style_store), "saved_style_id": saved["id"]}); return
                 if parsed.path == "/api/compositions":
-                    if not isinstance(payload, dict) or set(payload) != {"draft"} or not isinstance(payload["draft"], dict):
+                    if not isinstance(payload, dict) or set(payload) - {"draft", "preset"} or "draft" not in payload or not isinstance(payload["draft"], dict):
                         raise ValueError("Indica il draft per le proposte.")
                     requested = copy.deepcopy(payload["draft"])
                     presentation = copy.deepcopy(requested.get("presentation", current["presentation"]))
                     authored = proposal_metadata(requested)
                     proposals = authored.get("composition_candidates")
-                    if not proposals:
-                        proposals = demo_compositions(requested.get("text", current["content"]["text"]), presentation.get("graphic_seed", 0))
+                    preset = payload.get("preset")
+                    if preset is not None and preset != "xerox":
+                        raise ValueError("Preset di composizione non valido.")
+                    if preset == "xerox":
+                        if presentation.get("visual_grammar") != "urban":
+                            raise ValueError("Urban · Xerox richiede prima lo stile Urban.")
+                        xerox = xerox_composition()
+                        proposals = [xerox]
+                        requested["proposal_source"] = "demo"
+                        presentation["composition"] = copy.deepcopy(xerox)
+                    elif not proposals:
+                        grammar = presentation.get("visual_grammar", "ribbons")
+                        proposals = demo_compositions(requested.get("text", current["content"]["text"]), presentation.get("graphic_seed", 0), grammar=grammar)
                         requested["proposal_source"] = "demo"
                     else:
                         requested["proposal_source"] = authored.get("proposal_source", "model")
                     requested["composition_candidates"] = proposals
-                    presentation.update(visual_grammar="ribbons")
+                    presentation.setdefault("visual_grammar", "ribbons")
                     presentation.setdefault("output_mode", "4x5")
                     if not presentation.get("composition"):
                         presentation["composition"] = copy.deepcopy(proposals[0])
                     requested["presentation"] = presentation
                     formats = requested.get("formats", current["formats"])
                     requested["formats"] = complete_ribbon_formats(formats, requested.get("text", current["content"]["text"]))
-                    if current["presentation"].get("visual_grammar") != "ribbons":
+                    if not is_native_grammar(current["presentation"]):
                         for item in requested["formats"]:
                             item["lines"] = [requested.get("text", current["content"]["text"])]
                     draft = validate_draft(requested, current)

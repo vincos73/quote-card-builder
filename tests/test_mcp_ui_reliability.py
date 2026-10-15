@@ -659,8 +659,11 @@ if (clicked !== 1 || status.textContent !== "PNG download started.") throw new E
         handler = "async function downloadLatestPng()" + self.workspace_html.split(
             "async function downloadLatestPng()", 1
         )[1].split('produce.addEventListener("click", downloadLatestPng);', 1)[0]
-        self.assertNotIn('request("ui/message"', self.workspace_html)
-        self.assertNotIn("sendFollowUpMessage", self.workspace_html)
+        chat_request = self.workspace_html.split("async function requestModelCompositions(base)", 1)[1].split("async function adoptBrand", 1)[0]
+        self.assertIn("sendFollowUpMessage", chat_request)
+        self.assertIn('request("ui/message"', chat_request)
+        self.assertNotIn("sendFollowUpMessage", handler)
+        self.assertNotIn('request("ui/message"', handler)
         self._run(
             r'''
 let editRevision = 0, actionSequence = 0, signature = "first quote";

@@ -21,6 +21,10 @@ class WebServerPackageTests(unittest.TestCase):
         self.assertTrue({"Dockerfile", "pyproject.toml", "requirements-mcp.txt", "uv.lock", ".gcloudignore",
                          "scripts/visual_grammars.py", "scripts/grammar_sessions.py", "scripts/inspect_render.py",
                          "assets/card-editor/fonts/Barlow-Regular.ttf", "assets/card-editor/fonts/Barlow-Bold.ttf"} <= set(files))
+        self.assertIn("assets/urban/urban-xerox-lime-v1.png", files)
+        self.assertNotIn("assets/urban/urban-xerox-lime-reference.png", files)
+        self.assertTrue({"assets/card-editor/fonts/BarlowCondensed-Black.ttf",
+                         "assets/card-editor/fonts/BarlowCondensed-OFL.txt"} <= set(files))
         self.assertFalse(any(name.startswith(("work/", "dist/", ".agents/", ".codex/")) for name in files))
         self.assertNotIn("scripts/card_review_server.py", files)
         self.assertNotIn("scripts/saved_styles.py", files)

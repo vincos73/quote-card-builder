@@ -18,11 +18,12 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 NAME = "quote-card-builder-web-mcp-server"
 ORIGIN = "https://quote-card-builder-mcp-960066178304.europe-west8.run.app"
-FEATURES = ["ribbons", "visual_advisories", "three_output_formats"]
+FEATURES = ["ribbons", "urban", "urban_xerox", "portable_personal_bases", "portable_brand_kit", "visual_advisories", "three_output_formats"]
 GCLOUD_IGNORE = b"__pycache__/\n*.py[cod]\n"
 ROOT_FILES = {"Dockerfile", "requirements-mcp.txt", "pyproject.toml", "uv.lock"}
 ASSET_DIRECTORIES = {"assets/card-editor/fonts", "assets/mcp-editor"}
-ASSET_FILES = {"assets/card-editor/vincos-lockup-white.svg", "assets/card-editor/quote-card-builder-wordmark.svg"}
+ASSET_FILES = {"assets/card-editor/vincos-lockup-white.svg", "assets/card-editor/quote-card-builder-wordmark.svg",
+               "assets/urban/urban-xerox-lime-v1.png"}
 
 
 def _read_source(root: Path, relative: str) -> bytes:
