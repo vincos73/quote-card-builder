@@ -43,20 +43,57 @@ def _skill_version() -> str:
 
 
 def _manifest() -> dict:
+    path = PLUGIN_TEMPLATE / "plugin.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _legacy_manifest() -> dict:
     path = PLUGIN_TEMPLATE / ".codex-plugin" / "plugin.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def validate_template() -> None:
     manifest = _manifest()
+    legacy = _legacy_manifest()
+    interface = manifest.get("extensions", {}).get("com.openai", {}).get("interface")
+    if manifest.get("$schema") != "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json":
+        raise ValueError("Il manifest root deve usare lo schema Agent Plugins 1.0")
+    if not isinstance(interface, dict):
+        raise ValueError("Il manifest root deve contenere extensions.com.openai.interface")
+    if any(manifest.get(key) != legacy.get(key) for key in ("name", "version", "description", "author", "homepage", "repository", "keywords")):
+        raise ValueError("L'identità e i metadati del manifest moderno devono coincidere con l'overlay legacy")
+    if interface != legacy.get("interface"):
+        raise ValueError("L'interfaccia moderna e quella dell'overlay legacy devono coincidere")
+    prompts = interface.get("defaultPrompt")
+    if not isinstance(prompts, list) or len(prompts) > 3:
+        raise ValueError("Il defaultPrompt deve contenere al massimo tre prompt")
+    if set(manifest) & {"skills", "mcpServers", "interface", "apps"}:
+        raise ValueError("Il manifest moderno usa percorsi fissi: skills, mcpServers, interface e apps non sono campi root")
     if manifest.get("name") != PLUGIN_NAME:
         raise ValueError("Il nome del plugin non coincide con la cartella di destinazione")
     if manifest.get("version") != _skill_version():
         raise ValueError("La versione del plugin non coincide con la skill canonica")
-    if manifest.get("skills") != "./skills/":
-        raise ValueError("Il manifest deve dichiarare skills come ./skills/")
-    if manifest.get("mcpServers") != "./.mcp.json":
-        raise ValueError("Il manifest deve dichiarare mcpServers come ./.mcp.json")
+    if legacy.get("skills") != "./skills/":
+        raise ValueError("L'overlay legacy deve dichiarare skills come ./skills/")
+    if legacy.get("mcpServers") != "./.mcp.json":
+        raise ValueError("L'overlay legacy deve dichiarare mcpServers come ./.mcp.json")
+    if (PLUGIN_TEMPLATE / "plugin.json").is_symlink() or not (PLUGIN_TEMPLATE / "plugin.json").is_file():
+        raise ValueError("Manca il manifest moderno plugin.json")
+    modern_mcp_path = PLUGIN_TEMPLATE / "mcp.json"
+    if not modern_mcp_path.is_file():
+        raise ValueError("Manca la configurazione MCP portabile mcp.json")
+    modern_mcp = json.loads(modern_mcp_path.read_text(encoding="utf-8"))
+    if modern_mcp.get("$schema") != "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json":
+        raise ValueError("mcp.json deve usare lo schema Agent Plugins 1.0")
+    modern_servers = modern_mcp.get("mcpServers")
+    modern_server = modern_servers.get(PLUGIN_NAME) if isinstance(modern_servers, dict) else None
+    if not isinstance(modern_server, dict) or modern_server.get("type") != "stdio":
+        raise ValueError("mcp.json deve dichiarare il server stdio quote-card-builder")
+    modern_args = ["run", "--frozen", "python",
+                   "${PLUGIN_ROOT}/skills/quote-card-builder/scripts/mcp_server.py", "--local-file-delivery"]
+    modern_cwd = "${PLUGIN_ROOT}/skills/quote-card-builder"
+    if modern_server.get("command") != "uv" or modern_server.get("args") != modern_args or modern_server.get("cwd") != modern_cwd:
+        raise ValueError("mcp.json deve puntare al runtime stdio portabile incluso nel plugin")
     mcp_path = PLUGIN_TEMPLATE / ".mcp.json"
     if not mcp_path.is_file():
         raise ValueError("Il template deve contenere .mcp.json")
@@ -69,6 +106,8 @@ def validate_template() -> None:
         raise ValueError(".mcp.json deve avviare il server MCP dal lockfile incluso")
     if server.get("cwd") != "skills/quote-card-builder":
         raise ValueError(".mcp.json deve avviare uv dalla skill inclusa")
+    if server.get("command") != modern_server.get("command") or server.get("args")[:3] != modern_server.get("args")[:3] or server.get("args")[4:] != modern_server.get("args")[4:]:
+        raise ValueError("I launcher MCP moderno e legacy devono avviare lo stesso runtime stdio")
     for filename in ("pyproject.toml", "uv.lock"):
         if not (ROOT / filename).is_file():
             raise ValueError(f"Manca il runtime riproducibile: {filename}")

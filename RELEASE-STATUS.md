@@ -1,4 +1,14 @@
-# Candidato 1.10.0 / UI v1.60 — Urban · Xerox
+# Plugin personale 1.10.1 / UI v1.60 — compatibilità di installazione
+
+15 ottobre 2026. **La piattaforma ha accettato e salvato l’aggiornamento del plugin privato esistente. L’installazione nei client ChatGPT/Codex dell’utente resta da verificare.**
+
+- Il pacchetto locale ora include `plugin.json` e `mcp.json` Agent Plugins 1.0, oltre agli overlay legacy sincronizzati. Identità e presentazione sono conservate; i prompt iniziali passano da quattro a tre eliminando soltanto quello generico duplicato. Il launcher moderno usa percorsi `${PLUGIN_ROOT}`.
+- Lo ZIP 1.10.0 rifiutato dall’utente conteneva solo il formato legacy e pesava circa 5.71 MiB. Non è stata identificata una causa univoca del messaggio generico dei client: anche il precedente 1.9.0 installato conteneva solo il formato legacy. La 1.10.1 corregge il formato e riduce il riferimento illustrativo a 432×540; il raster artistico usato nelle card resta identico. Il nuovo archivio pesa **4,144,344 byte**, SHA-256 `d27e03c55071244cf73ff6af90679ba42aa26a5c32880c2ac3557a565263b277`.
+- **17 test mirati superati** per pacchetti, launcher e coerenza delle versioni. Avvio MCP stdio reale dal nuovo ZIP estratto: 9 tool disponibili, rendering Urban riuscito e byte dell’immagine originale preservati nella risposta di circa 8.8 MB. Per il test è stata copiata in modo isolato la venv già installata: il download di dipendenze in una venv vuota è stato bloccato dalla risoluzione DNS di `files.pythonhosted.org` in questo ambiente. Registro e report in `work/installation-fix/`.
+- Aggiornato [Quote Card Builder](https://chatgpt.com/plugins/Plugin_a89e7ff110fc8191862bd712eeaaf65c), stesso ID `Plugin_a89e7ff110fc8191862bd712eeaaf65c`, scope USER e visibilità PRIVATE. Release restituita e riletta: `pluginrel_6ad07b33077081918fa9ef024d1b26af`. Tutti gli 82 percorsi del pacchetto sono presenti; manifest moderni e sorgenti selezionati corrispondono ai byte caricati. La piattaforma ha normalizzato gli overlay legacy con un launcher equivalente.
+- Archivi 1.10.1 locale, web e server in `dist/`, con `SHA256SUMS-1.10.1.txt`. La UI resta v1.60. Il servizio Cloud Run non è stato distribuito e resta all’ultimo stato confermato 1.8.11/UI v1.58; il plugin web di test è distinto dal plugin privato appena aggiornato. Nessun tag o rilascio pubblico.
+
+# Storico candidato 1.10.0 / UI v1.60 — Urban · Xerox
 
 15 ottobre 2026. **Prima integrazione della prova Xerox/lime scelta dall’utente; pacchetti di prova locali, nessun deploy remoto.**
 

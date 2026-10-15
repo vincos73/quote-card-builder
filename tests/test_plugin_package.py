@@ -18,6 +18,21 @@ SPEC.loader.exec_module(BUILD_PLUGIN)
 
 
 class PluginPackageTests(unittest.TestCase):
+    def test_portable_manifest_rejects_legacy_top_level_fields(self):
+        original_read = Path.read_text
+        manifest_path = ROOT / "plugin" / "plugin.json"
+        for field in ("skills", "mcpServers", "interface", "apps"):
+            def changed_manifest(path, *args, **kwargs):
+                content = original_read(path, *args, **kwargs)
+                if path == manifest_path:
+                    value = json.loads(content)
+                    value[field] = "./legacy"
+                    return json.dumps(value)
+                return content
+            with self.subTest(field=field), patch.object(Path, "read_text", changed_manifest):
+                with self.assertRaisesRegex(ValueError, "campi root"):
+                    BUILD_PLUGIN.validate_template()
+
     def test_package_rejects_mismatched_server_version(self):
         original_read = Path.read_text
 
@@ -33,18 +48,43 @@ class PluginPackageTests(unittest.TestCase):
 
     def test_template_is_valid_and_marketplace_ready_in_english(self):
         BUILD_PLUGIN.validate_template()
-        manifest = json.loads(
-            (ROOT / "plugin" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
-        )
+        manifest = json.loads((ROOT / "plugin" / "plugin.json").read_text(encoding="utf-8"))
+        legacy = json.loads((ROOT / "plugin" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        interface = manifest["extensions"]["com.openai"]["interface"]
+        self.assertEqual("https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", manifest["$schema"])
+        self.assertEqual("quote-card-builder", manifest["name"])
+        self.assertEqual(manifest["version"], legacy["version"])
+        self.assertEqual(interface, legacy["interface"])
         self.assertEqual(manifest["version"], BUILD_PLUGIN._skill_version())
-        self.assertEqual(manifest["interface"]["capabilities"], ["Interactive", "Read"])
-        self.assertIn("quote card", manifest["interface"]["shortDescription"].lower())
-        self.assertIn("one populated editor", manifest["interface"]["longDescription"].lower())
-        self.assertLessEqual(len(manifest["interface"]["shortDescription"]), 30)
-        self.assertIn("global workspace", manifest["interface"]["longDescription"].lower())
-        self.assertIn("drafts do not sync across devices or conversations", manifest["interface"]["longDescription"].lower())
-        self.assertIn("Proceed with this link and make a quote card.", manifest["interface"]["defaultPrompt"])
-        self.assertEqual(manifest["mcpServers"], "./.mcp.json")
+        self.assertEqual(interface["capabilities"], ["Interactive", "Read"])
+        self.assertIn("quote card", interface["shortDescription"].lower())
+        self.assertIn("one populated editor", interface["longDescription"].lower())
+        self.assertLessEqual(len(interface["shortDescription"]), 30)
+        self.assertIn("global workspace", interface["longDescription"].lower())
+        self.assertIn("drafts do not sync across devices or conversations", interface["longDescription"].lower())
+        self.assertEqual(interface["defaultPrompt"], [
+            "Open Quote Card Builder and turn this quote into a card.",
+            "Find the strongest quote in this text and open the Quote Card Builder editor.",
+            "Proceed with this link and make a quote card.",
+        ])
+        self.assertNotIn("skills", manifest)
+        self.assertNotIn("mcpServers", manifest)
+
+    def test_portable_mcp_manifest_and_legacy_overlay_start_the_same_stdio_runtime(self):
+        portable = json.loads((ROOT / "plugin" / "mcp.json").read_text(encoding="utf-8"))
+        legacy = json.loads((ROOT / "plugin" / ".mcp.json").read_text(encoding="utf-8"))
+        self.assertEqual("https://agent-plugins.org/schemas/1.0.0/mcp.schema.json", portable["$schema"])
+        server = portable["mcpServers"]["quote-card-builder"]
+        legacy_server = legacy["mcpServers"]["quote-card-builder"]
+        self.assertEqual("stdio", server["type"])
+        self.assertEqual("uv", server["command"])
+        self.assertEqual("uv", legacy_server["command"])
+        self.assertEqual(["run", "--frozen", "python", "--local-file-delivery"], server["args"][:3] + server["args"][4:])
+        self.assertEqual(server["args"][:3], legacy_server["args"][:3])
+        self.assertEqual(server["args"][4:], legacy_server["args"][4:])
+        self.assertTrue(server["args"][3].startswith("${PLUGIN_ROOT}/"))
+        self.assertEqual("${PLUGIN_ROOT}/skills/quote-card-builder", server["cwd"])
+        self.assertEqual("skills/quote-card-builder", legacy_server["cwd"])
 
     def test_package_pins_the_mcp_apps_2x_runtime(self):
         requirement = (ROOT / "requirements-mcp.txt").read_text(encoding="utf-8")
@@ -104,13 +144,18 @@ class PluginPackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "quote-card-builder-plugin.zip"
             BUILD_PLUGIN.build_zip(output)
+            prefix = "quote-card-builder/"
             with zipfile.ZipFile(output) as archive:
                 names = set(archive.namelist())
-            prefix = "quote-card-builder/"
+                portable_mcp = json.loads(archive.read(prefix + "mcp.json"))
+            self.assertIn(prefix + "plugin.json", names)
+            self.assertIn(prefix + "mcp.json", names)
             self.assertIn(prefix + ".codex-plugin/plugin.json", names)
             self.assertIn(prefix + ".mcp.json", names)
             self.assertIn(prefix + "skills/quote-card-builder/scripts/mcp_server.py", names)
             self.assertIn(prefix + "skills/quote-card-builder/scripts/mcp_app.py", names)
+            portable_entry = portable_mcp["mcpServers"]["quote-card-builder"]["args"][3].replace("${PLUGIN_ROOT}/", "")
+            self.assertIn(prefix + portable_entry, names)
             self.assertIn(prefix + "skills/quote-card-builder/requirements-mcp.txt", names)
             self.assertIn(prefix + "skills/quote-card-builder/SKILL.md", names)
             self.assertIn(prefix + "skills/quote-card-builder/assets/card-editor/index.html", names)

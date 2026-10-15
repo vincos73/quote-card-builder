@@ -1,6 +1,6 @@
 # Basi personali e progetti trasferibili
 
-Sorgenti candidati 1.10.0. Web e Visual Review Studio locale condividono due formati JSON distinti.
+Sorgenti candidati 1.10.1. Web e Visual Review Studio locale condividono due formati JSON distinti.
 
 Una base personale ha `schema: qcb-personal-base`, `schemaVersion: 2`, `name` e `design`. Conserva grammatica, scena selezionata, ruoli della palette, preferenze di formato/dimensione, logo e brand kit. Non contiene citazione, autore, intervalli sulle parole, prove editoriali, fonte o alt text. Galleria e origine delle proposte appartengono alla sessione.
 

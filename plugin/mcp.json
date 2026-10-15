@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "quote-card-builder": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--frozen",
+        "python",
+        "${PLUGIN_ROOT}/skills/quote-card-builder/scripts/mcp_server.py",
+        "--local-file-delivery"
+      ],
+      "cwd": "${PLUGIN_ROOT}/skills/quote-card-builder"
+    }
+  }
+}
