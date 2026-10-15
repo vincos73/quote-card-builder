@@ -1,7 +1,7 @@
 # Quote Card Builder
 
 
-Sorgenti candidati **1.9.0 / UI v1.59**: Nastri e Urban, basi personali e progetti interoperabili, upload e trasferimento di font/logo. Il servizio remoto resta alla 1.8.11 finché non viene eseguito un deploy verificato; i pacchetti locali e web sono costruiti dalla stessa versione. Vedi [RELEASE-STATUS.md](RELEASE-STATUS.md), [basi personali](references/personal-bases.md) e [brand kit](references/brand-kits.md).
+Sorgenti candidati **1.10.0 / UI v1.60**: Nastri e Urban, l’opzione beta Urban · Xerox, basi personali e progetti interoperabili, upload e trasferimento di font/logo. Urban · Xerox riutilizza un asset artistico fisso senza una nuova generazione ImageGen; testo, autore, logo e font restano editabili. Il servizio remoto resta alla 1.8.11 finché non viene eseguito un deploy verificato; i pacchetti locali e web sono costruiti dalla stessa versione. Vedi [RELEASE-STATUS.md](RELEASE-STATUS.md), [basi personali](references/personal-bases.md), [brand kit](references/brand-kits.md) e [direzione artistica Urban · Xerox](references/urban-web-mcp.md).
 
 Quote Card Builder è una skill per ChatGPT e Claude che trasforma una frase, un testo, un URL, un documento o un’idea in una quote card pronta da condividere.
 

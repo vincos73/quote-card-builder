@@ -34,6 +34,8 @@ import brand_profiles
 import saved_styles
 import portable_projects
 from visual_grammars import demo_compositions, normalize_grammar_presentation
+from urban_grammar import xerox_composition
+from urban_artwork import is_xerox, xerox_font
 from grammar_sessions import complete_ribbon_formats, proposal_metadata
 from quote_card_contract import MAX_LINES
 
@@ -140,6 +142,10 @@ def approval_feedback(draft: dict[str, Any], base_revision: int, overall_note: s
     as an approved batch, built in one place so the feedback shape and
     apply_card_review's CONTENT_KEYS whitelist cannot silently drift apart.
     """
+    brand_patch: dict[str, Any] = {"colors": normalize_palette(draft["brand"]["colors"])}
+    composition = draft.get("presentation", {}).get("composition", {})
+    if is_xerox(composition) and draft.get("brand", {}).get("font") == xerox_font():
+        brand_patch["font"] = xerox_font()
     feedback = {
         "feedback_id": f"feedback-{secrets.token_hex(8)}", "submitted_at": now_iso(), "action": "approve",
         "base_revision": base_revision, "editorial_responsibility": "user",
@@ -150,7 +156,7 @@ def approval_feedback(draft: dict[str, Any], base_revision: int, overall_note: s
             "styles_customized": draft["content"].get("styles_customized", False), "declared_by": "user",
         },
         "direction": draft["direction"], "emphasis": draft["content"]["emphasis"], "presentation": draft["presentation"],
-        "brand": {"colors": normalize_palette(draft["brand"]["colors"])},
+        "brand": brand_patch,
         "formats": [{"id": item["id"], "lines": item["lines"], "text_scale": item["text_scale"], "vertical_position": item["vertical_position"]} for item in draft["formats"]],
         "overall_note": overall_note,
     }
@@ -433,6 +439,12 @@ def validate_draft(payload: Any, manifest: dict[str, Any]) -> dict[str, Any]:
             elif key == "presentation":
                 candidate[key] = copy.deepcopy(payload[key])
             else: candidate[key] = payload[key]
+    composition = candidate.get("presentation", {}).get("composition", {})
+    if is_xerox(composition):
+        font = candidate.get("brand", {}).get("font", {})
+        if (str(font.get("family", "Arial")).strip().casefold() == "arial"
+                and not any(font.get(key) for key in ("regular_path", "bold_path", "italic_path"))):
+            candidate["brand"]["font"] = xerox_font()
     if "palette" in payload:
         candidate["brand"]["colors"] = normalize_palette(payload["palette"])
     candidate.update(proposal_metadata(payload))
@@ -1060,13 +1072,23 @@ def create_server(
                     saved = saved_styles.save_style(name, imported, path=style_store, base_dir=manifest_path.parent)
                     self.send_json(HTTPStatus.CREATED, {"styles": saved_styles.list_styles(style_store), "saved_style_id": saved["id"]}); return
                 if parsed.path == "/api/compositions":
-                    if not isinstance(payload, dict) or set(payload) != {"draft"} or not isinstance(payload["draft"], dict):
+                    if not isinstance(payload, dict) or set(payload) - {"draft", "preset"} or "draft" not in payload or not isinstance(payload["draft"], dict):
                         raise ValueError("Indica il draft per le proposte.")
                     requested = copy.deepcopy(payload["draft"])
                     presentation = copy.deepcopy(requested.get("presentation", current["presentation"]))
                     authored = proposal_metadata(requested)
                     proposals = authored.get("composition_candidates")
-                    if not proposals:
+                    preset = payload.get("preset")
+                    if preset is not None and preset != "xerox":
+                        raise ValueError("Preset di composizione non valido.")
+                    if preset == "xerox":
+                        if presentation.get("visual_grammar") != "urban":
+                            raise ValueError("Urban · Xerox richiede prima lo stile Urban.")
+                        xerox = xerox_composition()
+                        proposals = [xerox]
+                        requested["proposal_source"] = "demo"
+                        presentation["composition"] = copy.deepcopy(xerox)
+                    elif not proposals:
                         grammar = presentation.get("visual_grammar", "ribbons")
                         proposals = demo_compositions(requested.get("text", current["content"]["text"]), presentation.get("graphic_seed", 0), grammar=grammar)
                         requested["proposal_source"] = "demo"

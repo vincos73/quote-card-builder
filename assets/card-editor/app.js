@@ -1091,6 +1091,12 @@
 
   const renderCompositions = () => {
     els.compositionSection.hidden = !isRibbons();
+    const urban = state.draft?.presentation?.visual_grammar === 'urban';
+    const xeroxChoice = $('#urban-xerox-choice');
+    const xeroxHelp = $('#urban-xerox-help');
+    xeroxChoice.hidden = !urban;
+    xeroxHelp.hidden = !urban;
+    xeroxChoice.disabled = state.loadingCompositions;
     if (!isRibbons()) return;
     const source = state.draft.proposal_source === 'model' ? 'model' : 'demo';
     const candidates = state.draft.composition_candidates || [];
@@ -1137,13 +1143,13 @@
     }
   };
 
-  const requestCompositions = async () => {
+  const requestCompositions = async (preset = null) => {
     if (state.loadingCompositions || !state.draft) return;
     const call = ++state.compositionRequestId;
     state.loadingCompositions = true; renderCompositions();
     try {
       clearTimeout(state.timer); state.timer = null; state.requestId += 1;
-      const result = await api('/compositions', { method: 'POST', body: JSON.stringify({ draft: payload() }) });
+      const result = await api('/compositions', { method: 'POST', body: JSON.stringify({ draft: payload(), ...(preset ? { preset } : {}) }) });
       if (call !== state.compositionRequestId) return;
       const model = result.model || result.session_model;
       if (model) {
@@ -1151,7 +1157,9 @@
         initializeSession(model, true);
       }
       applyPreview(result);
-      setMessage(result.proposal_source === 'model' ? 'Proposte del modello pronte.' : 'Tre proposte di prova pronte.');
+      const xerox = result.model?.presentation?.composition?.artwork_id === 'urban-xerox-lime-v1';
+      setMessage(xerox ? 'Urban · Xerox pronta.'
+        : result.proposal_source === 'model' ? 'Proposte del modello pronte.' : 'Tre proposte di prova pronte.');
     } catch (error) { if (call === state.compositionRequestId) setMessage(error.message, true); }
     finally { if (call === state.compositionRequestId) { state.loadingCompositions = false; renderCompositions(); } }
   };
@@ -2012,7 +2020,8 @@
       if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
     });
   });
-  els.compositionRefresh.addEventListener('click', requestCompositions);
+  els.compositionRefresh.addEventListener('click', () => requestCompositions());
+  $('#urban-xerox-choice').addEventListener('click', () => requestCompositions('xerox'));
   els.compositionProposals.addEventListener('click', (event) => {
     const button = event.target.closest('[data-composition-id]');
     const composition = state.draft?.composition_candidates?.find((item) => item.id === button?.dataset.compositionId);

@@ -12,6 +12,7 @@ from typing import Any
 
 COLOR_ROLES = frozenset({"primary", "accent", "background", "text"})
 from urban_grammar import normalize_urban_composition, demo_urban_compositions
+from urban_artwork import is_xerox
 GRAMMAR_PRESENTATION_KEYS = frozenset({
     "visual_grammar", "composition", "quote_font_size", "author_font_size",
 })
@@ -215,7 +216,7 @@ def demo_compositions(text: str = "", seed: int = 0, grammar: str = "ribbons") -
 def variation_compositions(
     base_composition: Any, text: str = "", seed: int = 0,
 ) -> list[dict[str, Any]]:
-    """Three declared demo recompositions inheriting a saved ribbon recipe.
+    """Declared demo recompositions inheriting the saved visual recipe.
 
     These are local scaffold-based suggestions, never model-generated
     directions. In addition to palette roles and stroke widths, inherit
@@ -224,6 +225,10 @@ def variation_compositions(
     """
     base = normalize_composition(base_composition)
     if base.get("grammar") == "urban":
+        if is_xerox(base):
+            # A fresh quote keeps the selected artwork and its typography.
+            # Replacing it with vector posters would lose the user's base.
+            return [copy.deepcopy(base)]
         proposals = demo_compositions(text, seed, grammar="urban")
         for index, proposal in enumerate(proposals):
             for key in ("background_role", "text_role", "highlight_role"):

@@ -1,4 +1,17 @@
-# Candidato 1.9.0 / UI v1.59 — Urban e riuso portabile
+# Candidato 1.10.0 / UI v1.60 — Urban · Xerox
+
+15 ottobre 2026. **Prima integrazione della prova Xerox/lime scelta dall’utente; pacchetti di prova locali, nessun deploy remoto.**
+
+- Urban · Xerox usa lo stesso collage ImageGen della prova approvata, incorporato nello SVG insieme al font Barlow Condensed Black. Citazione e autore restano testo nativo; dimensioni manuali, formattazione, font e logo personali restano modificabili. Il trattamento iniziale dipinge il testo in maiuscolo senza alterare gli offset del contenuto originale.
+- Lo sfondo mantiene i propri colori. I progetti e le basi salvano il riferimento versionato `urban-xerox-lime-v1`; il file è incluso nel runtime locale/server. Non duplicano il raster nel localStorage e non richiedono ImageGen per ogni nuova frase. I JSON con font/logo caricati continuano a trasferire quegli asset. Nastri e le tre composizioni Urban geometriche restano disponibili.
+- Il riferimento visivo è ora incluso nelle skill locale e web. È la prova creata in questa chat, non uno degli esempi originali non disponibili. Il formato 4:5 conserva l’impostazione scelta; quadrato e storia adattano il testo e ritagliano lo stesso sfondo. Citazioni molto più lunghe richiedono una valutazione della composizione.
+- Suite completa: **519 test superati senza skip**, `uv run --frozen --with cairosvg python -m unittest discover -s tests -q`; registro `work/tests-xerox-final.log`. I test coprono anche registrazione dell’asset, testo e intervalli Unicode, dimensioni manuali, font, import/export e approvazione locale del font.
+- Chromium reale, host MCP simulato e tool reali: **8 verifiche superate**, `work/xerox-browser-verification/report.json`, con PNG effettivi 1440×1800, 1440×1440 e 1440×2560, riapertura progetto/base/bozza e viewport 375px. Non equivale a una verifica nativa nell’app installata dall’utente.
+- Pacchetti candidati: `dist/quote-card-builder-plugin-1.10.0.zip`, `dist/quote-card-builder-web-1.10.0.zip`, `dist/quote-card-builder-web-server-1.10.0.zip`. Runtime e UI concordano su 1.10.0/v1.60. Endpoint, autenticazione e identità del plugin sono invariati.
+
+Il servizio live rimane all’ultimo stato confermato 1.8.11/UI v1.58; questa sessione non dispone di un’identità Cloud Run configurata. Non sono stati creati tag o release pubbliche. L’utente può installare il pacchetto locale per provare l’integrazione.
+
+# Storico candidato 1.9.0 / UI v1.59 — Urban e riuso portabile
 
 14 ottobre 2026. **Sorgenti e pacchetti preparati e verificati; nuovo servizio non distribuito in questa sessione.** Ultimo stato live confermato: web 1.8.11/UI v1.58 e installazione standalone personale 1.8.3.
 

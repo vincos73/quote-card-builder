@@ -122,7 +122,8 @@ class GrammarFields(BaseModel):
         "Native ribbon scene: version=1, id, optional name; quote_box, author_box, logo_box each {x,y,width,height} within 0..1; "
         "background_role,text_role,highlight_role from primary/accent/background/text; ribbons [{id,color_role,width_ratio:0.015..0.3,points:[[x,y],...]}] "
         "with 1+3*n points (4..37), coordinates -0.5..1.5, interpreted as start then cubic controls/end; crossings [{over,under,segment,t:0..1}]. "
-        "For urban, scene grammar='urban', blocks (rect/polygon), strips and texture contain bounded numeric print-poster geometry; see urban reference. "
+        "For urban, scene grammar='urban', blocks (rect/polygon), strips and texture contain bounded numeric print-poster geometry. "
+        "Optional artwork_id='urban-xerox-lime-v1' selects the bundled Xerox/lime image with editable native text; no image URLs, paths or base64 in a scene. "
         "Compose around quote, optional author and logo. Preserve user-authored scenes exactly."
     ))
     composition_candidates: list[dict[str, object]] = Field(default_factory=list, max_length=3, description="Up to three distinct native scenes for selection; empty means no gallery. Model scenes require proposal_source=model.")
@@ -430,7 +431,10 @@ def quote_card_builder_open_workspace() -> WorkspaceOpenOutput:
         "Use 1–3 short emphasis ranges, usually only two style types from bold, italic, and highlight. Emphasize the central claim, not every word or a whole long line. Respect an explicit plain layout or user-supplied lines/styles, including an empty styles list; never rewrite an existing quote's user-authored layout unless asked. Style offsets are zero-based Unicode code-point indexes with an exclusive end, measured against text exactly as lines joined by newline. If text already contains newlines and lines is omitted, those rows are used. Keep short quotes visually strong without forcing extra lines or styles. Example layout for the supplied sentence: ‘L’IA aiuta / a chiarire i problemi / e a valutare / le opzioni; / il giudizio / e la responsabilità / restano alle persone.’ "
         "Default missing attribution to none and palette to neutral without asking. Preserve a named attribution only when supplied by the user or verified in the source. "
         "Ask only when the source cannot be read or the user's intent/content remains materially ambiguous. "
-        "For a requested native Nastri/ribbons or Urban card, use visual_grammar='ribbons' or 'urban' and supply three genuinely different native composition_candidates with proposal_source='model', or preserve the user's chosen composition. The model chooses path geometry, crossings, text area and color roles; all text remains editable. A missing scene produces explicitly labelled demo proposals. Inline size uses type='size' and scale 0.5–2.5. Visual warnings are advisory and preserve user choices. "
+        "For a requested Nastri/ribbons or geometric Urban card, supply three genuinely different native composition_candidates with proposal_source='model', or preserve the chosen composition. "
+        "For Urban Xerox/lime, reuse the registered artwork composition with proposal_source='demo'; do not replace it with geometric posters or invent three generated artworks. "
+        "style='urban' without a scene opens the bundled Xerox/lime composition. Its image colors are fixed; quote, author, font and logo remain editable. "
+        "The model chooses geometry and reading space for authored scenes. Inline size uses type='size' and scale 0.5–2.5. Visual warnings are advisory and preserve user choices. "
         "The user chooses style in the editor; use Blocks, Cutouts, Constellations, or Gradient only as an "
         "optional preselection volunteered by the user. Do not use image generation or a local "
         "filesystem. Do not ask for quote, attribution, or palette confirmation when the user said to proceed. Call this tool exactly once and do not "
@@ -486,7 +490,7 @@ def quote_card_builder_open_editor(
         title="Style preselection (optional)",
         description=(
             "Optional preselection volunteered by the user. The user can choose Blocks, Cutouts, "
-            "Constellations, Gradient, Nastri (ribbons), or Urban (urban) in the editor; defaults to Blocks. Do not accept a generic style label."
+            "Constellations, Gradient, Nastri (ribbons), or Urban (urban) in the editor; Urban defaults to Xerox/lime unless an explicit geometric composition is provided. Defaults to Blocks."
         ),
     )] = "blocks",
     format: Annotated[Literal["4x5", "1x1", "9x16"], Field(title="Initial format", description="Optional initial format: 4x5, 1x1, or 9x16.")] = "4x5",

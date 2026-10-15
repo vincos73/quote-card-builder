@@ -1,6 +1,6 @@
 [project]
 name = "quote-card-builder-mcp"
-version = "1.9.0"
+version = "1.10.0"
 description = "MCP Apps adapter for the canonical Quote Card Builder workflow"
 requires-python = ">=3.12,<3.15"
 dependencies = [

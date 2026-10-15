@@ -21,6 +21,7 @@ COPY scripts/mcp_server.py \
      scripts/render_quote_card.py \
      scripts/visual_grammars.py \
      scripts/urban_grammar.py \
+     scripts/urban_artwork.py \
      scripts/portable_brand.py \
      scripts/grammar_sessions.py \
      scripts/inspect_render.py \
@@ -30,6 +31,7 @@ COPY scripts/mcp_server.py \
 COPY assets/card-editor/vincos-lockup-white.svg ./assets/card-editor/
 COPY assets/card-editor/quote-card-builder-wordmark.svg ./assets/card-editor/
 COPY assets/card-editor/fonts/ ./assets/card-editor/fonts/
+COPY assets/urban/urban-xerox-lime-v1.png ./assets/urban/
 COPY assets/mcp-editor/ ./assets/mcp-editor/
 
 USER app

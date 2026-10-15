@@ -7,6 +7,8 @@ import math
 import random
 from typing import Any
 
+from urban_artwork import ARTWORK_IDS, XEROX_ARTWORK_ID
+
 ROLES = {"primary", "accent", "background", "text"}
 _ALLOWED_ID = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
@@ -75,7 +77,7 @@ def normalize_urban_composition(value: Any) -> dict[str, Any]:
     if (
         not isinstance(value, dict)
         or not required <= set(value)
-        or set(value) - required - {"name", "quote_backing_role", "author_backing_role"}
+        or set(value) - required - {"name", "quote_backing_role", "author_backing_role", "artwork_id"}
         or value.get("grammar") != "urban"
         or type(value.get("version")) is not int
         or value["version"] != 1
@@ -86,6 +88,11 @@ def normalize_urban_composition(value: Any) -> dict[str, Any]:
         "grammar": "urban",
         "id": _identifier(value["id"], "composition.id"),
     }
+    if "artwork_id" in value:
+        artwork_id = value["artwork_id"]
+        if not isinstance(artwork_id, str) or artwork_id not in ARTWORK_IDS:
+            raise ValueError("composition.artwork_id: sfondo Urban non disponibile.")
+        out["artwork_id"] = artwork_id
     if "name" in value:
         if not isinstance(value["name"], str) or len(value["name"]) > 120:
             raise ValueError(
@@ -189,6 +196,20 @@ def normalize_urban_composition(value: Any) -> dict[str, Any]:
     _role(t["color_role"], "texture.color_role")
     out["texture"] = dict(t)
     return out
+
+
+def xerox_composition() -> dict[str, Any]:
+    """The selected Xerox/lime experiment, with native editable type lanes."""
+    return normalize_urban_composition({
+        "version": 1, "grammar": "urban", "id": "urban-xerox-lime",
+        "name": "Xerox / lime", "artwork_id": XEROX_ARTWORK_ID,
+        "quote_box": {"x": .067, "y": .037, "width": .65, "height": .525},
+        "author_box": {"x": .072, "y": .59, "width": .52, "height": .06},
+        "logo_box": {"x": .072, "y": .665, "width": .20, "height": .035},
+        "background_role": "background", "text_role": "text", "highlight_role": "accent",
+        "blocks": [], "strips": [],
+        "texture": {"seed": 0, "dots": 0, "scratches": 0, "color_role": "text"},
+    })
 
 
 def demo_urban_compositions(text: str = "", seed: int = 0) -> list[dict[str, Any]]:

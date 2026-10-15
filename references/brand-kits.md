@@ -1,6 +1,6 @@
 # Brand kit portabile
 
-Sorgenti candidati 1.9.0. Un kit ha `schema: qcb-brand-kit`, `schema_version: 1`, `name`, `colors` e, facoltativamente, `font` e `logo`.
+Sorgenti candidati 1.10.0. Un kit ha `schema: qcb-brand-kit`, `schema_version: 1`, `name`, `colors` e, facoltativamente, `font` e `logo`.
 
 `colors` contiene esattamente `primary`, `accent`, `background`, `text` in formato `#RRGGBB`. `font` contiene `family` e gli asset facoltativi `regular`, `bold`, `italic`, `bold_italic`. Ogni asset usa `{mime_type,data_base64}`. I font ammessi sono TTF, OTF, WOFF e WOFF2; il logo può essere PNG, JPEG, WebP o SVG con elementi vettoriali consentiti. Il kit non contiene percorsi locali né URL remoti.
 

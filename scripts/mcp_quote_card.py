@@ -17,6 +17,8 @@ import render_quote_card as renderer
 import inspect_render as inspector
 from grammar_sessions import proposal_metadata
 from visual_grammars import demo_compositions, normalize_composition, normalize_grammar_presentation, variation_compositions
+from urban_grammar import xerox_composition
+from urban_artwork import XEROX_COLORS, is_xerox, xerox_font
 from portable_brand import brand_from_kit, normalize_brand_kit
 
 
@@ -237,6 +239,7 @@ def _grammar(payload: Mapping[str, Any], text: str, seed: int) -> tuple[dict[str
             if "composition" not in presentation:
                 if not candidates:
                     candidates = (variation_compositions(reuse, text, seed) if reuse is not None
+                                  else [xerox_composition()] if grammar == "urban"
                                   else demo_compositions(text, seed, grammar=grammar))
                     proposals = {"composition_candidates": candidates, "proposal_source": "demo"}
                 presentation["composition"] = copy.deepcopy(candidates[0])
@@ -300,6 +303,9 @@ def build_manifest(payload: Mapping[str, Any], manifest_dir: Path | None = None,
         errors.append(_issue("styles", "grammar", "Local size ranges require a native visual grammar."))
 
     brand, palette_errors = _palette(payload.get("palette"))
+    if is_xerox(grammar.get("composition")) and payload.get("palette") is None and payload.get("brand_kit") is None:
+        brand["name"] = "Xerox / lime"
+        brand["colors"] = copy.deepcopy(XEROX_COLORS)
     errors.extend(palette_errors)
     if payload.get("logo_mode", "auto") not in {"auto", "hidden"}:
         errors.append(_issue("logo_mode", "enum", "Use auto or hidden."))
@@ -318,8 +324,9 @@ def build_manifest(payload: Mapping[str, Any], manifest_dir: Path | None = None,
         # Native geometry measures the same portable font that the SVG draws.
         # Legacy styles retain their existing Arial default.
         font_dir = Path(__file__).resolve().parent.parent / "assets" / "card-editor" / "fonts"
-        brand["font"] = {"family": "Barlow", "regular_path": str(font_dir / "Barlow-Regular.ttf"),
-                         "bold_path": str(font_dir / "Barlow-Bold.ttf")}
+        brand["font"] = (xerox_font() if is_xerox(grammar.get("composition")) else
+                         {"family": "Barlow", "regular_path": str(font_dir / "Barlow-Regular.ttf"),
+                          "bold_path": str(font_dir / "Barlow-Bold.ttf")})
 
     if errors:
         return None, errors

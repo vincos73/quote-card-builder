@@ -98,3 +98,18 @@ PNG export. The approved SVG must remain identical to the selected preview, and
 the exported PNG must match a Chrome rendering of that preview pixel for pixel.
 `report.json`, `text-metrics.json`, `pixel-comparison.json`, screenshots and PNGs
 record the observed result; structural QA does not certify artistic quality.
+
+## Xerox/lime workspace smoke test
+
+With the simulated host and local MCP server running on port 8787, run the real
+browser workflow with:
+
+```sh
+QCB_TEST_PORT=8787 uv run python tests/browser/host.py
+QCB_XEROX_TEST_URL=http://127.0.0.1:8787 node tests/browser/xerox.cjs
+```
+
+It checks the registered artwork and default font, geometric Urban choices,
+uploaded brand font and SVG logo, saved base and project recovery, local draft
+reload, mobile width, and downloaded PNG dimensions in 4:5, 1:1, and 9:16.
+Evidence is written to `work/xerox-browser-verification/`.

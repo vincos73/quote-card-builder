@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import portable_brand
+from urban_artwork import is_xerox, xerox_font
 
 BASE_SCHEMA = "qcb-personal-base"
 PROJECT_SCHEMA = "qcb-card-project"
@@ -82,8 +83,9 @@ def import_design(value: Any, asset_dir: Path, current: dict[str, Any], *, proje
             brand["font"] = {"family": "Arial"}
     if fields.get("visual_grammar") in {"ribbons", "urban"} and not brand.get("font", {}).get("regular_path"):
         font_dir = Path(__file__).resolve().parent.parent / "assets" / "card-editor" / "fonts"
-        brand["font"] = {"family": "Barlow", "regular_path": str(font_dir / "Barlow-Regular.ttf"),
-                         "bold_path": str(font_dir / "Barlow-Bold.ttf")}
+        brand["font"] = (xerox_font() if is_xerox(fields.get("composition")) else
+                         {"family": "Barlow", "regular_path": str(font_dir / "Barlow-Regular.ttf"),
+                          "bold_path": str(font_dir / "Barlow-Bold.ttf")})
     result = copy.deepcopy(current)
     result["brand"] = brand
     result["direction"] = fields.get("direction", result["direction"])

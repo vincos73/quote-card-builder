@@ -21,6 +21,7 @@ from quote_card_contract import MAX_LINES
 from render_quote_card import GRAPHIC_VARIANTS, graphic_seed_allowed, validate_text_styles
 from visual_grammars import GRAMMAR_PRESENTATION_KEYS, normalize_grammar_presentation
 from grammar_sessions import proposal_metadata
+from urban_artwork import is_xerox, xerox_font
 
 
 DIRECTIONS = {"editorial", "statement", "contextual"}
@@ -175,7 +176,7 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
     if brand_patch:
         colors = (
             brand_patch.get("colors")
-            if isinstance(brand_patch, dict) and set(brand_patch) == {"colors"}
+            if isinstance(brand_patch, dict) and {"colors"} <= set(brand_patch) <= {"colors", "font"}
             else None
         )
         if not isinstance(colors, dict) or set(colors) != {"primary", "accent", "background", "text"}:
@@ -187,6 +188,18 @@ def _validate_patch(feedback: dict[str, Any], manifest: dict[str, Any]) -> None:
             for value in colors.values()
         ):
             raise ReviewError("feedback.brand.colors deve contenere colori #RRGGBB canonici.")
+        if "font" in brand_patch:
+            requested_presentation = feedback.get("presentation", {})
+            if not isinstance(requested_presentation, dict):
+                raise ReviewError("feedback.presentation deve essere un oggetto.")
+            selected = requested_presentation.get("composition", manifest.get("presentation", {}).get("composition"))
+            current_font = manifest.get("brand", {}).get("font", {})
+            family = current_font.get("family", "Arial") if isinstance(current_font, dict) else None
+            generic = (isinstance(family, str) and family.casefold() == "arial"
+                       and not any(key.endswith("_path") for key in current_font))
+            if (brand_patch["font"] != xerox_font() or not is_xerox(selected)
+                    or not (generic or current_font == xerox_font())):
+                raise ReviewError("feedback.brand.font consente solo il font Xerox incluso su un brand senza font personalizzato.")
 
     content = manifest.get("content")
     if not isinstance(content, dict) or not isinstance(content.get("text"), str):
@@ -330,6 +343,9 @@ def _apply_patch(manifest: dict[str, Any], feedback: dict[str, Any]) -> bool:
             manifest["palette_initial"] = dict(manifest["brand"]["colors"])
         if manifest["brand"].get("colors") != brand_patch["colors"]:
             manifest["brand"]["colors"] = dict(brand_patch["colors"])
+            changed = True
+        if "font" in brand_patch and manifest["brand"].get("font") != brand_patch["font"]:
+            manifest["brand"]["font"] = dict(brand_patch["font"])
             changed = True
     for key in ("direction",):
         if key in feedback and manifest.get(key) != feedback[key]:

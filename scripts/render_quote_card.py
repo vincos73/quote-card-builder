@@ -22,6 +22,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import rasterize
+from urban_artwork import XEROX_COLORS, artwork_data_uri, is_xerox
 from visual_grammars import (
     cubic_point, demo_compositions, normalize_composition, normalize_grammar_presentation,
 )
@@ -1809,7 +1810,7 @@ def _ribbon_face_metrics(font: dict[str, Any], manifest_dir: Path) -> dict[str, 
 def _ribbon_rows(
     text: str, styles: list[dict[str, Any]], font_size: float, box: dict[str, float],
     faces: dict[str, dict[str, float] | None], hard_lines: list[str] | None = None,
-    *, tracking: float = QUOTE_TRACKING_EM,
+    *, tracking: float = QUOTE_TRACKING_EM, uppercase: bool = False,
 ) -> list[dict[str, Any]]:
     """Word wrap the actual styled advances and assign variable baselines.
 
@@ -1824,9 +1825,10 @@ def _ribbon_rows(
         size = font_size * scale
         face = "bold" if "bold" in types else "italic" if "italic" in types else "regular"
         metrics = faces.get(face) or faces.get("regular")
-        advance = (metrics.get(char, metrics.get(" ", .28) if char.isspace() else .6)
-                   if metrics else visual_units(char, bold="bold" in types)) * size
-        chars.append({"char": char, "offset": offset, "font_size": size,
+        painted = char.upper() if uppercase else char
+        advance = sum((metrics.get(glyph, metrics.get(" ", .28) if glyph.isspace() else .6)
+                       if metrics else visual_units(glyph, bold="bold" in types)) * size for glyph in painted)
+        chars.append({"char": painted, "offset": offset, "font_size": size,
                       "types": sorted(types), "advance": max(0.0, advance),
                       "tracking": tracking * size})
 
@@ -2134,7 +2136,7 @@ def _ribbon_crossing_path(
 
 def _ribbon_text(
     rows: list[dict[str, Any]], colors: dict[str, str], composition: dict[str, Any],
-    *, author: bool = False,
+    *, author: bool = False, tracking: float = QUOTE_TRACKING_EM,
 ) -> str:
     ink = colors[composition["text_role"]]
     highlight = colors[composition["highlight_role"]]
@@ -2156,9 +2158,9 @@ def _ribbon_text(
                 attrs += f' stroke="{fill}" stroke-width="{size * OUTLINE_STROKE_EM:.2f}" stroke-linejoin="round"'
                 fill = "none"
             kind = "meta attribution source-field" if author else "quote"
-            tracking = 0 if author else QUOTE_TRACKING_EM
+            fragment_tracking = 0 if author else tracking
             texts.append(f'<text class="{kind}" x="{x:.2f}" y="{y:.2f}" font-size="{size:.2f}" '
-                         f'fill="{fill}"{attrs} xml:space="preserve" style="letter-spacing:{tracking}em;white-space:pre" '
+                         f'fill="{fill}"{attrs} xml:space="preserve" style="letter-spacing:{fragment_tracking}em;white-space:pre" '
                          f'data-start="{fragment["start"]}" data-end="{fragment["end"]}" '
                          f'data-text-styles="{" ".join(sorted(types))}" '
                          f'data-measured-width="{fragment_width:.4f}">{html.escape(fragment["text"])}</text>')
@@ -2259,38 +2261,65 @@ def render_ribbon_svg(
             f'{_ribbon_text(layout["author_rows"], colors, composition, author=True)}</svg>\n')
 
 
-def urban_layout(data: dict[str, Any], manifest_dir: Path, *, render_options: dict[str, Any] | None = None,
+def _xerox_rows(
+    text: str, styles: list[dict[str, Any]], font_size: float, box: dict[str, float],
+    faces: dict[str, dict[str, float] | None], hard_lines: list[str] | None,
+) -> list[dict[str, Any]]:
+    # Preserve source text and its offsets. Uppercase is a painted treatment,
+    # including expanding glyphs such as ß; editor selections keep their indexes.
+    tokens = list(re.finditer(r"\S+", text))
+    default_styles = ([{"start": tokens[-2].start(), "end": len(text), "type": "size", "scale": .55}]
+                      if len(tokens) >= 5 else [])
+    rows = _ribbon_rows(text, default_styles + styles, font_size, box, faces, hard_lines,
+                        tracking=0, uppercase=True)
+    baseline, previous_size = box["y"], 0.0
+    for index, row in enumerate(rows):
+        size = row["font_size"]
+        baseline += size * .82 if index == 0 else previous_size * .18 + size * .65
+        row["y"] = baseline
+        for fragment in row["fragments"]:
+            fragment["y"] = baseline
+        previous_size = size
+    return rows
+
+
+def urban_layout(data: dict[str, Any], manifest_dir: Path, width: int | None = None,
+                 height: int | None = None, *, render_options: dict[str, Any] | None = None,
                  font_size_override: float | None = None) -> dict[str, Any]:
     options = {**(data.get("presentation") or {}), **(render_options or {})}
     scene = normalize_grammar_presentation(options)["composition"]
-    width, height = data["canvas"]["width"], data["canvas"]["height"]
+    width, height = width or data["canvas"]["width"], height or data["canvas"]["height"]
     boxes = {key: _pixel_box(scene[key], width, height) for key in ("quote_box", "author_box", "logo_box")}
     faces = _ribbon_face_metrics(data["brand"]["font"], manifest_dir)
     activate_font_metrics(data["brand"]["font"], manifest_dir)
     text = data["content"]["text"]
     styles = list(data["content"].get("styles") or [])
+    xerox = is_xerox(scene)
+    row_builder = _xerox_rows if xerox else _ribbon_rows
     size = scene.get("quote_font_size", options.get("quote_font_size", font_size_override))
     if size is None:
-        low, high = 1.0, width*.22
+        low, high = 1.0, width*(.1982 if xerox else .22)
         for _ in range(32):
             mid=(low+high)/2
-            rows=_ribbon_rows(text,styles,mid,boxes["quote_box"],faces,data["content"].get("lines"))
+            rows=row_builder(text,styles,mid,boxes["quote_box"],faces,data["content"].get("lines"))
             bounds=_rows_bounds(rows,boxes["quote_box"])
             if bounds["width"]<=boxes["quote_box"]["width"] and bounds["height"]<=boxes["quote_box"]["height"]: low=mid
             else: high=mid
         size=math.floor(low*.995*float(options.get("text_scale",1))*10)/10
-    rows=_ribbon_rows(text,styles,float(size),boxes["quote_box"],faces,data["content"].get("lines"))
+    rows=row_builder(text,styles,float(size),boxes["quote_box"],faces,data["content"].get("lines"))
     attribution=data["content"].get("attribution") or {}; author=attribution.get("label","") if attribution.get("role")!="none" else ""
     author_size=options.get("author_font_size",width*ATTRIBUTION_FONT_SIZE_RATIO)
     author_rows=_ribbon_rows(author,[],float(author_size),boxes["author_box"],faces,author.splitlines(),tracking=0) if author else []
     bounds=_rows_bounds(rows,boxes["quote_box"]); warnings=[]
     if bounds["width"]>boxes["quote_box"]["width"] or bounds["height"]>boxes["quote_box"]["height"]:
         add_error(warnings,"presentation.quote_font_size","quote_overflow","Il testo non entra nell'area assegnata.")
-    ground=data["brand"]["colors"][scene.get("quote_backing_role",scene["background_role"])]
+    ground=(XEROX_COLORS["background"] if xerox and not scene.get("quote_backing_role") else
+            data["brand"]["colors"][scene.get("quote_backing_role",scene["background_role"])])
     ink=data["brand"]["colors"][scene["text_role"]]
     if contrast_ratio(ink,ground)<4.5:
         add_error(warnings,"presentation.composition.text_role","text_contrast","Il colore del testo non garantisce contrasto sul fondo riservato alla citazione.")
-    author_ground=data["brand"]["colors"][scene.get("author_backing_role",scene["background_role"])]
+    author_ground=(XEROX_COLORS["background"] if xerox and not scene.get("author_backing_role") else
+                   data["brand"]["colors"][scene.get("author_backing_role",scene["background_role"])])
     if author and contrast_ratio(ink,author_ground)<4.5:
         add_error(warnings,"presentation.composition.text_role","author_contrast","Il colore del testo non garantisce contrasto sul fondo riservato all'attribuzione.")
     author_bounds=_rows_bounds(author_rows,boxes["author_box"])
@@ -2309,7 +2338,11 @@ def render_urban_svg(data: dict[str, Any], manifest_dir: Path, *, render_options
     scene=normalize_grammar_presentation(options)["composition"]
     layout=urban_layout(data,manifest_dir,render_options=render_options,font_size_override=font_size_override)
     width,height=data["canvas"]["width"],data["canvas"]["height"]; colors=data["brand"]["colors"]
-    bg,ink=colors[scene["background_role"]],colors[scene["text_role"]]
+    bg=(XEROX_COLORS["background"] if is_xerox(scene) else colors[scene["background_role"]])
+    artwork = (f'<image class="urban-artwork" data-artwork-id="{scene["artwork_id"]}" '
+               f'x="0" y="0" width="{width}" height="{height}" '
+               f'preserveAspectRatio="xMidYMid slice" href="{artwork_data_uri(scene["artwork_id"])}"/>'
+               if scene.get("artwork_id") else "")
     shapes=[]
     for b in scene["blocks"]:
         if b["shape"]=="rect":
@@ -2341,7 +2374,7 @@ def render_urban_svg(data: dict[str, Any], manifest_dir: Path, *, render_options
     desc=data["content"].get("alt_text","").strip() or default_alt_text(data["content"]["text"],author,data.get("source"))
     attrs=" ".join(f'data-{k.replace("_","-")}="{html.escape(json.dumps(layout[k]),quote=True)}"' for k in ("quote_box","author_box","logo_box"))
     css=font_css(data["brand"]["font"],manifest_dir)+f'.quote,.meta{{font-family:{card_font_stack(data["brand"]["font"]["family"])};font-synthesis:weight;font-kerning:none;font-variant-ligatures:none}}'
-    return ('<?xml version="1.0" encoding="UTF-8"?>\n'+f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc" data-visual-grammar="urban" data-composition-id="{scene["id"]}" data-layout-valid="{str(layout["valid"]).lower()}" data-geometry-valid="{str(layout["geometry_valid"]).lower()}" data-layout-warnings="{html.escape(json.dumps(layout["warnings"]),quote=True)}" {attrs}><title id="title">Urban — {html.escape(data["brand"]["name"])}</title><desc id="desc">{html.escape(desc)}</desc><style>{css}</style><rect width="100%" height="100%" fill="{bg}"/>{''.join(shapes)}{''.join(marks)}{logo}{_ribbon_text(layout["rows"],colors,scene)}{_ribbon_text(layout["author_rows"],colors,scene,author=True)}</svg>\n')
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'+f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc" data-visual-grammar="urban" data-composition-id="{scene["id"]}" data-layout-valid="{str(layout["valid"]).lower()}" data-geometry-valid="{str(layout["geometry_valid"]).lower()}" data-layout-warnings="{html.escape(json.dumps(layout["warnings"]),quote=True)}" {attrs}><title id="title">Urban — {html.escape(data["brand"]["name"])}</title><desc id="desc">{html.escape(desc)}</desc><style>{css}</style><rect width="100%" height="100%" fill="{bg}"/>{artwork}{''.join(shapes)}{''.join(marks)}{logo}{_ribbon_text(layout["rows"],colors,scene,tracking=0 if is_xerox(scene) else QUOTE_TRACKING_EM)}{_ribbon_text(layout["author_rows"],colors,scene,author=True)}</svg>\n')
 
 def render_svg(
     data: dict[str, Any],
